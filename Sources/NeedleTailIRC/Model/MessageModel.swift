@@ -5,7 +5,8 @@
 //  Created by Cole M on 3/4/22.
 //
 //
-
+import Foundation
+@preconcurrency import CypherMessaging
 
 public enum MessageSubType: String, Sendable {
     case text, audio, image, doc, videoThumbnail, video, group, none

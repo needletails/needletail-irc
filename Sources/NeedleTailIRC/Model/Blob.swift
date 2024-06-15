@@ -4,6 +4,8 @@
 //
 //  Created by Cole M on 7/2/22.
 //
+import Foundation
+import CypherProtocol
 
 public struct Blob<C: Codable & Sendable>: Codable, Sendable {
     public let _id: String

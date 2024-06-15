@@ -14,6 +14,7 @@
 
 import Logging
 import NeedleTailLogger
+import CypherProtocol
 
 public extension IRCCommand {
     
@@ -77,14 +78,14 @@ public extension IRCCommand {
         func splitNicks() throws -> [NeedleTailNick] {
             var nicks = [NeedleTailNick]()
             var arguments = arguments.dropLast()
-            _ = try arguments.removeLast()
+            _ = arguments.removeLast()
                 .components(separatedBy: Constants.comma.rawValue)
                 .compactMap({ name in
                     let seperated = String(name.trimmingCharacters(in: .whitespacesAndNewlines))
                         .components(separatedBy: Constants.underScore.rawValue)
                     guard let name = seperated.first else { return }
                     guard let deviceId = seperated.last else { return }
-                    guard let nick = NeedleTailNick(name: name, deviceId: DeviceId(deviceId)) else { throw NeedleTailError.nilNickName }
+                    guard let nick = NeedleTailNick(name: name, deviceId: DeviceId(deviceId)) else { return }
                     nicks.append(nick)
                 })
             return nicks

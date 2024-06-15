@@ -11,7 +11,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-
+import CypherMessaging
 
 public enum IRCMessageRecipient: Codable, Hashable, Sendable {
   

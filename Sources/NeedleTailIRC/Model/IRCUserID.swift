@@ -11,6 +11,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
+import CypherProtocol
 
 public struct IRCUserID: Codable, Hashable, CustomStringConvertible, Sendable {
   

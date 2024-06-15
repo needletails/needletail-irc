@@ -7,6 +7,8 @@
 
 import NIOConcurrencyHelpers
 import NTExtensions
+import CypherProtocol
+
 
 extension String {
     public var constructedNick: NeedleTailNick? {

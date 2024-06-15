@@ -4,6 +4,8 @@
 //
 //  Created by Cole M on 6/18/22.
 //
+import Foundation
+import CypherProtocol
 
 public struct NTKUser: Hashable, Codable, Sendable {
     public var username: Username

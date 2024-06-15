@@ -5,6 +5,8 @@
 //  Created by Cole M on 6/18/22.
 //
 
+import CypherProtocol
+
 public struct NeedleTailChannelPacket: Codable, Sendable {
     public let name: String
     public let admin: NeedleTailNick

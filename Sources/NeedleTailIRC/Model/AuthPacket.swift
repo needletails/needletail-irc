@@ -5,6 +5,7 @@
 //  Created by Cole M on 7/18/22.
 //
 
+import CypherMessaging
 
 public struct AuthPacket: Codable, @unchecked Sendable {
     public let jwt: String?
