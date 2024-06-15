@@ -1,5 +1,5 @@
 {
-  "originHash" : "152d0234726249ce9ae1c6e137f0450e127b95829beda3c8640a2ee332472929",
+  "originHash" : "1b514ce3606f2002499a755736feb3727eb584d463e1e0a4546201ef397cd8a0",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -42,17 +42,15 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/needle-tail/CypherTextKit.git",
       "state" : {
-        "revision" : "142744aa18e140caff12882f81b295c3de56a58b",
-        "version" : "1.0.0-ntk1"
+        "revision" : "3163190cae48bddc2e1b9f56da46d47eed37f402"
       }
     },
     {
       "identity" : "dribble",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/orlandos-nl/Dribble.git",
+      "location" : "https://github.com/needle-tail/Dribble.git",
       "state" : {
-        "revision" : "7e82e7fc28f21da4923ecf4b4d4edd7f3d08d87b",
-        "version" : "0.1.1"
+        "revision" : "1cb4a94f4d52364e5ac8ba20de29b60738f1c4cc"
       }
     },
     {
@@ -87,8 +85,8 @@
       "kind" : "remoteSourceControl",
       "location" : "git@github.com:needle-tail/needletail-algorithms.git",
       "state" : {
-        "revision" : "92cd752e962439427fd0981e424ef21b0b15daea",
-        "version" : "1.0.1"
+        "revision" : "66bddc6202448786cef42814bb2121086116785e",
+        "version" : "1.0.2"
       }
     },
     {
@@ -150,8 +148,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-crypto.git",
       "state" : {
-        "revision" : "60f13f60c4d093691934dc6cfdf5f508ada1f894",
-        "version" : "2.6.0"
+        "revision" : "b51f1d6845b353a2121de1c6a670738ec33561a6",
+        "version" : "3.1.0"
       }
     },
     {

@@ -22,7 +22,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-ssl.git", .upToNextMajor(from: "2.25.0")),
         .package(url: "git@github.com:needle-tail/needletail-logger.git", .upToNextMajor(from: "1.0.2")),
         .package(url: "git@github.com:needle-tail/needletail-algorithms.git", .upToNextMajor(from: "1.0.1")),
-        .package(url: "https://github.com/needle-tail/CypherTextKit.git", .upToNextMajor(from: "1.0.0-beta.2")),
+        .package(url: "https://github.com/needle-tail/CypherTextKit.git", revision: "3163190cae48bddc2e1b9f56da46d47eed37f402"),
         .package(url: "https://github.com/vapor/jwt.git", .upToNextMajor(from: "4.0.0"))
     ],
     targets: [
