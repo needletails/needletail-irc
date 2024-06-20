@@ -2,10 +2,12 @@ import NIOCore
 
 public struct NeedleTailEncoder: Sendable {
     
+    static let packetDerivation = PacketDerivation()
+    
     //    [':' SOURCE]? ' ' COMMAND [' ' ARGS]? [' :' LAST-ARG]?
     public static func encode(
         value: IRCMessage
-    ) async -> ByteBuffer {
+    ) async -> String {
         var newTag = ""
         var newOrigin = ""
         var newTarget = ""
@@ -58,21 +60,21 @@ public struct NeedleTailEncoder: Sendable {
                  servers.append(server)
              }
             newString = base + create(
-                arguments: servers
+                arguments: servers,
+                buildWithComma: true
             )
         case .JOIN(channels: let channels, keys: let keys):
-            newString = base
+            newString = base + Constants.space.rawValue
             newString += create(
                 arguments: channels.lazy.map({ $0.stringValue }),
                 buildWithComma: true
-            )
+            ).replacingOccurrences(of: Constants.space.rawValue, with: Constants.none.rawValue)
             if let keys = keys {
                 newString += create(
                     arguments: keys,
                     buildWithComma: true
                 )
             }
-            
         case .JOIN0:
             newString = base + Constants.space.rawValue + Constants.star.rawValue
             
@@ -153,7 +155,8 @@ public struct NeedleTailEncoder: Sendable {
             )
             newString += create(
                 arguments: comments.lazy.map({ $0 }),
-                buildWithColon: true
+                buildWithColon: true,
+                joinWithSpace: true
             )
         case .KILL(let nick, let comment):
             newString = base + Constants.space.rawValue + nick.stringValue + Constants.space.rawValue + Constants.colon.rawValue + comment
@@ -169,8 +172,11 @@ public struct NeedleTailEncoder: Sendable {
             newString = base + Constants.space.rawValue + subCommand.commandAsString + Constants.space.rawValue + Constants.colon.rawValue
             newString += capabilityIds.joined(separator: Constants.space.rawValue)
         }
-        newString += Constants.cCR.rawValue + Constants.cLF.rawValue
-        return ByteBuffer(string: newString)
+        return newString
+    }
+    
+    public static func derivePacket(ircMessage: String) async throws -> [ByteBuffer] {
+        try await packetDerivation.calculateAndDispense(ircMessage: ircMessage)
     }
     
     internal static func arguments(_ args: [String] = [""]) -> String {
@@ -185,7 +191,8 @@ public struct NeedleTailEncoder: Sendable {
     internal static func create(
         arguments: [String],
         buildWithColon: Bool = false,
-        buildWithComma: Bool = false
+        buildWithComma: Bool = false,
+        joinWithSpace: Bool = false
     ) -> String {
         let newString = ""
         var fixed = [String]()
@@ -222,6 +229,10 @@ public struct NeedleTailEncoder: Sendable {
             }
             currentIndex += 1
         }
-        return newString + Constants.space.rawValue + fixed.joined(separator: Constants.space.rawValue)
+        if joinWithSpace {
+            return newString + Constants.space.rawValue + fixed.joined(separator: Constants.space.rawValue)
+        } else {
+            return newString + Constants.space.rawValue + fixed.joined(separator: Constants.none.rawValue)
+        }
     }
 }

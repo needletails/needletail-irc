@@ -1,12 +1,9 @@
 import NeedleTailLogger
 
 public enum AsyncMessageTask: Sendable {
-    public static func parseMessageTask(
-        task: String,
-        messageParser: MessageParser
-    ) -> IRCMessage? {
+    public static func parseMessageTask(task: String) -> IRCMessage? {
         do {
-            return try messageParser.parseMessage(task)
+            return try MessageParser.parseMessage(task)
         } catch {
             NeedleTailLogger(.init(label: "[AsyncMessageTask]")).log(level: .error, message: "\(error)")
             return nil

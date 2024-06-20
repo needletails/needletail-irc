@@ -57,4 +57,5 @@ public enum Constants: String, Sendable {
     case multipartMediaUpload = "MULTIPARTMEDIAUPLOAD"
     case listBucket = "LISTBUCKET"
     case requestMediaDeletion = "REQUESTMEDIADELETION"
+    case destoryUser = "DESTROYUSER"
 }

@@ -20,10 +20,12 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio.git", .upToNextMajor(from: "2.65.0")),
         .package(url: "https://github.com/apple/swift-nio-extras.git", .upToNextMajor(from: "1.20.0")),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", .upToNextMajor(from: "2.25.0")),
+        .package(url: "git@github.com:apple/swift-algorithms.git", .upToNextMajor(from: "1.2.0")),
         .package(url: "git@github.com:needle-tail/needletail-logger.git", .upToNextMajor(from: "1.0.2")),
         .package(url: "git@github.com:needle-tail/needletail-algorithms.git", .upToNextMajor(from: "1.0.1")),
         .package(url: "https://github.com/needle-tail/CypherTextKit.git", revision: "3163190cae48bddc2e1b9f56da46d47eed37f402"),
-        .package(url: "https://github.com/vapor/jwt.git", .upToNextMajor(from: "4.0.0"))
+        .package(url: "https://github.com/vapor/jwt.git", .upToNextMajor(from: "4.0.0")),
+        .package(url: "git@github.com:apple/swift-testing.git", .upToNextMajor(from: "0.10.0"))
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -38,6 +40,7 @@ let package = Package(
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
+                .product(name: "Algorithms", package: "swift-algorithms"),
                 .product(name: "NeedleTailLogger", package: "needletail-logger"),
                 .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
                 .product(name: "CypherMessaging", package: "CypherTextKit"),
@@ -45,6 +48,10 @@ let package = Package(
             ]),
         .testTarget(
             name: "NeedleTailIRCTests",
-            dependencies: ["NeedleTailIRC"]),
+            dependencies: [
+                "NeedleTailIRC",
+                    .product(name: "Testing", package: "swift-testing"),
+                    .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms")
+            ]),
     ]
 )

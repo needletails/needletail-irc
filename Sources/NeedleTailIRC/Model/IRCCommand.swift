@@ -47,7 +47,6 @@ public enum IRCCommand: Codable, Sendable {
     
     
     // MARK: - IRCv3.net
-    
     public enum CAPSubCommand: String, Sendable, Codable {
         case LS, LIST, REQ, ACK, NAK, END
         public var commandAsString : String { return rawValue }

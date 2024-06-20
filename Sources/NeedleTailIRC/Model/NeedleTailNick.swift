@@ -92,9 +92,13 @@ public final class NeedleTailNick: Codable, Hashable, Equatable, CustomStringCon
         }
         let rest = CharacterSets.letterDigitSpecialOrDash
         let scalars = name.unicodeScalars
-        guard firstCharacterSet.contains(scalars[scalars.startIndex]) else { return .failedValidation }
+        guard firstCharacterSet.contains(scalars[scalars.startIndex]) else {
+            return .failedValidation
+        }
         for scalar in scalars.dropFirst() {
-            guard rest.contains(scalar) else { return .failedValidation }
+            guard rest.contains(scalar) else {
+                return .failedValidation
+            }
         }
         return .isValidated
     }

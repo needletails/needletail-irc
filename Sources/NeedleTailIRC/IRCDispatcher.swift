@@ -12,22 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-/**
- * Dispatches incoming IRCMessage's to protocol methods.
- *
- * This has a main entry point `irc_msgSend` which takes an `IRCMessage` and
- * then calls the respective protocol functions matching the command of the
- * message.
- *
- * If a dispatcher doesn't implement a method, the
- * `IRCDispatcherError.doesNotRespondTo`
- * error is thrown.
- *
- * Note: Implementors *can* re-implement `irc_msgSend` and still access the
- *       default implementation by calling `irc_defaultMsgSend`. Which contains
- *       the actual dispatcher implementation.
- */
-
 
 public protocol IRCDispatcher: AnyObject, Sendable {
     
@@ -78,6 +62,7 @@ public protocol IRCDispatcher: AnyObject, Sendable {
     func doListBucket(_ packet: [String]) async throws
     func badgeCountUpdate(_ count: Int) async throws
     func doIsTyping(_ packet: [String]) async throws
+    func doDestoryUser(_ packet: [String]) async throws
 }
 
 public extension IRCDispatcher {
@@ -199,9 +184,12 @@ public extension IRCDispatcher {
     func doIsTyping(_ packet: [String]) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
+    func doDestoryUser(_ packet: [String]) async throws {
+        throw InternalDispatchError.notImplemented(function: #function)
+    }
 }
 
-public enum IRCDispatcherError : Swift.Error {
+public enum IRCDispatcherError: Error, Sendable {
     case doesNotRespondTo(IRCMessage)
     case nicknameInUse(NeedleTailNick)
     case noSuchNick(NeedleTailNick)
@@ -212,6 +200,6 @@ public enum IRCDispatcherError : Swift.Error {
     case nilToken
 }
 
-fileprivate enum InternalDispatchError : Swift.Error {
+fileprivate enum InternalDispatchError: Error, Sendable {
     case notImplemented(function: String)
 }
