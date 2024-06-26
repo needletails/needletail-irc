@@ -25,12 +25,13 @@ public protocol IRCDispatcher: AnyObject, Sendable {
     func doModeGet(nick: NeedleTailNick) async throws
     func doModeGet(channel: IRCChannelName) async throws
     func doMode(nick: NeedleTailNick, add: IRCUserMode, remove: IRCUserMode) async throws
+    func doMode(channel: IRCChannelName, add: IRCChannelMode, remove: IRCChannelMode) async throws
     func doWhoIs(server: String?, usermasks: [String]) async throws
     func doWho(mask: String?, operatorsOnly opOnly: Bool) async throws
     
     func doJoin(_ channels: [IRCChannelName], tags: [IRCTags]?) async throws
     func doPart(_ channels: [IRCChannelName], tags: [IRCTags]?) async throws
-    func doPartAll() async throws
+    func doPartAll(tags: [IRCTags]?) async throws
     func doGetBanMask(_ channel  : IRCChannelName) async throws
     func doNotice(recipients: [IRCMessageRecipient], message: String) async throws
     func doMessage(
@@ -47,7 +48,7 @@ public protocol IRCDispatcher: AnyObject, Sendable {
     func doRegisterAPN(_ token: [String]) async throws
     func doPassword(_ password: [String]) async throws
     func doNewDevice(_ info: [String]) async throws
-    func doBlobs(_ blobs: [String]) async throws
+    func doPublishBlob(_ blob: [String]) async throws
     func doReadBlob(_ blob: [String]) async throws
     func doOfflineMessages(_ nick: NeedleTailNick) async throws
     func doDeleteOfflineMessages(from contact: String) async throws
@@ -91,21 +92,22 @@ public extension IRCDispatcher {
     func doMode(nick: NeedleTailNick, add: IRCUserMode, remove: IRCUserMode) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
-    
+    func doMode(channel: IRCChannelName, add: IRCChannelMode, remove: IRCChannelMode) async throws {
+        throw InternalDispatchError.notImplemented(function: #function)
+    }
     func doWhoIs(server: String?, usermasks: [String]) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
     func doWho(mask: String?, operatorsOnly opOnly: Bool) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
-    
     func doJoin(_ channels: [IRCChannelName], tags: [IRCTags]?) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
     func doPart(_ channels: [IRCChannelName], tags: [IRCTags]?) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
-    func doPartAll() async throws {
+    func doPartAll(tags: [IRCTags]?) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
     func doGetBanMask(_ channel: IRCChannelName) async throws {
@@ -146,7 +148,7 @@ public extension IRCDispatcher {
     func doNewDevice(_ info: [String]) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
-    func doBlobs(_ blobs: [String]) async throws {
+    func doPublishBlob(_ blob: [String]) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
     func doReadBlob(_ blob: [String]) async throws {

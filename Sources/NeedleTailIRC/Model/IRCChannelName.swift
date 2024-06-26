@@ -109,3 +109,9 @@ public final class IRCChannelName: Codable, Hashable, CustomStringConvertible, S
         try container.encodeIfPresent(normalized, forKey: .normalized)
     }
 }
+
+extension String {
+    public var ircChanneled: IRCChannelName? {
+        IRCChannelName(self)
+    }
+}

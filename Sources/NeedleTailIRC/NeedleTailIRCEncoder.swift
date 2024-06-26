@@ -1,6 +1,6 @@
 import NIOCore
 
-public struct NeedleTailEncoder: Sendable {
+public struct NeedleTailIRCEncoder: Sendable {
     
     static let packetDerivation = PacketDerivation()
     
@@ -106,20 +106,29 @@ public struct NeedleTailEncoder: Sendable {
             newString += Constants.space.rawValue + Constants.colon.rawValue + message
         case .MODE(let nick, add: let add, remove: let remove):
             newString = base + Constants.space.rawValue + nick.stringValue
-            let adds = add.stringValue.map({ "\(Constants.plus.rawValue) \($0)" })
-            let removes = remove.stringValue.map({ "\(Constants.minus.rawValue) \($0)" })
-            if add.isEmpty && remove.isEmpty {
-                newString += Constants.space.rawValue + Constants.colon.rawValue
-            } else {
-                newString += arguments(adds) + arguments(removes)
+            if let adds = add?.stringValue.map({ "\(Constants.plus.rawValue)\($0)" }) {
+                newString += arguments(adds)
             }
-        case .CHANNELMODE(let channel, add: let add, remove: let remove):
-            let adds = add.stringValue.map({ "\(Constants.plus.rawValue)\($0)" })
-            let removes = remove.stringValue.map({ "\(Constants.minus.rawValue)\($0)" })
-            
+            if let removes = remove?.stringValue.map({ "\(Constants.minus.rawValue)\($0)" }) {
+                newString += arguments(removes)
+            }
+            if (add == nil) && (remove == nil) {
+                newString += Constants.space.rawValue + Constants.colon.rawValue
+            }
+        case .CHANNELMODE(let channel, add: let add, addParameters: let addParameters, remove: let remove, removeParameters: let removeParameters):
             newString = base + Constants.space.rawValue + channel.stringValue
-            newString += arguments(adds) + arguments(removes)
-            
+            if let adds = add?.stringValue.map({ "\(Constants.plus.rawValue)\($0)" }) {
+                newString += arguments(adds) + Constants.space.rawValue
+                if let addParameters = addParameters {
+                    newString += addParameters.joined(separator: Constants.comma.rawValue)
+                }
+            }
+            if let removes = remove?.stringValue.map({ "\(Constants.minus.rawValue)\($0)" }) {
+                newString += arguments(removes) + Constants.space.rawValue
+                if let removeParameters = removeParameters {
+                    newString += removeParameters.joined(separator: Constants.comma.rawValue)
+                }
+            }
         case .CHANNELMODE_GET(let value):
             newString = base + Constants.space.rawValue + value.stringValue
             
@@ -171,6 +180,9 @@ public struct NeedleTailEncoder: Sendable {
         case .CAP(let subCommand, let capabilityIds):
             newString = base + Constants.space.rawValue + subCommand.commandAsString + Constants.space.rawValue + Constants.colon.rawValue
             newString += capabilityIds.joined(separator: Constants.space.rawValue)
+        }
+        if newString.last == Character(Constants.space.rawValue) {
+            newString = String(newString.dropLast())
         }
         return newString
     }

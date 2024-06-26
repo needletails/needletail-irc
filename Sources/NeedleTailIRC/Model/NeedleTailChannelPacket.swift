@@ -5,35 +5,44 @@
 //  Created by Cole M on 6/18/22.
 //
 
+import Foundation
 import CypherProtocol
 
 public struct NeedleTailChannelPacket: Codable, Sendable {
-    public let name: String
-    public let admin: NeedleTailNick
+    public let _id = UUID().uuidString.uppercased()
+    public let name: IRCChannelName
+    public let channelOperator: Username
     public let organizers: Set<Username>
     public let members: Set<Username>
     public let permissions: IRCChannelMode
-    public let destroy: Bool?
-    public let partMessage: String?
+    public let destroyChannel: Bool
     public let blobId: String?
     
     public init(
-        name: String,
-        admin: NeedleTailNick,
+        name: IRCChannelName,
+        channelOperator: Username,
         organizers: Set<Username>,
         members: Set<Username>,
         permissions: IRCChannelMode,
-        destroy: Bool? = false,
-        partMessage: String? = nil,
+        destroyChannel: Bool = false,
         blobId: String? = nil
     ) {
         self.name = name
-        self.admin = admin
+        self.channelOperator = channelOperator
         self.organizers = organizers
         self.members = members
         self.permissions = permissions
-        self.destroy = destroy
-        self.partMessage = partMessage
+        self.destroyChannel = destroyChannel
         self.blobId = blobId
+    }
+}
+
+
+public struct PartMessage: Codable, Sendable {
+    public let _id = UUID().uuidString.uppercased()
+    public var message: String
+    
+    public init(message: String) {
+        self.message = message
     }
 }

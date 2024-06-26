@@ -8,13 +8,15 @@ final class NeedleTailIRCTests: XCTestCase {
     
     @Test func parseMessages() async {
         for message in await createIRCMessages() {
-            let messageToParse = await NeedleTailEncoder.encode(value: message)
+            let messageToParse = await NeedleTailIRCEncoder.encode(value: message)
+            print(messageToParse)
             #expect(throws: Never.self, performing: {
-                try MessageParser.parseMessage(messageToParse)
+                let m = try NeedleTailIRCParser.parseMessage(messageToParse)
+                print(m)
             })
         }
     }
-    
+
     @Test func derivePacketsToSend() async throws {
         let packetDerivation = PacketDerivation()
         let message = IRCMessage(
@@ -26,7 +28,7 @@ final class NeedleTailIRCTests: XCTestCase {
                     )
         )
         
-        let stringValue = await NeedleTailEncoder.encode(value: message)
+        let stringValue = await NeedleTailIRCEncoder.encode(value: message)
         let results = try await packetDerivation.calculateAndDispense(ircMessage: stringValue)
         #expect(results.count == 11)
         var currentId = 0
@@ -49,14 +51,14 @@ final class NeedleTailIRCTests: XCTestCase {
                         TestableConstants.longMessage.rawValue
                     )
         )
-        let stringValue = await NeedleTailEncoder.encode(value: message)
+        let stringValue = await NeedleTailIRCEncoder.encode(value: message)
         let results = try await packetDerivation.calculateAndDispense(ircMessage: stringValue)
         
         for result in results {
             
             if let ircMessageString = try await builder.processPacket(result) {
                 //Build IRCMessage from String
-                let message = try MessageParser.parseMessage(ircMessageString)
+                let message = try NeedleTailIRCParser.parseMessage(ircMessageString)
                 #expect(message.arguments?[1] != nil)
                 guard let ircMessageContent = message.arguments?[1] else { return }
                 #expect(ircMessageContent == TestableConstants.longMessage.rawValue)
@@ -203,6 +205,18 @@ func createIRCMessages() async -> [IRCMessage] {
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
+            command: .LIST(channels: nil, target: nil),
+            tags: [])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            command: .LIST(channels: nil, target: TestableConstants.target.rawValue),
+            tags: [])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
             command: .PRIVMSG([.everything], "Welcome to our messaging sdk"),
             tags: [])
     )
@@ -251,13 +265,49 @@ func createIRCMessages() async -> [IRCMessage] {
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: .inviteOnly, remove: .private),
+            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: .inviteOnly, addParameters: [], remove: nil, removeParameters: []),
+            tags: [])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: .banMask, addParameters: ["baduser1!*@*","baduser2!*@*"], remove: nil, removeParameters: []),
+            tags: [])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: .userLimit, addParameters: ["10"], remove: nil, removeParameters: []),
+            tags: [])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: nil, addParameters: [], remove: .inviteOnly, removeParameters: []),
+            tags: [])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: nil, addParameters: [], remove: .banMask, removeParameters: ["baduser2!*@*","baduser3!*@*"]),
+            tags: [])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: .banMask, addParameters: ["baduser1!*@*","baduser2!*@*"], remove: .banMask, removeParameters: ["baduser1!*@*","baduser2!*@*"]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
             command: .CHANNELMODE_GET(.init(TestableConstants.channelOne.rawValue)!),
+            tags: [])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: .banMask, addParameters: [], remove: nil, removeParameters: []),
             tags: [])
     )
     messages.append(
@@ -359,7 +409,7 @@ func createIRCMessages() async -> [IRCMessage] {
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.newDevice.rawValue,[TestableConstants.longMessage.rawValue]),
+            command: .otherCommand(Constants.newDevice.rawValue, [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(
@@ -371,7 +421,7 @@ func createIRCMessages() async -> [IRCMessage] {
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.offlineMessages.rawValue, [""]),
+            command: .otherCommand(Constants.offlineMessages.rawValue, [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(
@@ -383,7 +433,13 @@ func createIRCMessages() async -> [IRCMessage] {
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.blobs.rawValue, [TestableConstants.longMessage.rawValue]),
+            command: .otherCommand(Constants.publishBlob.rawValue, [TestableConstants.longMessage.rawValue]),
+            tags: [])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            command: .otherCommand(Constants.readPublishedBlob.rawValue, [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(

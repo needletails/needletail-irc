@@ -2,11 +2,11 @@ import Foundation
 import NIOConcurrencyHelpers
 import NeedleTailLogger
 
-enum MessageParsingErrors: Error, Sendable {
+public enum MessageParsingErrors: Error, Sendable {
     case invalidArguments(String), invalidCAPCommand(String)
 }
 
-public struct MessageParser: Sendable {
+public struct NeedleTailIRCParser: Sendable {
     static let logger = NeedleTailLogger(.init(label: "[MessageParser]"))
     
     public init() {}
@@ -24,7 +24,7 @@ public struct MessageParser: Sendable {
         var taglessMessage: String = ""
         var command = ""
         var argumentString = ""
-
+        
         self.logger.log(level: .trace, message: "Parsing Message....")
         
         //1. Separate Tags
@@ -34,7 +34,7 @@ public struct MessageParser: Sendable {
         } else {
             taglessMessage = message
         }
-
+        
         //2. Get message Origin
         if taglessMessage.first == Character(Constants.colon.rawValue) {
             let seperatedMessage = taglessMessage.components(separatedBy: Constants.space.rawValue)
@@ -46,7 +46,7 @@ public struct MessageParser: Sendable {
             command = seperatedMessage[0].uppercased()
             argumentString = seperatedMessage.dropFirst().joined(separator: Constants.space.rawValue)
         }
-
+        
         //Create Tags
         var tags: [IRCTags]?
         if seperatedTags != [] {
@@ -61,10 +61,10 @@ public struct MessageParser: Sendable {
         )
         let builtCommand = try IRCCommand(command, arguments: arguments)
         return IRCMessage(origin: origin,
-                                target: target,
-                                command: builtCommand,
-                                arguments: arguments,
-                                tags: tags)
+                          target: target,
+                          command: builtCommand,
+                          arguments: arguments,
+                          tags: tags)
     }
     
     // https://ircv3.net/specs/extensions/message-tags.html#format
@@ -96,7 +96,6 @@ public struct MessageParser: Sendable {
     ) throws -> ([String], String?) {
         var arguments = [String]()
         var target: String? = nil
-        
         switch try parseCommand(command: command) {
         case .string(let command):
             //3. Get Command
@@ -130,7 +129,6 @@ public struct MessageParser: Sendable {
                 let seperatedComponents = argumentString.components(separatedBy: Constants.space.rawValue)
                 guard let channelsComponent = seperatedComponents.first else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
                 arguments.append(channelsComponent)
-                
                 if seperatedComponents.count == 2 {
                     guard let targetComponent = seperatedComponents.last else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
                     arguments.append(targetComponent)
@@ -191,6 +189,26 @@ public struct MessageParser: Sendable {
                     .components(separatedBy: Constants.colon.rawValue)
                     .map { $0.trimmingCharacters(in: .whitespaces) }
                 arguments.append(contentsOf: seperatedByLastMessage)
+            case Constants.mode.rawValue:
+                let separated = argumentString.components(separatedBy: Constants.space.rawValue)
+                let rejoined = String(separated.dropFirst().joined(by: Constants.space.rawValue))
+                let components = rejoined.components(separatedBy: Constants.space.rawValue)
+                if let modeType = separated.first {
+                    arguments.append(modeType)
+                }
+                if let addIndex = components.firstIndex(where: { $0.contains(String(Constants.plus.rawValue)) }) {
+                    arguments.append(components[addIndex])
+                    if components.count >= 2, !components[1].contains(Constants.minus.rawValue) {
+                        arguments.append(contentsOf: components[1].components(separatedBy: Constants.comma.rawValue))
+                    }
+                }
+                
+                if let removeIndex = components.firstIndex(where: { $0.contains(String(Constants.minus.rawValue)) }) {
+                    arguments.append(components[removeIndex])
+                    if components.count >= 2, let lastArg = components.last, !lastArg.contains(Constants.minus.rawValue) {
+                        arguments.append(contentsOf: components[1].components(separatedBy: Constants.comma.rawValue))
+                    }
+                }
             default:
                 if command.isOtherCommand, command == Constants.multipartMediaUpload.rawValue || command == Constants.requestMediaDeletion.rawValue {
                     let multipartUploadArguments = argumentString.dropFirst().components(separatedBy: Constants.comma.rawValue)
@@ -207,7 +225,7 @@ public struct MessageParser: Sendable {
             let seperatedByLastMessage = argumentString.components(separatedBy: Constants.colon.rawValue)
             target = seperatedByLastMessage.first
             guard let lastMessage = seperatedByLastMessage.last else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                if lastMessage.contains(Constants.comma.rawValue) == true {
+            if lastMessage.contains(Constants.comma.rawValue) == true {
                 guard let args = seperatedByLastMessage.last?.components(separatedBy: Constants.comma.rawValue) else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
                 arguments.append(contentsOf: args)
             } else {
@@ -217,20 +235,20 @@ public struct MessageParser: Sendable {
         return (arguments, target)
     }
     
-
+    
     static func parseCommand(command: String) throws -> IRCCommandKey {
         precondition(!command.isEmpty)
         var commandKey: IRCCommandKey = .string("")
         if command.first?.isLetter == true {
-                commandKey = .string(command)
-            } else {
-                let command = command.components(separatedBy: .decimalDigits.inverted)
-                for c in command {
-                    if !c.isEmpty{
-                        commandKey = .int(Int(c) ?? 0)
-                    }
+            commandKey = .string(command)
+        } else {
+            let command = command.components(separatedBy: .decimalDigits.inverted)
+            for c in command {
+                if !c.isEmpty{
+                    commandKey = .int(Int(c) ?? 0)
                 }
             }
+        }
         self.logger.log(level: .trace, message: "Parsing CommandKey")
         return commandKey
     }
@@ -255,7 +273,7 @@ extension String {
     }
     
     var isOtherCommand: Bool {
-        self == Constants.badgeUpdate.rawValue || self == Constants.multipartMediaDownload.rawValue || self == Constants.multipartMediaUpload.rawValue || self == Constants.listBucket.rawValue || self == Constants.blobs.rawValue || self == Constants.readKeyBundle.rawValue || self == Constants.pass.rawValue || self == Constants.deleteOfflineMessage.rawValue || self == Constants.offlineMessages.rawValue || self == Constants.requestMediaDeletion.rawValue || self == Constants.destoryUser.rawValue
+        self == Constants.badgeUpdate.rawValue || self == Constants.multipartMediaDownload.rawValue || self == Constants.multipartMediaUpload.rawValue || self == Constants.listBucket.rawValue || self == Constants.publishBlob.rawValue || self == Constants.readPublishedBlob.rawValue || self == Constants.readKeyBundle.rawValue || self == Constants.pass.rawValue || self == Constants.deleteOfflineMessage.rawValue || self == Constants.offlineMessages.rawValue || self == Constants.requestMediaDeletion.rawValue || self == Constants.destoryUser.rawValue || self == Constants.newDevice.rawValue || self == Constants.registryRequest.rawValue
     }
     
     var isNumeric: Bool {

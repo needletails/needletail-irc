@@ -3,8 +3,8 @@ import NeedleTailLogger
 import CypherProtocol
 
 
-struct IRCCommandParser {
-
+struct NeedleTailIRCCommandParser {
+    
     enum CommandParserErrors: Error, Sendable {
         case invalidNick(String), invalidInfo, invalidArgument, invalidChannelName(String), missingRecipient, invalidMessageTarget(String), missingArgument, unexpectedArguments(String)
     }
@@ -39,7 +39,7 @@ struct IRCCommandParser {
             } else {
                 let hostname = arguments[1]
                 let servername = arguments[2]
-               
+                
                 info = IRCUserInfo(
                     username: username,
                     hostname: hostname,
@@ -78,30 +78,35 @@ struct IRCCommandParser {
             case .channel(let channelName):
                 if arguments.count > 1 {
                     var add = IRCChannelMode()
+                    var addParameters = [String]()
                     var remove = IRCChannelMode()
-                    for arg in arguments.dropFirst() {
-                        var isAdd = true
-                        for c in arg {
-                            if c == Character(Constants.plus.rawValue) {
-                                isAdd = true
-                            } else if c == Character(Constants.minus.rawValue) {
-                                isAdd = false
-                            } else if let mode = IRCChannelMode(String(c)) {
-                                if isAdd {
-                                    add.insert(mode)
-                                } else {
-                                    remove.insert(mode)
-                                }
-                            } else {
-                                NeedleTailLogger(.init(label: "[IRCCommand]")).log(level: .warning, message: "IRCParser: unexpected IRC mode: \(c) \(arg)")
-                            }
+                    var removeParameters = [String]()
+                    
+                    let args = arguments.dropFirst()
+                    if let addIndex = args.firstIndex(where: { $0.contains(String(Constants.plus.rawValue)) }) {
+                        add.insert(IRCChannelMode(String(args[addIndex].dropFirst()))!)
+                        if args.count >= 2, !args[1].contains(Constants.minus.rawValue) {
+                            addParameters.append(contentsOf: args[2].components(separatedBy: Constants.comma.rawValue))
                         }
                     }
                     
-                    if add == IRCChannelMode.banMask && remove.isEmpty {
-                        return.CHANNELMODE_GET_BANMASK(channelName)
+                    if let minusIndex = args.firstIndex(where: { $0.contains(String(Constants.minus.rawValue)) }) {
+                        remove.insert(IRCChannelMode(String(args[minusIndex].dropFirst()))!)
+                        if args.count >= 2, let lastArg = args.last, !lastArg.contains(Constants.minus.rawValue) {
+                            removeParameters.append(contentsOf: lastArg.components(separatedBy: Constants.comma.rawValue))
+                        }
+                    }
+                    
+                    if add == IRCChannelMode.banMask && !addParameters.isEmpty && remove.isEmpty {
+                        return .CHANNELMODE_GET_BANMASK(channelName)
                     } else {
-                        return.CHANNELMODE(channelName, add: add, remove: remove)
+                        return .CHANNELMODE(
+                            channelName,
+                            add: add,
+                            addParameters: addParameters,
+                            remove: remove,
+                            removeParameters: removeParameters
+                        )
                     }
                 } else {
                     return .CHANNELMODE_GET(channelName)
@@ -140,9 +145,13 @@ struct IRCCommandParser {
             // [<channel>{,<channel>} [<server>]]
         case Constants.list.rawValue:
             guard arguments.count <= 2 else { throw CommandParserErrors.unexpectedArguments("Expected at max 2 arguments Found: \(arguments.count)") }
-            let (channels, serverList, _) = try getChannels(arguments)
-            let server = serverList?.first
-            return .LIST(channels: channels, target: server)
+            if arguments.first == Constants.star.rawValue {
+                //We are a wild card. No need to get channels
+                return .LIST(channels: [], target: arguments.joined(separator: Constants.space.rawValue))
+            } else {
+                let (channels, serverList, _) = try getChannels(arguments)
+                return .LIST(channels: channels, target: serverList?.first)
+            }
             // <channel> <user> [<comment>]
         case Constants.kick.rawValue:
             guard arguments.count == 3 else { throw CommandParserErrors.unexpectedArguments("Expected: 3 Found: \(arguments.count)") }
@@ -223,7 +232,7 @@ struct IRCCommandParser {
                 guard let nick = arg.constructedNick else { throw CommandParserErrors.invalidNick(arg) }
                 nicks.append(nick)
             }
-                return .ISON(nicks)
+            return .ISON(nicks)
         case Constants.cap.rawValue:
             guard arguments.count >= 1 && arguments.count <= 2 else { throw CommandParserErrors.unexpectedArguments("Expected between 1 and 2 arguments Found: \(arguments.count)") }
             guard let first = arguments.first else { throw CommandParserErrors.missingArgument }
@@ -243,7 +252,7 @@ struct IRCCommandParser {
     
     //All arguments should follow a pattern, this pattern, #channelOne,#channelTwo userOne,userTwo, :some message to send
     static func getChannels(_ arguments: [String]) throws -> ([IRCChannelName], [String]?, [String]) {
-     
+        
         var arguments = arguments
         var verifiedChannels = [IRCChannelName]()
         var metadataList = [String]()
@@ -253,7 +262,7 @@ struct IRCCommandParser {
         }
         guard let channelStrings = arguments.first else { throw CommandParserErrors.invalidArgument }
         for channelName in channelStrings.components(separatedBy: Constants.comma.rawValue) {
-            guard let verified = IRCChannelName(channelName) else { throw CommandParserErrors.invalidChannelName(channelName)
+            guard let verified = channelName.ircChanneled else { throw CommandParserErrors.invalidChannelName(channelName)
             }
             verifiedChannels.append(verified)
         }
@@ -262,6 +271,9 @@ struct IRCCommandParser {
             for item in metadata.components(separatedBy: Constants.comma
                 .rawValue) {
                 metadataList.append(item)
+            }
+            if metadataList.isEmpty {
+                messageList.append(metadata)
             }
             return (verifiedChannels, metadataList, [])
         } else if arguments.indices.contains(2) {
@@ -281,9 +293,12 @@ struct IRCCommandParser {
 public extension IRCCommand {
     
     init(_ command: String, arguments: [String]) throws {
-        self = try IRCCommandParser.parse(command: command, arguments: arguments)
+        self = try NeedleTailIRCCommandParser.parse(
+            command: command,
+            arguments: arguments
+        )
     }
- 
+    
     init(_ v: Int, arguments: [String]) throws {
         if let code = IRCCommandCode(rawValue: v) {
             self = .numeric(code, arguments)

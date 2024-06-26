@@ -15,7 +15,7 @@ import CypherMessaging
 
 public enum IRCMessageRecipient: Codable, Hashable, Sendable {
   
-  case channel (IRCChannelName)
+  case channel(IRCChannelName)
   case nick(NeedleTailNick)
   case everything // Note: this doesn't seem to be spec'ed?!
   
@@ -54,7 +54,7 @@ public extension IRCMessageRecipient {
       }
       if s == Constants.star.rawValue {
         self = .everything
-    } else if let channel = IRCChannelName(s) {
+      } else if let channel = s.ircChanneled {
         self = .channel(channel)
     } else if let needletail = nick {
         self = .nick(needletail)
