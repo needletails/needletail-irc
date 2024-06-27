@@ -24,8 +24,20 @@ public protocol IRCDispatcher: AnyObject, Sendable {
     func doUserInfo(_ info: IRCUserInfo, tags: [IRCTags]?) async throws
     func doModeGet(nick: NeedleTailNick) async throws
     func doModeGet(channel: IRCChannelName) async throws
-    func doMode(nick: NeedleTailNick, add: IRCUserMode, remove: IRCUserMode) async throws
-    func doMode(channel: IRCChannelName, add: IRCChannelMode, remove: IRCChannelMode) async throws
+    func doMode(
+        nick: NeedleTailNick,
+        add: IRCUserMode,
+        addParameters: [String]?,
+        remove: IRCUserMode,
+        removeParameters: [String]?
+    ) async throws
+    func doMode(
+        channel: IRCChannelName,
+        add: IRCChannelMode,
+        addParameters: [String]?,
+        remove: IRCChannelMode, 
+        removeParameters: [String]?
+    ) async throws
     func doWhoIs(server: String?, usermasks: [String]) async throws
     func doWho(mask: String?, operatorsOnly opOnly: Bool) async throws
     
@@ -89,10 +101,22 @@ public extension IRCDispatcher {
     func doModeGet(channel: IRCChannelName) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
-    func doMode(nick: NeedleTailNick, add: IRCUserMode, remove: IRCUserMode) async throws {
+    func doMode(
+        nick: NeedleTailNick,
+        add: IRCUserMode,
+        addParameters: [String]?,
+        remove: IRCUserMode,
+        removeParameters: [String]?
+    ) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
-    func doMode(channel: IRCChannelName, add: IRCChannelMode, remove: IRCChannelMode) async throws {
+    func doMode(
+        channel: IRCChannelName,
+        add: IRCChannelMode?,
+        addParameters: [String]?,
+        remove: IRCChannelMode?,
+        removeParameters: [String]?
+    ) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
     func doWhoIs(server: String?, usermasks: [String]) async throws {
