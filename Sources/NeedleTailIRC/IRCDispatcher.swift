@@ -26,22 +26,20 @@ public protocol IRCDispatcher: AnyObject, Sendable {
     func doModeGet(channel: IRCChannelName) async throws
     func doMode(
         nick: NeedleTailNick,
-        add: IRCUserMode,
-        addParameters: [String]?,
-        remove: IRCUserMode,
-        removeParameters: [String]?
+        add: IRCUserMode?,
+        remove: IRCUserMode?
     ) async throws
     func doMode(
         channel: IRCChannelName,
-        add: IRCChannelMode,
+        add: IRCChannelMode?,
         addParameters: [String]?,
-        remove: IRCChannelMode, 
+        remove: IRCChannelMode?, 
         removeParameters: [String]?
     ) async throws
     func doWhoIs(server: String?, usermasks: [String]) async throws
     func doWho(mask: String?, operatorsOnly opOnly: Bool) async throws
     
-    func doJoin(_ channels: [IRCChannelName], tags: [IRCTags]?) async throws
+    func doJoin(_ channels: [IRCChannelName], keys: [String]?, tags: [IRCTags]?) async throws
     func doPart(_ channels: [IRCChannelName], tags: [IRCTags]?) async throws
     func doPartAll(tags: [IRCTags]?) async throws
     func doGetBanMask(_ channel  : IRCChannelName) async throws
@@ -66,7 +64,7 @@ public protocol IRCDispatcher: AnyObject, Sendable {
     func doDeleteOfflineMessages(from contact: String) async throws
     func doKick(_
                 channels: [IRCChannelName],
-                users: [NeedleTailNick],
+                users: [String],
                 comments: [String]?
     ) async throws
     func doKill(_ nick: NeedleTailNick, comment: String) async throws
@@ -103,10 +101,8 @@ public extension IRCDispatcher {
     }
     func doMode(
         nick: NeedleTailNick,
-        add: IRCUserMode,
-        addParameters: [String]?,
-        remove: IRCUserMode,
-        removeParameters: [String]?
+        add: IRCUserMode?,
+        remove: IRCUserMode?
     ) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
@@ -125,7 +121,7 @@ public extension IRCDispatcher {
     func doWho(mask: String?, operatorsOnly opOnly: Bool) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
-    func doJoin(_ channels: [IRCChannelName], tags: [IRCTags]?) async throws {
+    func doJoin(_ channels: [IRCChannelName], keys: [String]?, tags: [IRCTags]?) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
     }
     func doPart(_ channels: [IRCChannelName], tags: [IRCTags]?) async throws {
@@ -186,7 +182,7 @@ public extension IRCDispatcher {
     }
     func doKick(_
                 channels: [IRCChannelName],
-                users: [NeedleTailNick],
+                users: [String],
                 comments: [String]?
     ) async throws {
         throw InternalDispatchError.notImplemented(function: #function)
@@ -224,6 +220,8 @@ public enum IRCDispatcherError: Error, Sendable {
     case notRegistered
     case cantChangeModeForOtherUsers
     case nilToken
+    case couldNotJoinChannel(IRCChannelName)
+    case couldNotPartChannel(IRCChannelName)
 }
 
 fileprivate enum InternalDispatchError: Error, Sendable {

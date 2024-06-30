@@ -177,14 +177,13 @@ extension EventLoopGroupManager {
         @Sendable func createHandlers(_ channel: Channel) -> EventLoopFuture<NIOAsyncChannel<ByteBuffer, ByteBuffer>> {
             channel.eventLoop.makeCompletedFuture {
                 try channel.pipeline.syncOperations.addHandlers([
+                    LengthFieldPrepender(lengthFieldBitLength: .threeBytes),
                     ByteToMessageHandler(
-                        LineBasedFrameDecoder()
-                    )
-                ], position: .first)
-                let asyncChannel = try NIOAsyncChannel<ByteBuffer, ByteBuffer>(
-                    wrappingChannelSynchronously: channel,
-                    configuration: .init()
-                )
+                        LengthFieldBasedFrameDecoder(lengthFieldBitLength: .threeBytes),
+                        maximumBufferSize: 16777216
+                    ),
+                ])
+                let asyncChannel = try NIOAsyncChannel<ByteBuffer, ByteBuffer>(wrappingChannelSynchronously: channel)
                 setChannel(asyncChannel)
                 return asyncChannel
             }

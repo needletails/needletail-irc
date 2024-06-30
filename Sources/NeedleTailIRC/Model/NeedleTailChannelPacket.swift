@@ -11,8 +11,8 @@ import CypherProtocol
 public struct NeedleTailChannelPacket: Codable, Sendable {
     public let _id = UUID().uuidString.uppercased()
     public let name: IRCChannelName
-    public let channelOperator: Username
-    public let organizers: Set<Username>
+    public let channelOperatorAdmin: Username
+    public let channelOperators: Set<Username>
     public let members: Set<Username>
     public let permissions: IRCChannelMode
     public let destroyChannel: Bool
@@ -20,16 +20,16 @@ public struct NeedleTailChannelPacket: Codable, Sendable {
     
     public init(
         name: IRCChannelName,
-        channelOperator: Username,
-        organizers: Set<Username>,
+        channelOperatorAdmin: Username,
+        channelOperators: Set<Username>,
         members: Set<Username>,
         permissions: IRCChannelMode,
         destroyChannel: Bool = false,
         blobId: String? = nil
     ) {
         self.name = name
-        self.channelOperator = channelOperator
-        self.organizers = organizers
+        self.channelOperatorAdmin = channelOperatorAdmin
+        self.channelOperators = channelOperators
         self.members = members
         self.permissions = permissions
         self.destroyChannel = destroyChannel
@@ -41,8 +41,16 @@ public struct NeedleTailChannelPacket: Codable, Sendable {
 public struct PartMessage: Codable, Sendable {
     public let _id = UUID().uuidString.uppercased()
     public var message: String
+    public let destroyChannel: Bool
+    public let blobId: String?
     
-    public init(message: String) {
+    public init(
+        message: String,
+        destroyChannel: Bool,
+        blobId: String
+    ) {
         self.message = message
+        self.destroyChannel = destroyChannel
+        self.blobId = blobId
     }
 }

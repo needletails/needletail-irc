@@ -38,7 +38,7 @@ public struct NeedleTailIRCParser: Sendable {
         //2. Get message Origin
         if taglessMessage.first == Character(Constants.colon.rawValue) {
             let seperatedMessage = taglessMessage.components(separatedBy: Constants.space.rawValue)
-            origin = seperatedMessage[0]
+            origin = String(seperatedMessage[0].dropFirst())
             command = seperatedMessage[1].uppercased()
             argumentString = seperatedMessage.dropFirst(2).joined(separator: Constants.space.rawValue)
         } else {

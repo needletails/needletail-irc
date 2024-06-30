@@ -11,7 +11,7 @@ import Algorithms
 import BSON
 
 
-struct IRCPacket: Sendable, Codable {
+struct IRCPacket: Sendable, Codable, Hashable {
     let id: String
     let partNumber: Int
     let totalParts: Int
@@ -53,29 +53,31 @@ public struct PacketDerivation: Sendable {
     }
 }
 
+import DequeModule
+import NeedleTailAsyncSequence
 
 public actor PacketBuilder {
     
-    private var packets = [IRCPacket]()
+    var deque = Deque<IRCPacket>()
     private var ircString = ""
     
     public init() {}
     
-    public func processPacket(_ buffer: ByteBuffer) throws -> String? {
+    public func processPacket(_ buffer: ByteBuffer) async throws -> String? {
         let packet = try BSONDecoder().decode(IRCPacket.self, from: Document(buffer: buffer))
-        packets.append(packet)
+        print("PACCKET", packet)
+        deque.append(packet)
         
-        //We are the final packet. so build and process the message
-        if packet.partNumber == packet.totalParts {
-            ircString = ""
-            for packet in packets {
-                ircString += packet.message
-            }
-            
-            packets.removeAll()
-            return ircString
-        }
+        
+        guard let packets = findPackets(packet.id) else { return nil }
+        guard packets.count == packet.totalParts else { return nil }
+        
+        var ircString = ""
+        ircString.append(contentsOf: packets.compactMap({ $0.message }).joined())
+        print("BUILT_", ircString)
         return nil
     }
-    
+    private func findPackets(_ id: String) -> [IRCPacket]? {
+        deque.filter({ $0.id == id }).sorted(by: { $0.partNumber < $1.partNumber })
+    }
 }

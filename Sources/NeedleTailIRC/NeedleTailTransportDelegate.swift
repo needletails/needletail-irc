@@ -46,13 +46,13 @@ extension NeedleTailWriterDelegate {
                     logger.log(level: .debug, message: "Feed message \(message.command.commandAsString)")
                     let messageString = await NeedleTailIRCEncoder.encode(value: message)
                     //IRC only allows 512 characters per message so we need to create packets according to the spec size
-                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
-                    for buffer in buffers {
+//                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
+//                    for buffer in buffers {
                         await consumer.feedConsumer(
-                            buffer,
+                            ByteBuffer(string: messageString),
                             priority: priority
                         )
-                    }
+//                    }
                     for try await result in NeedleTailAsyncSequence(consumer: consumer) {
                         switch result {
                         case .success(let buffer):
@@ -74,13 +74,13 @@ extension NeedleTailWriterDelegate {
                 try await withThrowingTaskGroup(of: Void.self) { group in
                     let messageString = await NeedleTailIRCEncoder.encode(value: message)
                     //IRC only allows 512 characters per message so we need to create packets according to the spec size
-                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
-                    for await buffer in buffers.async {
+//                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
+//                    for await buffer in buffers.async {
                         await consumer.feedConsumer(
-                            buffer,
+                            ByteBuffer(string: messageString),
                             priority: priority
                         )
-                    }
+//                    }
                     for try await result in NeedleTailAsyncSequence(consumer: consumer) {
                         switch result {
                         case .success(let buffer):
@@ -121,9 +121,8 @@ extension NeedleTailClientDelegate {
         case .PRIVMSG(let recipients, let messageLines):
             let lines = messageLines.components(separatedBy: Constants.cLF.rawValue)
                 .map { $0.replacingOccurrences(of: Constants.cCR.rawValue, with: Constants.space.rawValue) }
-            _ = lines.async.map { [weak self] in
-                guard let self else { return }
-                let message = IRCMessage(origin: origin, command: .PRIVMSG(recipients, $0), tags: tags)
+            for await line in lines.async {
+                let message = IRCMessage(origin: origin, command: .PRIVMSG(recipients, line), tags: tags)
                 try await self.sendAndFlushMessage(
                     consumer,
                     logger: logger,
@@ -144,9 +143,8 @@ extension NeedleTailClientDelegate {
         case .NOTICE(let recipients, let messageLines):
             let lines = messageLines.components(separatedBy: Constants.cLF.rawValue)
                 .map { $0.replacingOccurrences(of: Constants.cCR.rawValue, with: Constants.space.rawValue) }
-            _ = lines.async.map { [weak self] in
-                guard let self else { return }
-                let message = IRCMessage(origin: origin, command: .NOTICE(recipients, $0), tags: tags)
+            for await line in lines.async {
+                let message = IRCMessage(origin: origin, command: .NOTICE(recipients, line), tags: tags)
                 try await sendAndFlushMessage(
                     consumer,
                     logger: logger,
@@ -186,7 +184,7 @@ extension NeedleTailServerMessageDelegate {
                 try await withThrowingDiscardingTaskGroup { group in
                     let messageString = await NeedleTailIRCEncoder.encode(value: message)
                     //IRC only allows 512 characters per message so we need to create packets according to the spec size
-                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
+                   let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
                     for await buffer in buffers.async {
                         await consumer.feedConsumer(
                             buffer,
@@ -214,13 +212,13 @@ extension NeedleTailServerMessageDelegate {
                 try await withThrowingTaskGroup(of: Void.self) { group in
                     let messageString = await NeedleTailIRCEncoder.encode(value: message)
                     //IRC only allows 512 characters per message so we need to create packets according to the spec size
-                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
-                    for await buffer in buffers.async {
+//                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
+//                    for await buffer in buffers.async {
                         await consumer.feedConsumer(
-                            buffer,
+                            ByteBuffer(string: messageString),
                             priority: priority
                         )
-                    }
+//                    }
                     for try await result in NeedleTailAsyncSequence(consumer: consumer) {
                         switch result {
                         case .success(let buffer):
@@ -309,11 +307,10 @@ extension NeedleTailServerMessageDelegate {
             .map { $0.replacingOccurrences(of: Constants.cCR.rawValue, with: Constants.space.rawValue) }
             .map { Constants.minus.rawValue + Constants.space.rawValue + $0 }
         
-        _ = lines.async.map { [weak self] in
-            guard let self else { return }
+        for line in lines {
             let message = IRCMessage(origin: origin,
                                      target: target,
-                                     command: .numeric(.replyMotD, [ $0 ]),
+                                     command: .numeric(.replyMotD, [line]),
                                      tags: nil)
             try await sendAndFlushMessage(
                 consumer,
