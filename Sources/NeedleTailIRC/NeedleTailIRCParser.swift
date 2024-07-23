@@ -59,12 +59,21 @@ public struct NeedleTailIRCParser: Sendable {
             command: command,
             argumentString: argumentString
         )
-        let builtCommand = try IRCCommand(command, arguments: arguments)
-        return IRCMessage(origin: origin,
-                          target: target,
-                          command: builtCommand,
-                          arguments: arguments,
-                          tags: tags)
+        if let command = Int(command) {
+            let builtCommand = try IRCCommand(numeric: command, arguments: arguments)
+            return IRCMessage(origin: origin,
+                              target: target,
+                              command: builtCommand,
+                              arguments: arguments,
+                              tags: tags)
+        } else {
+            let builtCommand = try IRCCommand(command: command, arguments: arguments)
+            return IRCMessage(origin: origin,
+                              target: target,
+                              command: builtCommand,
+                              arguments: arguments,
+                              tags: tags)
+        }
     }
     
     // https://ircv3.net/specs/extensions/message-tags.html#format

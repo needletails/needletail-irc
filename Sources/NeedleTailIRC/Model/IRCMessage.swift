@@ -83,7 +83,7 @@ public struct IRCMessage: Codable, Sendable {
         } catch {
             let cmd = try containter.decode(String.self, forKey: .command)
             let arguments = try containter.decodeIfPresent([String].self, forKey: .arguments)
-            self.command = try IRCCommand(cmd, arguments: arguments ?? [])
+            self.command = try IRCCommand(numeric: Int(cmd)!, arguments: arguments ?? [])
         }
         self.tags = try containter.decodeIfPresent([IRCTags].self, forKey: .tags)
     }

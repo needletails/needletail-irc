@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version:5.10
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -21,8 +21,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-extras.git", .upToNextMajor(from: "1.20.0")),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", .upToNextMajor(from: "2.25.0")),
         .package(url: "git@github.com:apple/swift-algorithms.git", .upToNextMajor(from: "1.2.0")),
-        .package(url: "git@github.com:needle-tail/needletail-logger.git", .upToNextMajor(from: "1.0.2")),
-        .package(url: "git@github.com:needle-tail/needletail-algorithms.git", .upToNextMajor(from: "1.0.1")),
+        .package(url: "git@github.com:needle-tail/needletail-logger.git", .upToNextMajor(from: "1.0.3")),
+        .package(url: "git@github.com:needle-tail/needletail-algorithms.git", .upToNextMajor(from: "1.0.6")),
         .package(url: "https://github.com/needle-tail/CypherTextKit.git", revision: "3163190cae48bddc2e1b9f56da46d47eed37f402"),
         .package(url: "https://github.com/vapor/jwt.git", .upToNextMajor(from: "4.0.0")),
         .package(url: "git@github.com:apple/swift-testing.git", .upToNextMajor(from: "0.10.0"))

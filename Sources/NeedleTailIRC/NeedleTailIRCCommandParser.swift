@@ -292,19 +292,19 @@ struct NeedleTailIRCCommandParser {
 
 public extension IRCCommand {
     
-    init(_ command: String, arguments: [String]) throws {
+    init(command: String, arguments: [String]) throws {
         self = try NeedleTailIRCCommandParser.parse(
             command: command,
             arguments: arguments
         )
     }
     
-    init(_ v: Int, arguments: [String]) throws {
-        if let code = IRCCommandCode(rawValue: v) {
+    init(numeric: Int, arguments: [String]) throws {
+        if let code = IRCCommandCode(rawValue: numeric) {
             self = .numeric(code, arguments)
         }
         else {
-            self = .otherNumeric(v, arguments)
+            self = .otherNumeric(numeric, arguments)
         }
     }
 }

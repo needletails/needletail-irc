@@ -26,12 +26,28 @@ public struct Call: Sendable, Codable {
     public var updatedAt: Date?
     public var endedAt: Date?
     public var supportsVideo: Bool
-    public var rejected: Bool?
     public var missed: Bool?
+    public var unanswered: Bool?
+    public var rejected: Bool?
+    public var failed: Bool?
     public var isActive: Bool
     public var isOutbound: Bool
      
-    public init(id: UUID, sender: NeedleTailNick, recipients: [NeedleTailNick], createdAt: Date, updatedAt: Date? = nil, endedAt: Date? = nil, supportsVideo: Bool, rejected: Bool? = nil, missed: Bool? = nil, isActive: Bool, isOutbound: Bool) {
+    public init(
+        id: UUID,
+        sender: NeedleTailNick,
+        recipients: [NeedleTailNick],
+        createdAt: Date,
+        updatedAt: Date? = nil,
+        endedAt: Date? = nil,
+        supportsVideo: Bool,
+        missed: Bool? = nil,
+        unanswered: Bool? = nil,
+        rejected: Bool? = nil,
+        failed: Bool? = nil,
+        isActive: Bool,
+        isOutbound: Bool
+    ) {
         self.id = id
         self.sender = sender
         self.recipients = recipients
@@ -39,8 +55,10 @@ public struct Call: Sendable, Codable {
         self.updatedAt = updatedAt
         self.endedAt = endedAt
         self.supportsVideo = supportsVideo
-        self.rejected = rejected
         self.missed = missed
+        self.unanswered = unanswered
+        self.rejected = rejected
+        self.failed = failed
         self.isActive = isActive
         self.isOutbound = isOutbound
     }
