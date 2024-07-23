@@ -1,5 +1,5 @@
 {
-  "originHash" : "87491a1574737286957b9fefc36c68183474c5263154483700d57e06e829718d",
+  "originHash" : "5314d3b2ce28f1fbe1790f43a7d9b59dba67568cae7fb6dee6a2157c1ce214bc",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -85,8 +85,8 @@
       "kind" : "remoteSourceControl",
       "location" : "git@github.com:needle-tail/needletail-algorithms.git",
       "state" : {
-        "revision" : "66bddc6202448786cef42814bb2121086116785e",
-        "version" : "1.0.2"
+        "revision" : "09f09bc3868f392d0301ed47c1dc7fbb86036d21",
+        "version" : "1.0.6"
       }
     },
     {
@@ -94,8 +94,8 @@
       "kind" : "remoteSourceControl",
       "location" : "git@github.com:needle-tail/needletail-logger.git",
       "state" : {
-        "revision" : "bdd40f6e344023209968d9c627dcafeae1cc9cfe",
-        "version" : "1.0.2"
+        "revision" : "92e8278ca16e96db2bcfd9cb1dc186980f2ea680",
+        "version" : "1.0.3"
       }
     },
     {
