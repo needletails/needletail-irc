@@ -69,6 +69,6 @@ public actor PacketBuilder {
         var ircString = ""
         ircString.append(contentsOf: sorted.compactMap({ $0.message }).joined())
         deque.removeAll()
-        return nil
+        return ircString.isEmpty ? nil : ircString
     }
 }
