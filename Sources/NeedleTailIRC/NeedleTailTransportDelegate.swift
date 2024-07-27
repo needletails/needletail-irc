@@ -46,13 +46,13 @@ extension NeedleTailWriterDelegate {
                     logger.log(level: .debug, message: "Feed message \(message.command.commandAsString)")
                     let messageString = await NeedleTailIRCEncoder.encode(value: message)
                     //IRC only allows 512 characters per message so we need to create packets according to the spec size
-//                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
-//                    for buffer in buffers {
+                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
+                    for buffer in buffers {
                         await consumer.feedConsumer(
-                            ByteBuffer(string: messageString),
+                            buffer,
                             priority: priority
                         )
-//                    }
+                    }
                     for try await result in NeedleTailAsyncSequence(consumer: consumer) {
                         switch result {
                         case .success(let buffer):
@@ -74,13 +74,13 @@ extension NeedleTailWriterDelegate {
                 try await withThrowingTaskGroup(of: Void.self) { group in
                     let messageString = await NeedleTailIRCEncoder.encode(value: message)
                     //IRC only allows 512 characters per message so we need to create packets according to the spec size
-//                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
-//                    for await buffer in buffers.async {
+                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
+                    for await buffer in buffers.async {
                         await consumer.feedConsumer(
-                            ByteBuffer(string: messageString),
+                            buffer,
                             priority: priority
                         )
-//                    }
+                    }
                     for try await result in NeedleTailAsyncSequence(consumer: consumer) {
                         switch result {
                         case .success(let buffer):
@@ -212,13 +212,13 @@ extension NeedleTailServerMessageDelegate {
                 try await withThrowingTaskGroup(of: Void.self) { group in
                     let messageString = await NeedleTailIRCEncoder.encode(value: message)
                     //IRC only allows 512 characters per message so we need to create packets according to the spec size
-//                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
-//                    for await buffer in buffers.async {
+                    let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
+                    for await buffer in buffers.async {
                         await consumer.feedConsumer(
-                            ByteBuffer(string: messageString),
+                            buffer,
                             priority: priority
                         )
-//                    }
+                    }
                     for try await result in NeedleTailAsyncSequence(consumer: consumer) {
                         switch result {
                         case .success(let buffer):

@@ -9,6 +9,7 @@ import Foundation
 import NIOCore
 import Algorithms
 import BSON
+import DequeModule
 
 
 struct IRCPacket: Sendable, Codable, Hashable {
@@ -53,9 +54,6 @@ public struct PacketDerivation: Sendable {
     }
 }
 
-import DequeModule
-import NeedleTailAsyncSequence
-
 public actor PacketBuilder {
     
     var deque = Deque<IRCPacket>()
@@ -65,19 +63,12 @@ public actor PacketBuilder {
     
     public func processPacket(_ buffer: ByteBuffer) async throws -> String? {
         let packet = try BSONDecoder().decode(IRCPacket.self, from: Document(buffer: buffer))
-        print("PACCKET", packet)
         deque.append(packet)
-        
-        
-        guard let packets = findPackets(packet.id) else { return nil }
-        guard packets.count == packet.totalParts else { return nil }
-        
+        guard deque.count == packet.totalParts else { return nil }
+        let sorted = deque.sorted(by: { $0.partNumber < $1.partNumber })
         var ircString = ""
-        ircString.append(contentsOf: packets.compactMap({ $0.message }).joined())
-        print("BUILT_", ircString)
+        ircString.append(contentsOf: sorted.compactMap({ $0.message }).joined())
+        deque.removeAll()
         return nil
-    }
-    private func findPackets(_ id: String) -> [IRCPacket]? {
-        deque.filter({ $0.id == id }).sorted(by: { $0.partNumber < $1.partNumber })
     }
 }
