@@ -56,7 +56,7 @@ final class NeedleTailIRCTests: XCTestCase {
         
         for result in results {
             
-            if let ircMessageString = try await builder.processPacket(result) {
+            if let ircMessageString = await builder.processPacket(result) {
                 //Build IRCMessage from String
                 let message = try NeedleTailIRCParser.parseMessage(ircMessageString)
                 #expect(message.arguments?[1] != nil)

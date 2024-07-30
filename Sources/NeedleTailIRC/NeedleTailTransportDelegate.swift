@@ -45,6 +45,7 @@ extension NeedleTailWriterDelegate {
                 try await withThrowingDiscardingTaskGroup { group in
                     logger.log(level: .debug, message: "Feed message \(message.command.commandAsString)")
                     let messageString = await NeedleTailIRCEncoder.encode(value: message)
+                    
                     //IRC only allows 512 characters per message so we need to create packets according to the spec size
                     let buffers = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString)
                     for buffer in buffers {
