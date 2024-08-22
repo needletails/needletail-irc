@@ -1,5 +1,5 @@
 {
-  "originHash" : "5314d3b2ce28f1fbe1790f43a7d9b59dba67568cae7fb6dee6a2157c1ce214bc",
+  "originHash" : "0010db948ceeafeba21f44ddffd68b6290e01ce255630174eb8229bbf03e81bd",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/vapor/async-kit.git",
       "state" : {
-        "revision" : "15b3fb7b2437f9db11f6ddcf365c5b5db8c3a346",
-        "version" : "1.19.1"
+        "revision" : "e048c8ee94967e8d8a1c2ec0e1156d6f7fa34d31",
+        "version" : "1.20.0"
       }
     },
     {
@@ -42,7 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/needle-tail/CypherTextKit.git",
       "state" : {
-        "revision" : "3163190cae48bddc2e1b9f56da46d47eed37f402"
+        "branch" : "nt-dribble-main",
+        "revision" : "a9ed9b69036e4d3bbf7aa7c6fcafb96104afafd8"
       }
     },
     {
@@ -50,7 +51,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/needle-tail/Dribble.git",
       "state" : {
-        "revision" : "1cb4a94f4d52364e5ac8ba20de29b60738f1c4cc"
+        "revision" : "64ae6b791a49ae02a7df3c24b329ef86230e137e"
       }
     },
     {
@@ -85,8 +86,17 @@
       "kind" : "remoteSourceControl",
       "location" : "git@github.com:needle-tail/needletail-algorithms.git",
       "state" : {
-        "revision" : "09f09bc3868f392d0301ed47c1dc7fbb86036d21",
-        "version" : "1.0.6"
+        "revision" : "df534fabdc7495740fe125218662fc6bc9792d29",
+        "version" : "1.0.7"
+      }
+    },
+    {
+      "identity" : "needletail-helpers",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/needle-tail/needletail-helpers.git",
+      "state" : {
+        "revision" : "7a00b56814b8b9ad82e174e549a2f75fd7c7c1e8",
+        "version" : "1.0.1"
       }
     },
     {
@@ -96,6 +106,15 @@
       "state" : {
         "revision" : "92e8278ca16e96db2bcfd9cb1dc186980f2ea680",
         "version" : "1.0.3"
+      }
+    },
+    {
+      "identity" : "needletail-structures",
+      "kind" : "remoteSourceControl",
+      "location" : "git@github.com:needle-tail/needletail-structures.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "7212419bd98e91958edc22a55ab8f3ffb639a380"
       }
     },
     {
@@ -184,8 +203,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio.git",
       "state" : {
-        "revision" : "e4abde8be0e49dc7d66e6eed651254accdcd9533",
-        "version" : "2.69.0"
+        "revision" : "4c4453b489cf76e6b3b0f300aba663eb78182fad",
+        "version" : "2.70.0"
       }
     },
     {
@@ -211,8 +230,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio-ssl.git",
       "state" : {
-        "revision" : "2b09805797f21c380f7dc9bedaab3157c5508efb",
-        "version" : "2.27.0"
+        "revision" : "a9fa5efd86e7ce2e5c1b6de113262e58035ca251",
+        "version" : "2.27.1"
       }
     },
     {
@@ -238,8 +257,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-syntax.git",
       "state" : {
-        "revision" : "82a453c2dfa335c7e778695762438dfe72b328d2",
-        "version" : "600.0.0-prerelease-2024-07-24"
+        "revision" : "4c6cc0a3b9e8f14b3ae2307c5ccae4de6167ac2c",
+        "version" : "600.0.0-prerelease-2024-06-12"
       }
     },
     {

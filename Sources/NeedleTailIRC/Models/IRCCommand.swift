@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import struct Foundation.Data
+import NeedleTailStructures
 
 public enum IRCCommand: Codable, Sendable {
 

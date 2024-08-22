@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import CypherMessaging
+import NeedleTailStructures
 
 public enum IRCMessageRecipient: Codable, Hashable, Sendable {
   

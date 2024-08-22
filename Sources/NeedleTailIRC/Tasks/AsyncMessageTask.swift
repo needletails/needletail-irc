@@ -1,4 +1,5 @@
 import NeedleTailLogger
+import NeedleTailStructures
 
 public enum AsyncMessageTask: Sendable {
     public static func parseMessageTask(task: String) -> IRCMessage? {

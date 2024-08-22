@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import CypherProtocol
+import NeedleTailStructures
 
 public struct IRCUserID: Codable, Hashable, CustomStringConvertible, Sendable {
   

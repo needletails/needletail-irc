@@ -11,14 +11,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-
+import NeedleTailStructures
 
 public protocol IRCDispatcher: AnyObject, Sendable {
     
     // MARK: - Implementations
     func doPing(_ origin: String, origin2: String?) async throws
     func doPong(_ origin: String, origin2: String?) async throws
-    func doCAP(_ cmd: IRCCommand.CAPSubCommand, _ capIDs   : [String]) async throws
+    func doCAP(_ cmd: IRCCommand.CAPSubCommand, _ capIDs: [String]) async throws
     
     func doNick(_ sender: IRCUserID?, nick: NeedleTailNick, tags: [IRCTags]?) async throws
     func doUserInfo(_ info: IRCUserInfo, tags: [IRCTags]?) async throws

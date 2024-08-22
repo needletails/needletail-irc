@@ -10,28 +10,57 @@ import XCTest
 import Testing
 import BSON
 import CypherMessaging
+import NeedleTailAsyncSequence
 @testable import NeedleTailIRC
 
 final class PacketDerivationTests {
     
+    /// Tests about 325 MB Derivation at a bout 2 minutes.. Not bad for a large file
+    @Test func testsSendMultiPartMessagePackets() async throws {
+        let packetDerivation = PacketDerivation()
+        let mms = String(repeating: "M", count: 10777216)
+        var mmp: [String] = []
+        for _ in 0..<32 {
+            mmp.append(mms)
+        }
+        let clock = ContinuousClock()
+        let duration = try await clock.measure {
+        for m in mmp {
+            let stream = try await packetDerivation.calculateAndDispense(ircMessage: m, bufferingPolicy: .unbounded)
+            await packetDerivation.streamContinuation?.finish()
+            var newPartNumber = 0
+            for await packet in stream {
+                newPartNumber += 1
+                #expect(packet.partNumber == newPartNumber)
+                #expect(throws: Never.self, performing: {
+                    try BSONEncoder().encode(packet).makeByteBuffer()
+                })
+            }
+            }
+        }
+        #expect(duration.components.seconds <= 272)
+    }
     
     @Test func testCalculateAndDispenseWithShortMessage() async throws {
         let packetDerivation = PacketDerivation()
         let message = "Hello, World!"
         
-        let packets = try await packetDerivation.calculateAndDispense(ircMessage: message)
-        #expect(packets.count == 1)
-        // Further assertions can be made on the content of the packets
+        let stream = try await packetDerivation.calculateAndDispense(ircMessage: message, bufferingPolicy: .unbounded)
+        await packetDerivation.streamContinuation?.finish()
+        for await packet in stream {
+            #expect(packet.message == message)
+        }
     }
     
     @Test func testCalculateAndDispenseWithLongMessage() async throws {
         let packetDerivation = PacketDerivation()
         let longMessage = String(repeating: "A", count: 1024) // 1024 characters
         
-        let packets = try await packetDerivation.calculateAndDispense(ircMessage: longMessage)
-        
-        #expect(packets.count > 1)
-        // Further assertions can be made on the content of the packets
+        let stream = try await packetDerivation.calculateAndDispense(ircMessage: longMessage, bufferingPolicy: .unbounded)
+        await packetDerivation.streamContinuation?.finish()
+        for await packet in stream {
+            #expect(packet.message == longMessage)
+        }
     }
     
     @Test func testProcessPacketWithValidData() async {

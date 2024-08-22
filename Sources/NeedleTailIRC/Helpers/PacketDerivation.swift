@@ -10,50 +10,65 @@ import NIOCore
 import Algorithms
 import BSON
 import DequeModule
+import NeedleTailAsyncSequence
+import AsyncAlgorithms
 
 
-struct IRCPacket: Sendable, Codable, Hashable {
-    let id: String
-    let groupId: String
-    let date: Date
-    let partNumber: Int
-    let totalParts: Int
-    let message: String
+public struct IRCPacket: Sendable, Codable, Hashable {
+    public var id: String
+    public let groupId: String
+    public var date: Date
+    public var partNumber: Int
+    public let totalParts: Int
+    public var message: String
+    
+    public init(id: String = "", groupId: String, date: Date = Date(), partNumber: Int = 0, totalParts: Int, message: String = "") {
+        self.id = id
+        self.groupId = groupId
+        self.date = date
+        self.partNumber = partNumber
+        self.totalParts = totalParts
+        self.message = message
+    }
 }
 
-public struct PacketDerivation: Sendable {
+public actor PacketDerivation {
     
     public init() {}
+
+    private var partNumber = 0
+    public var streamContinuation: AsyncStream<IRCPacket>.Continuation?
     
-    public func calculateAndDispense(ircMessage: String) async throws -> [ByteBuffer] {
-        var packets = [ByteBuffer]()
-        let groupId = UUID().uuidString
-        let date = Date()
+    public func calculateAndDispense(ircMessage: String, bufferingPolicy: AsyncStream<IRCPacket>.Continuation.BufferingPolicy) async throws -> AsyncStream<IRCPacket> {
         
-        if ircMessage.count > 512 {
+        let stream = AsyncStream<IRCPacket>(bufferingPolicy: bufferingPolicy) { continuation in
+            streamContinuation = continuation
+            continuation.onTermination = { status in
+                print("Monitor Stream Terminated with status: \(status)")
+            }
+        }
+        
+        let groupId = UUID().uuidString
+        if #available(iOS 17, macOS 14, *) {
+            let chunkCount = (ircMessage.count / 512)
             let chunks = ircMessage.chunks(ofCount: 512)
-            for (chunkId, chunk) in chunks.enumerated() {
+            partNumber = 0
+            for chunk in chunks {
+                partNumber += 1
                 let packet = IRCPacket(
                     id: UUID().uuidString,
                     groupId: groupId,
-                    date: date,
-                    partNumber: chunkId + 1,
-                    totalParts: chunks.count,
-                    message: String(chunk))
-                packets.append(ByteBuffer(data: try BSONEncoder().encodeData(packet)))
+                    date: Date(),
+                    partNumber: self.partNumber,
+                    totalParts: chunkCount,
+                    message: String(chunk)
+                )
+                
+                streamContinuation?.yield(packet)
             }
-        } else {
-            let packet = IRCPacket(
-                id: UUID().uuidString,
-                groupId: groupId,
-                date: date,
-                partNumber: 1,
-                totalParts: 1,
-                message: ircMessage)
-            packets.append(ByteBuffer(data: try BSONEncoder().encodeData(packet)))
+            return stream
         }
-        
-        return packets
+        return stream
     }
 }
 

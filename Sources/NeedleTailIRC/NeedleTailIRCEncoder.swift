@@ -1,4 +1,7 @@
 import NIOCore
+import DequeModule
+import NeedleTailAsyncSequence
+import NeedleTailStructures
 
 public struct NeedleTailIRCEncoder: Sendable {
     
@@ -187,8 +190,8 @@ public struct NeedleTailIRCEncoder: Sendable {
         return newString
     }
     
-    public static func derivePacket(ircMessage: String) async throws -> [ByteBuffer] {
-        try await packetDerivation.calculateAndDispense(ircMessage: ircMessage)
+    public static func derivePacket(ircMessage: String, bufferingPolicy: AsyncStream<IRCPacket>.Continuation.BufferingPolicy) async throws ->  AsyncStream<IRCPacket> {
+        try await packetDerivation.calculateAndDispense(ircMessage: ircMessage, bufferingPolicy: bufferingPolicy)
     }
     
     internal static func arguments(_ args: [String] = [""]) -> String {

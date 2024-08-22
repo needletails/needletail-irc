@@ -22,8 +22,9 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-ssl.git", .upToNextMajor(from: "2.25.0")),
         .package(url: "git@github.com:apple/swift-algorithms.git", .upToNextMajor(from: "1.2.0")),
         .package(url: "git@github.com:needle-tail/needletail-logger.git", .upToNextMajor(from: "1.0.3")),
-        .package(url: "git@github.com:needle-tail/needletail-algorithms.git", .upToNextMajor(from: "1.0.6")),
-        .package(url: "https://github.com/needle-tail/CypherTextKit.git", revision: "3163190cae48bddc2e1b9f56da46d47eed37f402"),
+        .package(url: "git@github.com:needle-tail/needletail-algorithms.git", .upToNextMajor(from: "1.0.7")),
+        .package(url: "git@github.com:needle-tail/needletail-structures.git", branch: "main"),
+        .package(url: "https://github.com/needle-tail/CypherTextKit.git", branch: "nt-dribble-main"),
         .package(url: "https://github.com/vapor/jwt.git", .upToNextMajor(from: "4.0.0")),
         .package(url: "git@github.com:apple/swift-testing.git", .upToNextMajor(from: "0.10.0"))
     ],
@@ -43,6 +44,7 @@ let package = Package(
                 .product(name: "Algorithms", package: "swift-algorithms"),
                 .product(name: "NeedleTailLogger", package: "needletail-logger"),
                 .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
+                .product(name: "NeedleTailStructures", package: "needletail-structures"),
                 .product(name: "CypherMessaging", package: "CypherTextKit"),
                 .product(name: "JWT", package: "jwt")
             ]),
@@ -50,8 +52,9 @@ let package = Package(
             name: "NeedleTailIRCTests",
             dependencies: [
                 "NeedleTailIRC",
-                    .product(name: "Testing", package: "swift-testing"),
-                    .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms")
+                .product(name: "Testing", package: "swift-testing"),
+                .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
+                .product(name: "CypherMessaging", package: "CypherTextKit"),
             ]),
     ]
 )

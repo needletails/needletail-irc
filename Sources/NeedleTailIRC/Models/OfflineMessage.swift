@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import NeedleTailStructures
 
 public struct OfflineMessage: Codable, Sendable {
     public let id: String

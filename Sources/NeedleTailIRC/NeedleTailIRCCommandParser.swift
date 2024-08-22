@@ -1,5 +1,6 @@
 import Logging
 import NeedleTailLogger
+import NeedleTailStructures
 import CypherProtocol
 
 
