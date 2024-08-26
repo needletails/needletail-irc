@@ -5,8 +5,6 @@
 //  Created by Cole M on 7/30/24.
 //
 
-
-import XCTest
 import Testing
 import BSON
 import CypherMessaging
@@ -65,7 +63,6 @@ final class PacketDerivationTests {
     
     @Test func testProcessPacketWithValidData() async {
         let packet = IRCPacket(
-            id: UUID().uuidString,
             groupId: "testGroup",
             date: Date(),
             partNumber: 1,
@@ -87,8 +84,8 @@ final class PacketDerivationTests {
     }
     
     @Test func testFindCompletePacket() async {
-        let packet1 = IRCPacket(id: UUID().uuidString, groupId: "group1", date: Date(), partNumber: 1, totalParts: 2, message: "Part 1")
-        let packet2 = IRCPacket(id: UUID().uuidString, groupId: "group1", date: Date(), partNumber: 2, totalParts: 2, message: "Part 2")
+        let packet1 = IRCPacket(groupId: "group1", date: Date(), partNumber: 1, totalParts: 2, message: "Part 1")
+        let packet2 = IRCPacket(groupId: "group1", date: Date(), partNumber: 2, totalParts: 2, message: "Part 2")
         let packetBuilder = PacketBuilder()
         
         await packetBuilder.findAndCreate(packet: packet1)
@@ -99,7 +96,7 @@ final class PacketDerivationTests {
     }
     
     @Test func testFindAndCreateNewGroup() async {
-        let packet = IRCPacket(id: UUID().uuidString, groupId: "newGroup", date: Date(), partNumber: 1, totalParts: 1, message: "New group message")
+        let packet = IRCPacket(groupId: "newGroup", date: Date(), partNumber: 1, totalParts: 1, message: "New group message")
         let packetBuilder = PacketBuilder()
         await packetBuilder.findAndCreate(packet: packet)
         await #expect(packetBuilder.deque.count == 1)
@@ -107,8 +104,8 @@ final class PacketDerivationTests {
     }
     
     @Test func testFindAndCreateExistingGroup() async {
-        let packet1 = IRCPacket(id: UUID().uuidString, groupId: "existingGroup", date: Date(), partNumber: 1, totalParts: 1, message: "First message")
-        let packet2 = IRCPacket(id: UUID().uuidString, groupId: "existingGroup", date: Date(), partNumber: 2, totalParts: 2, message: "Second message")
+        let packet1 = IRCPacket(groupId: "existingGroup", date: Date(), partNumber: 1, totalParts: 1, message: "First message")
+        let packet2 = IRCPacket(groupId: "existingGroup", date: Date(), partNumber: 2, totalParts: 2, message: "Second message")
         let packetBuilder = PacketBuilder()
         await packetBuilder.findAndCreate(packet: packet1)
         await packetBuilder.findAndCreate(packet: packet2)
@@ -120,12 +117,12 @@ final class PacketDerivationTests {
     
     @Test func testFindAndCreateTwoDifferentGroups() async {
         let dateOne = Date()
-        let packet1 = IRCPacket(id: UUID().uuidString, groupId: "existingGroup", date: dateOne, partNumber: 1, totalParts: 2, message: "First message")
-        let packet2 = IRCPacket(id: UUID().uuidString, groupId: "existingGroup", date: dateOne, partNumber: 2, totalParts: 2, message: "Second message")
+        let packet1 = IRCPacket(groupId: "existingGroup", date: dateOne, partNumber: 1, totalParts: 2, message: "First message")
+        let packet2 = IRCPacket(groupId: "existingGroup", date: dateOne, partNumber: 2, totalParts: 2, message: "Second message")
         
         let dateTwo = Date()
-        let _packet1 = IRCPacket(id: UUID().uuidString, groupId: "existingGroup2", date: dateTwo, partNumber: 1, totalParts: 2, message: "_First message")
-        let _packet2 = IRCPacket(id: UUID().uuidString, groupId: "existingGroup2", date: dateTwo, partNumber: 2, totalParts: 2, message: "_Second message")
+        let _packet1 = IRCPacket(groupId: "existingGroup2", date: dateTwo, partNumber: 1, totalParts: 2, message: "_First message")
+        let _packet2 = IRCPacket(groupId: "existingGroup2", date: dateTwo, partNumber: 2, totalParts: 2, message: "_Second message")
         
         
         let packetBuilder = PacketBuilder()

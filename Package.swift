@@ -55,6 +55,8 @@ let package = Package(
                 .product(name: "Testing", package: "swift-testing"),
                 .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
                 .product(name: "CypherMessaging", package: "CypherTextKit"),
-            ]),
+            ],
+            resources: [.process("Resources")]
+        )
     ]
 )

@@ -9,9 +9,8 @@ final class NeedleTailIRCTests: XCTestCase {
     
     @Test func parseMessages() async {
         for message in await createIRCMessages() {
-            let messageToParse = await NeedleTailIRCEncoder.encode(value: message)
-            print(messageToParse)
-            #expect(throws: Never.self, performing: {
+            await #expect(throws: Never.self, performing: {
+                let messageToParse = await NeedleTailIRCEncoder.encode(value: message)
                 let m = try NeedleTailIRCParser.parseMessage(messageToParse)
                 print(m)
             })

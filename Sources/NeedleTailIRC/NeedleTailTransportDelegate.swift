@@ -45,52 +45,47 @@ extension NeedleTailWriterDelegate {
         do {
             if #available(iOS 17.0, macOS 14, *) {
                 try await withThrowingDiscardingTaskGroup { group in
-                    logger.log(level: .debug, message: "Feed message \(message.command.commandAsString)")
-                    let messageString = await NeedleTailIRCEncoder.encode(value: message)
-                    
-                    //IRC only allows 512 characters per message so we need to create packets according to the spec size
-                    let packets = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString, bufferingPolicy: .unbounded)
-//                    for try await result in packets {
-//                        switch result {
-//                        case .success(let packet):
-//                            group.addTask {
-//                                do {
-//                                    let buffer = try BSONEncoder().encode(packet).makeByteBuffer()
-//                                    try await writer.write(buffer)
-//                                    logger.log(level: .debug, message: "AsyncWriter Wrote Buffer \(buffer.readableBytes)")
-//                                } catch {
-//                                    logger.log(level: .error, message: "\(error)")
-//                                    return
-//                                }
-//                            }
-//                        case .consumed:
-//                            return
-//                        }
-//                    }
+                    group.addTask {
+                        let messageString = await NeedleTailIRCEncoder.encode(value: message)
+                        
+                        //IRC only allows 512 characters per message so we need to create packets according to the spec size
+                        let packets = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString, bufferingPolicy: .unbounded)
+                        try await withThrowingDiscardingTaskGroup { group in
+                            for await packet in packets {
+                                group.addTask {
+                                    do {
+                                        let buffer = try BSONEncoder().encode(packet).makeByteBuffer()
+                                        try await writer.write(buffer)
+                                    } catch {
+                                        logger.log(level: .error, message: "\(error)")
+                                        return
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
                 try await withThrowingTaskGroup(of: Void.self) { group in
-                    let messageString = await NeedleTailIRCEncoder.encode(value: message)
-                    //IRC only allows 512 characters per message so we need to create packets according to the spec size
-                    
-                    let packets = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString, bufferingPolicy: .unbounded)
-//                    for try await result in packets {
-//                        switch result {
-//                        case .success(let packet):
-//                            group.addTask {
-//                                do {
-//                                    let buffer = try BSONEncoder().encode(packet).makeByteBuffer()
-//                                    try await writer.write(buffer)
-//                                    logger.log(level: .debug, message: "AsyncWriter Wrote Buffer \(buffer.readableBytes)")
-//                                } catch {
-//                                    logger.log(level: .error, message: "\(error)")
-//                                    return
-//                                }
-//                            }
-//                        case .consumed:
-//                            return
-//                        }
-//                    }
+                    group.addTask {
+                        let messageString = await NeedleTailIRCEncoder.encode(value: message)
+                        
+                        //IRC only allows 512 characters per message so we need to create packets according to the spec size
+                        let packets = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString, bufferingPolicy: .unbounded)
+                        try await withThrowingTaskGroup(of: Void.self) { group in
+                            for await packet in packets {
+                                group.addTask {
+                                    do {
+                                        let buffer = try BSONEncoder().encode(packet).makeByteBuffer()
+                                        try await writer.write(buffer)
+                                    } catch {
+                                        logger.log(level: .error, message: "\(error)")
+                                        return
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         } catch {
@@ -176,51 +171,47 @@ extension NeedleTailServerMessageDelegate {
         do {
             if #available(iOS 17.0, macOS 14, *) {
                 try await withThrowingDiscardingTaskGroup { group in
-                    let messageString = await NeedleTailIRCEncoder.encode(value: message)
-                    
-                    //IRC only allows 512 characters per message so we need to create packets according to the spec size
-                    let packets = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString, bufferingPolicy: .unbounded)
-//                    for try await result in packets {
-//                        switch result {
-//                        case .success(let packet):
-//                            group.addTask {
-//                                do {
-//                                    let buffer = try BSONEncoder().encode(packet).makeByteBuffer()
-//                                    try await writer.write(buffer)
-//                                    logger.log(level: .debug, message: "AsyncWriter Wrote Buffer \(buffer.readableBytes)")
-//                                } catch {
-//                                    logger.log(level: .error, message: "\(error)")
-//                                    return
-//                                }
-//                            }
-//                        case .consumed:
-//                            return
-//                        }
-//                    }
+                    group.addTask {
+                        let messageString = await NeedleTailIRCEncoder.encode(value: message)
+                        
+                        //IRC only allows 512 characters per message so we need to create packets according to the spec size
+                        let packets = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString, bufferingPolicy: .unbounded)
+                        try await withThrowingDiscardingTaskGroup { group in
+                            for await packet in packets {
+                                group.addTask {
+                                    do {
+                                        let buffer = try BSONEncoder().encode(packet).makeByteBuffer()
+                                        try await writer.write(buffer)
+                                    } catch {
+                                        logger.log(level: .error, message: "\(error)")
+                                        return
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
                 try await withThrowingTaskGroup(of: Void.self) { group in
-                    let messageString = await NeedleTailIRCEncoder.encode(value: message)
-                    
-                    //IRC only allows 512 characters per message so we need to create packets according to the spec size
-                    let packets = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString, bufferingPolicy: .unbounded)
-//                    for try await result in packets {
-//                        switch result {
-//                        case .success(let packet):
-//                            group.addTask {
-//                                do {
-//                                    let buffer = try BSONEncoder().encode(packet).makeByteBuffer()
-//                                    try await writer.write(buffer)
-//                                    logger.log(level: .debug, message: "AsyncWriter Wrote Buffer \(buffer.readableBytes)")
-//                                } catch {
-//                                    logger.log(level: .error, message: "\(error)")
-//                                    return
-//                                }
-//                            }
-//                        case .consumed:
-//                            return
-//                        }
-//                    }
+                    group.addTask {
+                        let messageString = await NeedleTailIRCEncoder.encode(value: message)
+                        
+                        //IRC only allows 512 characters per message so we need to create packets according to the spec size
+                        let packets = try await NeedleTailIRCEncoder.derivePacket(ircMessage: messageString, bufferingPolicy: .unbounded)
+                        try await withThrowingTaskGroup(of: Void.self) { group in
+                            for await packet in packets {
+                                group.addTask {
+                                    do {
+                                        let buffer = try BSONEncoder().encode(packet).makeByteBuffer()
+                                        try await writer.write(buffer)
+                                    } catch {
+                                        logger.log(level: .error, message: "\(error)")
+                                        return
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         } catch {
