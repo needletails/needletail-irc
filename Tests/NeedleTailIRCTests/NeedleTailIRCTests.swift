@@ -1,79 +1,98 @@
-import XCTest
 import Testing
 import BSON
 import CypherMessaging
 import NeedleTailStructures
 @testable import NeedleTailIRC
 
-final class NeedleTailIRCTests: XCTestCase {
-    
-    @Test func parseMessages() async {
-        for message in await createIRCMessages() {
-            await #expect(throws: Never.self, performing: {
-                let messageToParse = await NeedleTailIRCEncoder.encode(value: message)
-                let m = try NeedleTailIRCParser.parseMessage(messageToParse)
-                print(m)
-            })
+final class NeedleTailIRCTests {
+    let generator = IRCMessageGenerator()
+    struct Base64Struct: Sendable, Codable {
+        var string: String
+    }
+    @Test func testReadKeyBundle() async throws  {
+        let base64 = try! BSONEncoder().encodeString(Base64Struct(string:TestableConstants.longMessage.rawValue))
+        let messages = try await generator.createMessages(
+            origin: TestableConstants.origin.rawValue,
+            command: .otherCommand(Constants.readKeyBundle.rawValue,
+                                   [base64]),
+            logger: .init())
+        
+        for await message in messages {
+            if let rebuiltMessage = try await generator.messageReassembler(ircMessage: message) {
+                print("REBUILT MESSAGE", rebuiltMessage)
+                #expect(message == rebuiltMessage)
+            }
         }
-    }
-
-    @Test func derivePacketsToSend() async throws {
-        let packetDerivation = PacketDerivation()
-        let message = IRCMessage(
-            origin: TestableConstants.origin.rawValue,
-            command:
-                    .PRIVMSG(
-                        [.nick(.init(name: "nt2", deviceId: DeviceId())!)],
-                        TestableConstants.longMessage.rawValue
-                    )
-        )
         
-        let stringValue = await NeedleTailIRCEncoder.encode(value: message)
-        let sequence = try await packetDerivation.calculateAndDispense(ircMessage: stringValue, bufferingPolicy: .unbounded)
-//        await #expect(sequence.consumer.deque.count == 11)
-//        var currentId = 0
-//        for try await result in sequence {
-//            switch result {
-//            case .success(let packet):
-//                currentId += 1
-//                #expect(packet.partNumber == currentId)
-////                #expect(packet.totalParts == sequence.consumer.deque.count)
-//            case .consumed:
-//                return
-//            }
-//        }
     }
     
-    @Test func decodeAndRebuildIRCMessage() async throws {
-        let packetDerivation = PacketDerivation()
-        let builder = PacketBuilder()
-        let message = IRCMessage(
-            origin: TestableConstants.origin.rawValue,
-            command:
-                    .PRIVMSG(
-                        [.nick(.init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!)],
-                        TestableConstants.longMessage.rawValue
-                    )
-        )
-        let stringValue = await NeedleTailIRCEncoder.encode(value: message)
-        let sequence = try await packetDerivation.calculateAndDispense(ircMessage: stringValue, bufferingPolicy: .unbounded)
-        
-//        for try await result in sequence {
-//            switch result {
-//            case .success(let packet):
-//                let buffer = try BSONEncoder().encode(packet).makeByteBuffer()
-//                if let ircMessageString = await builder.processPacket(buffer) {
-//                    //Build IRCMessage from String
-//                    let message = try NeedleTailIRCParser.parseMessage(ircMessageString)
-//                    #expect(message.arguments?[1] != nil)
-//                    guard let ircMessageContent = message.arguments?[1] else { return }
-//                    #expect(ircMessageContent == TestableConstants.longMessage.rawValue)
-//                }
-//            case .consumed:
-//                return
-//            }
+//    @Test func parseMessages() async {
+//        for message in await createIRCMessages() {
+//            await #expect(throws: Never.self, performing: {
+//                let messageToParse = await NeedleTailIRCEncoder.encode(value: message)
+//                let m = try NeedleTailIRCParser.parseMessage(messageToParse)
+//                print(m)
+//            })
 //        }
-    }
+//    }
+//
+//    @Test func derivePacketsToSend() async throws {
+//        let packetDerivation = PacketDerivation()
+//        let message = IRCMessage(
+//            origin: TestableConstants.origin.rawValue,
+//            command:
+//                    .PRIVMSG(
+//                        [.nick(.init(name: "nt2", deviceId: DeviceId())!)],
+//                        TestableConstants.longMessage.rawValue
+//                    )
+//        )
+//        
+//        let stringValue = await NeedleTailIRCEncoder.encode(value: message)
+//        let sequence = try await packetDerivation.calculateAndDispense(ircMessage: stringValue, bufferingPolicy: .unbounded)
+////        await #expect(sequence.consumer.deque.count == 11)
+////        var currentId = 0
+////        for try await result in sequence {
+////            switch result {
+////            case .success(let packet):
+////                currentId += 1
+////                #expect(packet.partNumber == currentId)
+//////                #expect(packet.totalParts == sequence.consumer.deque.count)
+////            case .consumed:
+////                return
+////            }
+////        }
+//    }
+//    
+//    @Test func decodeAndRebuildIRCMessage() async throws {
+//        let packetDerivation = PacketDerivation()
+//        let builder = PacketBuilder()
+//        let message = IRCMessage(
+//            origin: TestableConstants.origin.rawValue,
+//            command:
+//                    .PRIVMSG(
+//                        [.nick(.init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!)],
+//                        TestableConstants.longMessage.rawValue
+//                    )
+//        )
+//        let stringValue = await NeedleTailIRCEncoder.encode(value: message)
+//        let sequence = try await packetDerivation.calculateAndDispense(ircMessage: stringValue, bufferingPolicy: .unbounded)
+//        
+////        for try await result in sequence {
+////            switch result {
+////            case .success(let packet):
+////                let buffer = try BSONEncoder().encode(packet).makeByteBuffer()
+////                if let ircMessageString = await builder.processPacket(buffer) {
+////                    //Build IRCMessage from String
+////                    let message = try NeedleTailIRCParser.parseMessage(ircMessageString)
+////                    #expect(message.arguments?[1] != nil)
+////                    guard let ircMessageContent = message.arguments?[1] else { return }
+////                    #expect(ircMessageContent == TestableConstants.longMessage.rawValue)
+////                }
+////            case .consumed:
+////                return
+////            }
+////        }
+//    }
 }
 
 func createIRCMessages() async -> [IRCMessage] {

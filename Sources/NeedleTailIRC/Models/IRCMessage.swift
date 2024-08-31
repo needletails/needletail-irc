@@ -66,9 +66,7 @@ public struct IRCMessage: Codable, Sendable {
         self.arguments = arguments
         self.tags = tags
     }
-    
-    
-    
+
     public enum CodingKeys: String, Sendable, CodingKey {
         case origin, target, arguments, command, tags
     }

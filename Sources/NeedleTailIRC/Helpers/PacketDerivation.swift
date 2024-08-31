@@ -12,9 +12,11 @@ import BSON
 import DequeModule
 import NeedleTailAsyncSequence
 import AsyncAlgorithms
+import NeedleTailLogger
+import NeedleTailStructures
 
 
-public struct IRCPacket: Sendable, Codable, Hashable {
+public struct MultipartPacket: Sendable, Codable, Hashable {
     public let groupId: String
     public var date: Date
     public var partNumber: Int
@@ -40,14 +42,14 @@ public actor PacketDerivation {
     
     public init() {}
     
-    public var streamContinuation: AsyncStream<IRCPacket>.Continuation?
+    public var streamContinuation: AsyncStream<MultipartPacket>.Continuation?
     
     public func calculateAndDispense(
         ircMessage: String,
-        bufferingPolicy: AsyncStream<IRCPacket>.Continuation.BufferingPolicy
-    ) async throws -> AsyncStream<IRCPacket> {
+        bufferingPolicy: AsyncStream<MultipartPacket>.Continuation.BufferingPolicy = .unbounded
+    ) async -> AsyncStream<MultipartPacket> {
         
-        let stream = AsyncStream<IRCPacket>(bufferingPolicy: bufferingPolicy) { continuation in
+        let stream = AsyncStream<MultipartPacket>(bufferingPolicy: bufferingPolicy) { continuation in
             streamContinuation = continuation
         }
         
@@ -57,11 +59,11 @@ public actor PacketDerivation {
         let packetDate = Date() // Create the date once
         
         // Pre-allocate an array for packets
-        var packets = [IRCPacket]()
+        var packets = [MultipartPacket]()
         packets.reserveCapacity(totalParts) // Reserve capacity to avoid reallocations
         
         for (index, chunk) in chunks.enumerated() {
-            let packet = IRCPacket(
+            let packet = MultipartPacket(
                 groupId: groupId,
                 date: packetDate,
                 partNumber: index + 1, // Use index for part number
@@ -70,10 +72,9 @@ public actor PacketDerivation {
             )
             packets.append(packet)
         }
-        
         // Yield all packets at once
-        for packet in packets {
-            await streamContinuation?.yield(packet)
+        for packet in packets.sorted(by: { $0.partNumber < $1.partNumber }) {
+            streamContinuation?.yield(packet)
         }
         
         // Finish the stream if all packets have been yielded
@@ -88,54 +89,213 @@ public actor PacketDerivation {
 
 public actor PacketBuilder {
     
-    var groupIdToPacketsMap = [String: Deque<IRCPacket>]()
+    private var packets = [[MultipartPacket]]()
     
     public init() {}
     
-    public func processPacket(_ buffer: ByteBuffer) async -> String? {
-        do {
-            let packet = try BSONDecoder().decode(IRCPacket.self, from: Document(buffer: buffer))
-            findAndCreate(packet: packet)
-            return findCompletePacket()
-        } catch {
-            groupIdToPacketsMap.removeAll()
-            return nil
+    public func processPacket(_ packet: MultipartPacket) -> String? {
+        
+        // Find the index of the group that contains the packet
+        if let groupIndex = packets.firstIndex(where: { $0.first?.groupId == packet.groupId }) {
+            // Append the packet to the existing group
+            packets[groupIndex].append(packet)
+            return finishProcess(groupIndex: groupIndex)
+        } else {
+            // Create a new group with the packet
+            packets.append([packet])
+            return finishProcess(groupIndex: packets.count - 1)
         }
     }
     
-    func findCompletePacket() -> String? {
-        var completePacket = [IRCPacket]()
-        var oldestDate: Date? = nil
+    private func finishProcess(groupIndex: Int) -> String? {
+        let groupPackets = packets[groupIndex]
         
-        for (groupId, packets) in groupIdToPacketsMap {
-            guard let firstPacket = packets.first, packets.count == firstPacket.totalParts else { continue }
-            if completePacket.isEmpty || firstPacket.date < oldestDate! {
-                completePacket.append(contentsOf: packets)
-                oldestDate = firstPacket.date
+        // Check if we have all parts
+        if groupPackets.count == groupPackets.first?.totalParts {
+            let sortedParts = groupPackets.sorted { $0.partNumber < $1.partNumber }
+            packets.remove(at: groupIndex) // Remove the completed group
+            return sortedParts.compactMap { $0.message }.joined()
+        }
+        
+        return nil
+    }
+}
+
+
+public actor IRCMessageGenerator: Sendable {
+    
+    private let packetBuilder = PacketBuilder()
+    
+    public init() {}
+    
+    public func createMessages(
+        origin: String,
+        command: IRCCommand,
+        tags: [IRCTags]? = nil,
+        logger: NeedleTailLogger
+    ) async throws -> AsyncStream<IRCMessage> {
+        
+        var streamContinuation: AsyncStream<IRCMessage>.Continuation?
+        let stream = AsyncStream<IRCMessage>(bufferingPolicy: .unbounded) { continuation in
+            streamContinuation = continuation
+        }
+        
+        let packetDeriver = PacketDerivation()
+        
+        // Helper function to create an IRCMessage
+        func createIRCMessage(for
+                              command: IRCCommand,
+                              currentPacket: MultipartPacket
+        ) async {
+            var mutableTags = tags ?? []
+            var modifiedCommand = command
+            
+            switch command {
+            case .PRIVMSG(let recipients, _), .NOTICE(let recipients, _):
+                modifiedCommand = .PRIVMSG(recipients, currentPacket.message)
+            case .QUIT(_):
+                modifiedCommand = .QUIT(currentPacket.message)
+            case .otherCommand(let otherCommand, _):
+                modifiedCommand = .otherCommand(otherCommand, [currentPacket.message])
+            case .otherNumeric(let otherNumeric, _):
+                modifiedCommand = .otherNumeric(otherNumeric, [currentPacket.message])
+            default:
+                break
+            }
+            
+            var modifiedPacket = currentPacket
+            modifiedPacket.message = ""
+            
+            do {
+                let packetMetadata = try BSONEncoder().encodeString(currentPacket)
+                mutableTags.append(IRCTags(key: "packetMetadata", value: packetMetadata))
+            } catch {
+                logger.log(level: .error, message: "Failed to encode IRCTag for packet metadata: \(error)")
+            }
+            
+            let message = IRCMessage(
+                origin: origin,
+                command: modifiedCommand,
+                tags: mutableTags)
+            streamContinuation?.yield(message)
+            
+            if modifiedPacket.partNumber == modifiedPacket.totalParts {
+                streamContinuation?.finish()
             }
         }
         
-        // Create the IRC string if a complete packet was found
-        let ircString = completePacket.sorted(by: { $0.partNumber < $1.partNumber })
-                .compactMap { $0.message }
-                .joined()
-        if let groupId = completePacket.first?.groupId {
-            groupIdToPacketsMap.removeValue(forKey: groupId)
+        // Helper function to handle empty messages
+        func handleEmptyMessage(for command: IRCCommand) async {
+            await createIRCMessage(for: command, currentPacket: createEmptyPacket())
         }
         
-        return ircString
+        // Helper function to process packets and create IRC messages
+        func processPackets(
+            packets: AsyncStream<MultipartPacket>,
+            command: IRCCommand
+        ) async {
+            for await currentPacket in packets {
+                await createIRCMessage(for: command, currentPacket: currentPacket)
+            }
+        }
+        
+        // Function to handle message processing
+        func handleMessage(for command: IRCCommand, message: String) async  {
+            if message.isEmpty {
+                await handleEmptyMessage(for: command)
+            } else {
+                let packets = try await packetDeriver.calculateAndDispense(ircMessage: message)
+                await processPackets(packets: packets, command: command)
+            }
+        }
+        
+        switch command {
+        case .PRIVMSG(_, let message), .NOTICE(_, let message):
+            await handleMessage(for: command, message: message)
+            
+        case .QUIT(let message):
+            if let message = message {
+                await handleMessage(for: command, message: message)
+            } else {
+                await handleEmptyMessage(for: command)
+            }
+            
+        case .otherCommand(let otherCommand, let messageArray):
+            let message = messageArray.joined(separator: Constants.comma.rawValue)
+            await handleMessage(for: .otherCommand(otherCommand, [message]), message: message)
+            
+        case .otherNumeric(let otherNumeric, let messageArray):
+            let message = messageArray.joined(separator: Constants.comma.rawValue)
+            await handleMessage(for: .otherNumeric(otherNumeric, [message]), message: message)
+            
+        default:
+            await handleEmptyMessage(for: command)
+        }
+        //        print("SENDING MESSAGES FOR MESSAGE \(command.commandAsString)'n MESSAGE COUNT: ", ircMessages.count)
+        return stream
+    }
+
+    private func createEmptyPacket() -> MultipartPacket {
+        return MultipartPacket(
+            groupId: UUID().uuidString,
+            date: Date(),
+            partNumber: 1,
+            totalParts: 1,
+            message: ""
+        )
     }
     
-    func findAndCreate(packet: IRCPacket) {
-        // Check if there are already packets for the given groupId
-        if var packets = groupIdToPacketsMap[packet.groupId] {
-            // Append the new packet to the existing array
-            packets.append(packet)
-            // Update the dictionary with the modified array
-            groupIdToPacketsMap[packet.groupId] = packets
-        } else {
-            // If no packets exist for the groupId, create a new array and add the packet
-            groupIdToPacketsMap[packet.groupId] = [packet]
+    public func messageReassembler(ircMessage: IRCMessage) async throws -> IRCMessage? {
+        
+        var packet: MultipartPacket?
+        var ircMessage = ircMessage
+        
+        for tag in ircMessage.tags ?? [] {
+            if tag.key == "packetMetadata" {
+                packet = try BSONDecoder().decodeString(MultipartPacket.self, from: tag.value)
+            }
         }
+        
+        switch ircMessage.command {
+        case .PRIVMSG(let recipients, let message):
+            packet?.message = message
+            guard let packet = packet else { return nil }
+            guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
+            guard !processedMessage.isEmpty else { return nil }
+            ircMessage.command = .PRIVMSG(recipients, processedMessage)
+        case .NOTICE(let recipients, let message):
+            packet?.message = message
+            guard let packet = packet else { return nil }
+            guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
+            guard !processedMessage.isEmpty else { return nil }
+            ircMessage.command = .NOTICE(recipients, processedMessage)
+        case .QUIT(let message):
+            if let message = message {
+                packet?.message = message
+            }
+            guard let packet = packet else { return nil }
+            guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
+            guard !processedMessage.isEmpty else { return nil }
+            ircMessage.command = .QUIT(processedMessage)
+        case .otherCommand(let command, let messageArray):
+            guard let message = messageArray.first else { return nil }
+            packet?.message = message
+            guard let packet = packet else { return nil }
+            guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
+            guard !processedMessage.isEmpty else { return nil }
+            let rebuiltArray = processedMessage.components(separatedBy: Constants.comma.rawValue)
+            ircMessage.command = .otherCommand(command, rebuiltArray)
+        case .otherNumeric(let command, let messageArray):
+            guard let message = messageArray.first else { return nil }
+            packet?.message = message
+            guard let packet = packet else { return nil }
+            guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
+            guard !processedMessage.isEmpty else { return nil }
+            let rebuiltArray = processedMessage.components(separatedBy: Constants.comma.rawValue)
+            ircMessage.command = .otherNumeric(command, rebuiltArray)
+        default:
+            return ircMessage
+        }
+        return ircMessage
     }
 }
