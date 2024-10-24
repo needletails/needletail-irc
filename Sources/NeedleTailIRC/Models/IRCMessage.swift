@@ -1,64 +1,55 @@
-//===----------------------------------------------------------------------===//
 //
-// This source file is part of the swift-nio-irc open source project
+//  IRCPayloadRecipient.swift
 //
-// Copyright (c) 2018-2021 ZeeZide GmbH. and the swift-nio-irc project authors
-// Licensed under Apache License v2.0
 //
-// See LICENSE.txt for license information
-// See CONTRIBUTORS.txt for the list of SwiftNIOIRC project authors
+//  Created by Cole M on 9/28/22.
 //
-// SPDX-License-Identifier: Apache-2.0
-//
-//===----------------------------------------------------------------------===//
 
 import Foundation
 
-/**
- * An IRC message
- *
- * An optional origin, an optional target and the actual command (including its
- * arguments).
- *
- * True origin of message. Do not set in clients.
- *
- * Examples:
- * - `:helge55!~textual@213.211.198.125`
- * - `:helge99`
- * - `:cherryh.freenode.net`
- *
- * This is a server name or a nickname w/ user@host parts.
- */
+/// `<IRCProtocolMessage: @example=test from=user1 to=#general command=PRIVMSG>`
+/// `:alice!alice@localhost PRIVMSG #general :Hello, everyone! @exampleTag=value`
+/// `:prefix COMMAND [params...] [tags]`
+/// Represents a message in the IRC protocol, containing details such as origin, target, command, arguments, and optional tags.
 public struct IRCMessage: Codable, Sendable {
-
-    public var id = UUID()
+    
+    /// Unique identifier for the message.
+    public var id: UUID = UUID()
+    
+    /// The origin of the message, typically the sender's nickname.
     public var origin: String?
+    
+    /// The target of the message, which can be a channel or a user.
     public var target: String?
-    ///The IRC command and its arguments (max 15).
+    
+    /// The IRC messageType associated with the message.
     public var command: IRCCommand
+    
+    /// Arguments for the command, with a maximum of 15 allowed.
     public var arguments: [String]?
-    public var tags: [IRCTags]?
-    public var description: String? {
-        var ms = "<IRCMsg:"
+    
+    /// Optional tags associated with the message.
+    public var tags: [IRCTag]?
+
+    /// A string representation of the message for logging and debugging.
+    public var description: String {
+        var output = "<IRCProtocolMessage:"
         if let tags = tags {
-            for tag in tags {
-                ms += "@\(tag.key)=\(tag.value);"
-            }
+            output += tags.map { "@\($0.key)=\($0.value)" }.joined(separator: "; ")
         }
-        if let origin = origin { ms += " from=\(origin)" }
-        if let target = target { ms += " to=\(target)" }
-        ms += " "
-        ms += command.description
-        ms += ">"
-        return ms
+        if let origin = origin { output += " from=\(origin)" }
+        if let target = target { output += " to=\(target)" }
+        output += " command=\(command.description)>"
+        return output
     }
     
+    /// Initializes an IRC protocol message with optional parameters.
     public init(
         origin: String? = nil,
         target: String? = nil,
         command: IRCCommand,
         arguments: [String]? = nil,
-        tags: [IRCTags]? = nil
+        tags: [IRCTag]? = nil
     ) {
         self.origin = origin
         self.target = target
@@ -67,34 +58,35 @@ public struct IRCMessage: Codable, Sendable {
         self.tags = tags
     }
 
-    public enum CodingKeys: String, Sendable, CodingKey {
-        case origin, target, arguments, command, tags
+    // MARK: - Coding Keys
+    enum CodingKeys: String, CodingKey {
+        case origin = "a"
+        case target = "b"
+        case arguments = "c"
+        case command = "d"
+        case tags = "e"
     }
 
-    // MARK: - Codable
+    // MARK: - Codable Conformance
     public init(from decoder: Decoder) async throws {
-        let containter = try decoder.container(keyedBy: CodingKeys.self)
-        self.origin = try containter.decodeIfPresent(String.self, forKey: .origin)
-        do {
-            self.command = try containter.decode(IRCCommand.self, forKey: .command)
-            self.arguments = try containter.decodeIfPresent([String].self, forKey: .arguments)
-        } catch {
-            let cmd = try containter.decode(String.self, forKey: .command)
-            let arguments = try containter.decodeIfPresent([String].self, forKey: .arguments)
-            self.command = try IRCCommand(numeric: Int(cmd)!, arguments: arguments ?? [])
-        }
-        self.tags = try containter.decodeIfPresent([IRCTags].self, forKey: .tags)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        origin = try container.decodeIfPresent(String.self, forKey: .origin)
+        command = try container.decode(IRCCommand.self, forKey: .command)
+        arguments = try container.decodeIfPresent([String].self, forKey: .arguments)
+        tags = try container.decodeIfPresent([IRCTag].self, forKey: .tags)
     }
 
     public func encode(to encoder: Encoder) throws {
-        var containter = encoder.container(keyedBy: CodingKeys.self)
-        try containter.encodeIfPresent(origin, forKey: .origin)
-        try containter.encodeIfPresent(target, forKey: .target)
-        try containter.encode(command, forKey: .command)
-        try containter.encodeIfPresent(tags, forKey: .tags)
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(origin, forKey: .origin)
+        try container.encodeIfPresent(target, forKey: .target)
+        try container.encode(command, forKey: .command)
+        try container.encodeIfPresent(arguments, forKey: .arguments)
+        try container.encodeIfPresent(tags, forKey: .tags)
     }
 }
 
+// MARK: - Equatable Conformance
 extension IRCMessage: Equatable {
     public static func == (lhs: IRCMessage, rhs: IRCMessage) -> Bool {
         return lhs.id == rhs.id

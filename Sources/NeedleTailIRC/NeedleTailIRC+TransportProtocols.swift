@@ -1,3 +1,10 @@
+//
+//  NeedleTailIRC+TransportProtocols.swift
+//
+//
+//  Created by Cole M on 9/28/22.
+//
+
 import NIOCore
 import Logging
 import NeedleTailLogger
@@ -6,7 +13,7 @@ import NeedleTailStructures
 import AsyncAlgorithms
 import BSON
 
-public protocol NeedleTailClientDelegate: AnyObject, Sendable, IRCDispatcher, NeedleTailWriterDelegate {
+public protocol NeedleTailClientDelegate: AnyObject, Sendable, IRCEventProtocol, NeedleTailWriterDelegate {
     
     func transportMessage(_
                           consumer: NeedleTailAsyncConsumer<ByteBuffer>,
@@ -14,7 +21,7 @@ public protocol NeedleTailClientDelegate: AnyObject, Sendable, IRCDispatcher, Ne
                           writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                           origin: String,
                           command: IRCCommand,
-                          tags: [IRCTags]?
+                          tags: [IRCTag]?
     ) async throws
 }
 
@@ -40,28 +47,14 @@ extension NeedleTailWriterDelegate {
                                     message: IRCMessage
     ) async throws {
         do {
-            if #available(iOS 17.0, macOS 14, *) {
-                try await withThrowingDiscardingTaskGroup { group in
-                    group.addTask {
-                        let messageString = await NeedleTailIRCEncoder.encode(value: message)
-                        do {
-                            try await writer.write(ByteBuffer(string: messageString))
-                        } catch {
-                            logger.log(level: .error, message: "\(error)")
-                            return
-                        }
-                    }
-                }
-            } else {
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    group.addTask {
-                        let messageString = await NeedleTailIRCEncoder.encode(value: message)
-                        do {
-                            try await writer.write(ByteBuffer(string: messageString))
-                        } catch {
-                            logger.log(level: .error, message: "\(error)")
-                            return
-                        }
+            try await withThrowingDiscardingTaskGroup { group in
+                group.addTask {
+                    let messageString = await NeedleTailIRCEncoder.encode(value: message)
+                    do {
+                        try await writer.write(ByteBuffer(string: messageString))
+                    } catch {
+                        logger.log(level: .error, message: "\(error)")
+                        return
                     }
                 }
             }
@@ -80,7 +73,7 @@ extension NeedleTailClientDelegate {
                                  writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                                  origin: String = "",
                                  command: IRCCommand,
-                                 tags: [IRCTags]? = nil
+                                 tags: [IRCTag]? = nil
     ) async throws {
         let messageGenerator = IRCMessageGenerator()
         let messageStream = try await messageGenerator.createMessages(
@@ -101,7 +94,7 @@ extension NeedleTailClientDelegate {
 }
 
 //MARK: Server Side
-public protocol NeedleTailServerMessageDelegate: AnyObject, IRCDispatcher, NeedleTailWriterDelegate {}
+public protocol NeedleTailServerMessageDelegate: AnyObject, IRCEventProtocol, NeedleTailWriterDelegate {}
 
 extension NeedleTailServerMessageDelegate {
     
@@ -153,7 +146,7 @@ extension NeedleTailServerMessageDelegate {
                           message: String? = nil,
                           args: [String] = []
     ) async throws {
-        let enrichedArgs = args + [ message ?? code.errorMessage ]
+        let enrichedArgs = args + [ message ?? code.formattedErrorMessage ]
         let message = IRCMessage(origin: origin,
                                  target: target,
                                  command: .numeric(code, enrichedArgs),

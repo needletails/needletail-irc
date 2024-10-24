@@ -1,12 +1,20 @@
+//
+//  NeedleTailIRCParser.swift
+//
+//
+//  Created by Cole M on 9/28/22.
+//
+
 import Foundation
 import NIOConcurrencyHelpers
 import NeedleTailLogger
 import NeedleTailStructures
 
 public enum MessageParsingErrors: Error, Sendable {
-    case invalidArguments(String), invalidCAPCommand(String)
+    case invalidArguments(String), invalidCAPCommand(String), invalidTag
 }
 
+/// A parser for IRC messages conforming to the IRC message syntax.
 public struct NeedleTailIRCParser: Sendable {
     static let logger = NeedleTailLogger(.init(label: "[MessageParser]"))
     
@@ -17,276 +25,201 @@ public struct NeedleTailIRCParser: Sendable {
         case string(String)
     }
     
-    /// IRCMessage sytax
-    /// ::= ['@' <tags> SPACE] [':' <source> SPACE] <command> <parameters> <crlf>
+    /// Parses an IRC message string into an `IRCMessage` object.
+    /// - Parameter message: The raw IRC message string to parse.
+    /// - Throws: `MessageParsingErrors` for invalid message formats.
+    /// - Returns: An `IRCMessage` representing the parsed message.
     public static func parseMessage(_ message: String) throws -> IRCMessage {
         var origin: String?
-        var seperatedTags: [String] = []
-        var taglessMessage: String = ""
+        var tags: [String] = []
         var command = ""
         var argumentString = ""
+        var taglessMessage = ""
         
+        // Log the start of the parsing process
         self.logger.log(level: .trace, message: "Parsing Message....")
         
-        //1. Separate Tags
-        if message.contains(Constants.atString.rawValue) && message.contains(Constants.semiColonSpace.rawValue) {
-            seperatedTags.append(contentsOf: message.components(separatedBy: Constants.semiColonSpace.rawValue))
-            taglessMessage = seperatedTags[1]
+        // 1. Separate Tags
+        if message.contains(Constants.atString.rawValue) {
+            guard let firstSpaceIndex = message.firstIndex(of: Character(Constants.space.rawValue)) else { throw MessageParsingErrors.invalidTag }
+            let tagString = String(message[..<firstSpaceIndex])
+            // 2. Set Tagless Message
+            taglessMessage = String(message[message.index(after: firstSpaceIndex)...])
+            
+            let seperateTags = tagString.split(separator: Constants.semiColonSpace.rawValue).map { $0.trimmingCharacters(in: .whitespaces) }
+            tags.append(contentsOf: seperateTags)
         } else {
+            // 2. Set Tagless Message
             taglessMessage = message
         }
         
-        //2. Get message Origin
-        if taglessMessage.first == Character(Constants.colon.rawValue) {
-            let seperatedMessage = taglessMessage.components(separatedBy: Constants.space.rawValue)
-            origin = String(seperatedMessage[0].dropFirst())
-            command = seperatedMessage[1].uppercased()
-            argumentString = seperatedMessage.dropFirst(2).joined(separator: Constants.space.rawValue)
+        // 3. Split the tagless message into components
+        let messageComponents = taglessMessage.components(separatedBy: Constants.space.rawValue).map { $0.trimmingCharacters(in: .whitespaces) }
+        
+        // 4. Extract Origin and Command
+        if let firstComponent = messageComponents.first, firstComponent.hasPrefix(Constants.colon.rawValue) {
+            origin = String(firstComponent.dropFirst())
+            command = messageComponents[1].uppercased()
+            // Extract message and non-message parts
+            let messagePart = extractMessage(from: Array(messageComponents.dropFirst(2))).joined(separator: Constants.space.rawValue)
+            let nonMessages = extractNonMessages(from: Array(messageComponents.dropFirst(2)))
+            argumentString = nonMessages.joined(separator: Constants.space.rawValue) + (messagePart.isEmpty ? "" : " " + messagePart)
         } else {
-            let seperatedMessage = taglessMessage.components(separatedBy: Constants.space.rawValue)
-            command = seperatedMessage[0].uppercased()
-            argumentString = seperatedMessage.dropFirst().joined(separator: Constants.space.rawValue)
+            command = messageComponents[0].uppercased()
+            argumentString = messageComponents.dropFirst().joined(separator: Constants.space.rawValue)
         }
         
-        //Create Tags
-        var tags: [IRCTags]?
-        if seperatedTags != [] {
-            tags = try parseTags(
-                tags: seperatedTags[0]
-            )
+        // 5. Parse Tags
+        let parsedTags = !tags.isEmpty ? try parseTags(tags: tags[0]) : nil
+        
+        // 6. Parse Arguments
+        let (arguments, target) = try parseArgument(command: command, argumentString: argumentString)
+        
+        // 7. Create IRCCommand
+        let builtCommand: IRCCommand
+        if let numericCommand = Int(command) {
+            builtCommand = try IRCCommand(numeric: numericCommand, arguments: arguments)
+        } else {
+            builtCommand = try IRCCommand(command: command, arguments: arguments)
         }
         
-        let (arguments, target) = try parseArgument(
-            command: command,
-            argumentString: argumentString
-        )
-        if let command = Int(command) {
-            let builtCommand = try IRCCommand(numeric: command, arguments: arguments)
-            return IRCMessage(origin: origin,
-                              target: target,
-                              command: builtCommand,
-                              arguments: arguments,
-                              tags: tags)
-        } else {
-            let builtCommand = try IRCCommand(command: command, arguments: arguments)
-            return IRCMessage(origin: origin,
-                              target: target,
-                              command: builtCommand,
-                              arguments: arguments,
-                              tags: tags)
-        }
+        // 8. Return the constructed IRCMessage
+        return IRCMessage(origin: origin, target: target, command: builtCommand, arguments: arguments, tags: parsedTags)
     }
     
-    // https://ircv3.net/specs/extensions/message-tags.html#format
-    static func parseTags(
-        tags: String = ""
-    ) throws -> [IRCTags]? {
-        if tags.hasPrefix(Constants.atString.rawValue) {
-            var tagArray: [IRCTags] = []
-            let seperatedTags = tags.components(separatedBy: Constants.semiColon.rawValue + Constants.atString.rawValue)
-            for tag in seperatedTags {
-                var tag = tag
-                tag.removeAll(where: { $0 == Character(Constants.atString.rawValue) })
-                let kvpArray = tag.split(separator: Character(Constants.equalsString.rawValue), maxSplits: 1)
-                guard let key = kvpArray.first else { return nil }
-                guard let value = kvpArray.last else { return nil }
-                tagArray.append(
-                    IRCTags(key: String(key), value: String(value))
-                )
+    
+    /// Extracts the message part from the given array of strings.
+    /// - Parameter array: The array of strings to search for the message part.
+    /// - Returns: An array containing the message part.
+    private static func extractMessage(from array: [String]) -> [String] {
+        // Find the index of the last colon
+        if let lastColonIndex = array.lastIndex(where: { $0.hasPrefix(":") }) {
+            return Array(array[lastColonIndex...])
+        }
+        return []
+    }
+    
+    /// Extracts non-message parts from the given array of strings.
+    /// - Parameter array: The array of strings to search for non-message parts.
+    /// - Returns: An array containing the non-message parts.
+    private static func extractNonMessages(from array: [String]) -> [String] {
+        // Find the index of the last colon
+        if let lastColonIndex = array.lastIndex(where: { $0.hasPrefix(":") }) {
+            return Array(array[0..<lastColonIndex])
+        }
+        return array
+    }
+    
+    /// Parses IRC tags from a given tag string.
+    /// - Parameter tags: The string containing tags.
+    /// - Throws: `MessageParsingErrors` for invalid tag formats.
+    /// - Returns: An array of `IRCTag` if successful, otherwise `nil`.
+    static func parseTags(tags: String = "") throws -> [IRCTag]? {
+        guard tags.hasPrefix(Constants.atString.rawValue) else { return nil }
+        
+        var tagArray: [IRCTag] = []
+        let seperatedTags = tags.components(separatedBy: Constants.semiColon.rawValue + Constants.atString.rawValue)
+        
+        for tag in seperatedTags {
+            let cleanedTag = tag.replacingOccurrences(of: Constants.atString.rawValue, with: "")
+            let kvpArray = cleanedTag.split(separator: Character(Constants.equalsString.rawValue), maxSplits: 1)
+            guard let key = kvpArray.first, let value = kvpArray.last else {
+                throw MessageParsingErrors.invalidArguments("Invalid tag format.")
             }
-            self.logger.log(level: .trace, message: "Parsing Tags")
-            return tagArray
+            tagArray.append(IRCTag(key: String(key), value: String(value)))
         }
-        return nil
+        
+        self.logger.log(level: .trace, message: "Parsing Tags")
+        return tagArray
     }
     
-    static func parseArgument(
-        command: String,
-        argumentString: String
-    ) throws -> ([String], String?) {
-        var arguments = [String]()
+    /// Parses command arguments based on the command type.
+    /// - Parameters:
+    ///   - command: The command string.
+    ///   - argumentString: The arguments string.
+    /// - Throws: `MessageParsingErrors` for invalid argument formats.
+    /// - Returns: A tuple containing an array of arguments and an optional target string.
+    static func parseArgument(command: String, argumentString: String) throws -> ([String], String?) {
+        var arguments: [String] = []
         var target: String? = nil
+        
+        /// Splits the argument string at the first occurrence of a colon.
+        /// - Parameter argumentString: The string to split.
+        /// - Returns: A tuple containing the part before the colon and the part after the colon (including the colon).
+        func splitArguments(_ argumentString: String) -> (String, String) {
+            // Find the first occurrence of the colon
+            if let colonIndex = argumentString.firstIndex(of: ":") {
+                // Extract the part before the colon and trim whitespace
+                let beforeColon = String(argumentString[..<colonIndex]).trimmingCharacters(in: .whitespaces)
+                // Extract the part after the colon (including the colon) and trim whitespace
+                let afterColon = String(argumentString[colonIndex...]).trimmingCharacters(in: .whitespaces)
+                return (beforeColon, afterColon)
+            } else {
+                // If no colon is found, return the entire string as the first part and an empty string as the second part
+                return (argumentString.trimmingCharacters(in: .whitespaces), "")
+            }
+        }
+        
+        // Parse the command
         switch try parseCommand(command: command) {
-        case .string(let command):
-            //3. Get Command
-            switch command {
+        case .string(let cmd):
+            switch cmd {
             case Constants.nick.rawValue:
+                // For the NICK command, the entire argument string is treated as a single argument
                 arguments.append(argumentString)
             case Constants.user.rawValue:
-                let seperatedByLastMessage = argumentString.components(separatedBy: Constants.colon.rawValue)
-                guard var initialArugments = seperatedByLastMessage.first?.components(separatedBy: Constants.space.rawValue) else { throw MessageParsingErrors.invalidArguments("From Command: \(command)")}
-                initialArugments = initialArugments.filter { !$0.isEmpty && !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                guard let realNameArguemnt = seperatedByLastMessage.last else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                arguments.append(contentsOf: initialArugments)
-                arguments.append(realNameArguemnt)
-            case Constants.quit.rawValue:
-                let quitMessage = String(argumentString.dropFirst())
-                arguments.append(quitMessage)
-            case Constants.join.rawValue:
-                let seperatedComponents = argumentString.components(separatedBy: Constants.space.rawValue)
-                guard let channelsComponent = seperatedComponents.first else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                arguments.append(channelsComponent)
-                if seperatedComponents.count == 2 {
-                    guard let keysComponent = seperatedComponents.last else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                    arguments.append(keysComponent)
+                // For the USER command, split the arguments based on the colon
+                let components = argumentString.components(separatedBy: Constants.colon.rawValue)
+                guard let initialArgs = components.first?.components(separatedBy: Constants.space.rawValue) else {
+                    throw MessageParsingErrors.invalidArguments("Invalid arguments for user command.")
                 }
-            case Constants.part.rawValue:
-                let seperatedComponents = argumentString.components(separatedBy: Constants.space.rawValue)
-                guard let channelsComponent = seperatedComponents.first else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                let channels = channelsComponent.components(separatedBy: Constants.comma.rawValue)
-                arguments.append(contentsOf: channels)
-            case Constants.list.rawValue:
-                let seperatedComponents = argumentString.components(separatedBy: Constants.space.rawValue)
-                guard let channelsComponent = seperatedComponents.first else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                arguments.append(channelsComponent)
-                if seperatedComponents.count == 2 {
-                    guard let targetComponent = seperatedComponents.last else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                    arguments.append(targetComponent)
-                }
-            case Constants.kick.rawValue:
-                let seperatedByLastMessage = argumentString.components(separatedBy: Constants.colon.rawValue)
-                guard let initialComponent = seperatedByLastMessage.first else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                var seperatedComponents = initialComponent.components(separatedBy: Constants.space.rawValue)
-                seperatedComponents = seperatedComponents.filter { !$0.isEmpty && !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                
-                guard let channelsComponent = seperatedComponents.first else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                arguments.append(channelsComponent)
-                
-                if seperatedComponents.count == 2 {
-                    guard let kickedUser = seperatedComponents.last else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                    arguments.append(kickedUser)
-                }
-                if seperatedByLastMessage.count == 2 {
-                    guard let messageArgument = seperatedByLastMessage.last else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                    arguments.append(messageArgument)
-                }
-                
-                // <receiver>{,<receiver>} <text to be sent>
-            case Constants.privMsg.rawValue, Constants.notice.rawValue:
-                let seperatedByLastMessage = argumentString.components(separatedBy: Constants.colon.rawValue)
-                guard let messageArgument = seperatedByLastMessage.last else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                guard let initialComponent = seperatedByLastMessage.first else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                
-                let seperatedComponents = initialComponent.components(separatedBy: Constants.space.rawValue)
-                guard let recipientComponent = seperatedComponents.first else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                let recipients = recipientComponent.components(separatedBy: Constants.comma.rawValue)
-                
-                arguments.append(contentsOf: recipients)
-                arguments.append(messageArgument)
-            case Constants.whoIs.rawValue:
-                let seperatedByLastMessage = argumentString.components(separatedBy: Constants.colon.rawValue)
-                
-                guard let initialComponent = seperatedByLastMessage.first else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                let seperatedComponents = initialComponent.components(separatedBy: Constants.space.rawValue)
-                
-                guard let serverComponent = seperatedComponents.first else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                guard let messageArgument = seperatedByLastMessage.last else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                
-                arguments.append(serverComponent)
-                arguments.append(messageArgument)
-                // <nickname> <comment>
-            case Constants.kill.rawValue:
-                let seperatedByLastMessage = argumentString.components(separatedBy: Constants.colon.rawValue)
-                guard let messageArgument = seperatedByLastMessage.last else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                guard let nickArgument = seperatedByLastMessage.first else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                arguments.append(nickArgument.trimmingCharacters(in: .whitespaces))
-                arguments.append(messageArgument)
-            case Constants.ping.rawValue, Constants.pong.rawValue:
-                let seperated = argumentString.components(separatedBy: Constants.comma.rawValue)
-                arguments.append(contentsOf: seperated)
-            case Constants.cap.rawValue:
-                let seperatedByLastMessage = argumentString
-                    .components(separatedBy: Constants.colon.rawValue)
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                arguments.append(contentsOf: seperatedByLastMessage)
-            case Constants.mode.rawValue:
-                let separated = argumentString.components(separatedBy: Constants.space.rawValue)
-                let rejoined = String(separated.dropFirst().joined(by: Constants.space.rawValue))
-                let components = rejoined.components(separatedBy: Constants.space.rawValue)
-                if let modeType = separated.first {
-                    arguments.append(modeType)
-                }
-                if let addIndex = components.firstIndex(where: { $0.contains(String(Constants.plus.rawValue)) }) {
-                    arguments.append(components[addIndex])
-                    if components.count >= 2, !components[1].contains(Constants.minus.rawValue) {
-                        arguments.append(contentsOf: components[1].components(separatedBy: Constants.comma.rawValue))
-                    }
-                }
-                
-                if let removeIndex = components.firstIndex(where: { $0.contains(String(Constants.minus.rawValue)) }) {
-                    arguments.append(components[removeIndex])
-                    if components.count >= 2, let lastArg = components.last, !lastArg.contains(Constants.minus.rawValue) {
-                        arguments.append(contentsOf: components[1].components(separatedBy: Constants.comma.rawValue))
-                    }
+                // Append non-empty initial arguments
+                arguments.append(contentsOf: initialArgs.filter { !$0.isEmpty })
+                // Append the real name if present
+                if let realName = components.last {
+                    arguments.append(realName)
                 }
             default:
-                if command.isOtherCommand, command == Constants.multipartMediaUpload.rawValue || command == Constants.requestMediaDeletion.rawValue {
-                    let multipartUploadArguments = argumentString.dropFirst().components(separatedBy: Constants.comma.rawValue)
-                    arguments.append(contentsOf: multipartUploadArguments)
-                } else if command.isOtherCommand {
-                    let otherCommandArgument = String(argumentString.dropFirst())
-                    arguments.append(otherCommandArgument)
+                // For other commands, handle arguments based on the presence of a colon
+                if argumentString.contains(Constants.colon.rawValue) {
+                    let splitArgs = splitArguments(argumentString)
+                    // Split the part before the colon into space-separated arguments
+                    let initialArgs = splitArgs.0.components(separatedBy: Constants.space.rawValue)
+                    arguments.append(contentsOf: initialArgs.filter { !$0.isEmpty }) // Filter out empty strings
+                    // Append the part after the colon
+                    arguments.append(splitArgs.1)
                 } else {
-                    let modeArguments = argumentString.components(separatedBy: Constants.space.rawValue)
-                    arguments.append(contentsOf: modeArguments)
+                    // If no colon is present, split the entire argument string by spaces
+                    arguments.append(contentsOf: argumentString.components(separatedBy: Constants.space.rawValue).filter { !$0.isEmpty })
                 }
             }
         case .int(_):
-            let seperatedByLastMessage = argumentString.components(separatedBy: Constants.colon.rawValue)
-            target = seperatedByLastMessage.first
-            guard let lastMessage = seperatedByLastMessage.last else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-            if lastMessage.contains(Constants.comma.rawValue) == true {
-                guard let args = seperatedByLastMessage.last?.components(separatedBy: Constants.comma.rawValue) else { throw MessageParsingErrors.invalidArguments("From Command: \(command)") }
-                arguments.append(contentsOf: args)
-            } else {
-                arguments.append(lastMessage)
+            // For numeric commands, handle the target and arguments differently
+            let components = argumentString.components(separatedBy: Constants.colon.rawValue)
+            target = components.first?.trimmingCharacters(in: .whitespaces) // Trim whitespace from the target
+            if let lastMessage = components.last {
+                // Split the last message by commas and append to arguments
+                arguments.append(contentsOf: lastMessage.components(separatedBy: Constants.comma.rawValue).filter { !$0.isEmpty })
             }
         }
         return (arguments, target)
     }
     
-    
+    /// Parses the command into a numeric or string key.
+    /// - Parameter command: The command string to parse.
+    /// - Throws: `MessageParsingErrors` for invalid command formats.
+    /// - Returns: An `IRCCommandKey` representing the command type.
     static func parseCommand(command: String) throws -> IRCCommandKey {
         precondition(!command.isEmpty)
-        var commandKey: IRCCommandKey = .string("")
-        if command.first?.isLetter == true {
-            commandKey = .string(command)
+        
+        if let firstChar = command.first, firstChar.isLetter {
+            return .string(command)
         } else {
-            let command = command.components(separatedBy: .decimalDigits.inverted)
-            for c in command {
-                if !c.isEmpty{
-                    commandKey = .int(Int(c) ?? 0)
-                }
+            let numericCommand = command.components(separatedBy: .decimalDigits.inverted).compactMap(Int.init).first
+            guard let validNumeric = numericCommand else {
+                throw MessageParsingErrors.invalidArguments("Invalid command format.")
             }
+            return .int(validNumeric)
         }
-        self.logger.log(level: .trace, message: "Parsing CommandKey")
-        return commandKey
-    }
-}
-
-extension String: Sendable {
-    var isInt: Bool {
-        return Int(self) != nil
-    }
-}
-
-extension Int {
-    var argumentIsArray: Bool {
-        self == 303 ? true : false
-    }
-}
-
-
-extension String {
-    var isChannel: Bool {
-        hasPrefix(Constants.ampersand.rawValue) || hasPrefix(Constants.hashTag.rawValue) || hasPrefix(Constants.plus.rawValue) || hasPrefix(Constants.exclamation.rawValue)
-    }
-    
-    var isOtherCommand: Bool {
-        self == Constants.badgeUpdate.rawValue || self == Constants.multipartMediaDownload.rawValue || self == Constants.multipartMediaUpload.rawValue || self == Constants.listBucket.rawValue || self == Constants.publishBlob.rawValue || self == Constants.readPublishedBlob.rawValue || self == Constants.readKeyBundle.rawValue || self == Constants.pass.rawValue || self == Constants.deleteOfflineMessage.rawValue || self == Constants.offlineMessages.rawValue || self == Constants.requestMediaDeletion.rawValue || self == Constants.destoryUser.rawValue || self == Constants.newDevice.rawValue || self == Constants.registryRequest.rawValue
-    }
-    
-    var isNumeric: Bool {
-        self.isInt
     }
 }

@@ -1,6 +1,6 @@
 import Testing
+import Foundation
 import BSON
-import CypherMessaging
 import NeedleTailStructures
 @testable import NeedleTailIRC
 
@@ -13,86 +13,84 @@ final class NeedleTailIRCTests {
         let base64 = try! BSONEncoder().encodeString(Base64Struct(string:TestableConstants.longMessage.rawValue))
         let messages = try await generator.createMessages(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.readKeyBundle.rawValue,
+            command: .otherCommand(Constants.findUserConfig.rawValue,
                                    [base64]),
             logger: .init())
         
         for await message in messages {
             if let rebuiltMessage = try await generator.messageReassembler(ircMessage: message) {
-                print("REBUILT MESSAGE", rebuiltMessage)
                 #expect(message == rebuiltMessage)
             }
         }
         
     }
     
-//    @Test func parseMessages() async {
-//        for message in await createIRCMessages() {
-//            await #expect(throws: Never.self, performing: {
-//                let messageToParse = await NeedleTailIRCEncoder.encode(value: message)
-//                let m = try NeedleTailIRCParser.parseMessage(messageToParse)
-//                print(m)
-//            })
-//        }
-//    }
-//
-//    @Test func derivePacketsToSend() async throws {
-//        let packetDerivation = PacketDerivation()
-//        let message = IRCMessage(
-//            origin: TestableConstants.origin.rawValue,
-//            command:
-//                    .PRIVMSG(
-//                        [.nick(.init(name: "nt2", deviceId: DeviceId())!)],
-//                        TestableConstants.longMessage.rawValue
-//                    )
-//        )
-//        
-//        let stringValue = await NeedleTailIRCEncoder.encode(value: message)
-//        let sequence = try await packetDerivation.calculateAndDispense(ircMessage: stringValue, bufferingPolicy: .unbounded)
-////        await #expect(sequence.consumer.deque.count == 11)
-////        var currentId = 0
-////        for try await result in sequence {
-////            switch result {
-////            case .success(let packet):
-////                currentId += 1
-////                #expect(packet.partNumber == currentId)
-//////                #expect(packet.totalParts == sequence.consumer.deque.count)
-////            case .consumed:
-////                return
-////            }
-////        }
-//    }
-//    
-//    @Test func decodeAndRebuildIRCMessage() async throws {
-//        let packetDerivation = PacketDerivation()
-//        let builder = PacketBuilder()
-//        let message = IRCMessage(
-//            origin: TestableConstants.origin.rawValue,
-//            command:
-//                    .PRIVMSG(
-//                        [.nick(.init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!)],
-//                        TestableConstants.longMessage.rawValue
-//                    )
-//        )
-//        let stringValue = await NeedleTailIRCEncoder.encode(value: message)
-//        let sequence = try await packetDerivation.calculateAndDispense(ircMessage: stringValue, bufferingPolicy: .unbounded)
-//        
-////        for try await result in sequence {
-////            switch result {
-////            case .success(let packet):
-////                let buffer = try BSONEncoder().encode(packet).makeByteBuffer()
-////                if let ircMessageString = await builder.processPacket(buffer) {
-////                    //Build IRCMessage from String
-////                    let message = try NeedleTailIRCParser.parseMessage(ircMessageString)
-////                    #expect(message.arguments?[1] != nil)
-////                    guard let ircMessageContent = message.arguments?[1] else { return }
-////                    #expect(ircMessageContent == TestableConstants.longMessage.rawValue)
-////                }
-////            case .consumed:
-////                return
-////            }
-////        }
-//    }
+    @Test func testParseMessages() async {
+        for message in await createIRCMessages() {
+            await #expect(throws: Never.self, performing: {
+                let messageToParse = await NeedleTailIRCEncoder.encode(value: message)
+                let parsed = try NeedleTailIRCParser.parseMessage(messageToParse)
+            })
+        }
+    }
+    //
+    //    @Test func derivePacketsToSend() async throws {
+    //        let packetDerivation = PacketDerivation()
+    //        let message = IRCMessage(
+    //            origin: TestableConstants.origin.rawValue,
+    //            command:
+    //                    .PRIVMSG(
+    //                        [.nick(.init(name: "nt2", deviceId: UUID())!)],
+    //                        TestableConstants.longMessage.rawValue
+    //                    )
+    //        )
+    //        
+    //        let stringValue = await NeedleTailIRCEncoder.encode(value: message)
+    //        let sequence = try await packetDerivation.calculateAndDispense(ircMessage: stringValue, bufferingPolicy: .unbounded)
+    ////        await #expect(sequence.consumer.deque.count == 11)
+    ////        var currentId = 0
+    ////        for try await result in sequence {
+    ////            switch result {
+    ////            case .success(let packet):
+    ////                currentId += 1
+    ////                #expect(packet.partNumber == currentId)
+    //////                #expect(packet.totalParts == sequence.consumer.deque.count)
+    ////            case .consumed:
+    ////                return
+    ////            }
+    ////        }
+    //    }
+    //    
+    //    @Test func decodeAndRebuildIRCMessage() async throws {
+    //        let packetDerivation = PacketDerivation()
+    //        let builder = PacketBuilder()
+    //        let message = IRCMessage(
+    //            origin: TestableConstants.origin.rawValue,
+    //            command:
+    //                    .PRIVMSG(
+    //                        [.nick(.init(name: TestableConstants.target.rawValue, deviceId: UUID())!)],
+    //                        TestableConstants.longMessage.rawValue
+    //                    )
+    //        )
+    //        let stringValue = await NeedleTailIRCEncoder.encode(value: message)
+    //        let sequence = try await packetDerivation.calculateAndDispense(ircMessage: stringValue, bufferingPolicy: .unbounded)
+    //        
+    ////        for try await result in sequence {
+    ////            switch result {
+    ////            case .success(let packet):
+    ////                let buffer = try BSONEncoder().encode(packet).makeByteBuffer()
+    ////                if let ircMessageString = await builder.processPacket(buffer) {
+    ////                    //Build IRCMessage from String
+    ////                    let message = try NeedleTailIRCParser.parseMessage(ircMessageString)
+    ////                    #expect(message.arguments?[1] != nil)
+    ////                    guard let ircMessageContent = message.arguments?[1] else { return }
+    ////                    #expect(ircMessageContent == TestableConstants.longMessage.rawValue)
+    ////                }
+    ////            case .consumed:
+    ////                return
+    ////            }
+    ////        }
+    //    }
 }
 
 func createIRCMessages() async -> [IRCMessage] {
@@ -106,326 +104,332 @@ func createIRCMessages() async -> [IRCMessage] {
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .NICK(.init(name: TestableConstants.origin.rawValue, deviceId: DeviceId())!),
+            command: .nick(.init(name: TestableConstants.origin.rawValue, deviceId: UUID())!),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .NICK(.init(name: TestableConstants.origin.rawValue, deviceId: DeviceId())!),
+            command: .nick(.init(name: TestableConstants.origin.rawValue, deviceId: UUID())!),
+            tags: [.init(key: "tempRegistration", value: "123456hgfdsa")])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            command: .nick(.init(name: TestableConstants.origin.rawValue, deviceId: UUID())!),
             arguments: ["hop_count_0"],
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .USER(.init(username: "guest", hostname: "needletail-client", servername: "needletail-server", realname: "No ones business")),
+            command: .user(.init(username: "guest", hostname: "needletail-client", servername: "needletail-server", realname: "No ones business")),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .USER(.init(username: "guest", usermask: .operator, realname: "No ones business")),
+            command: .user(.init(username: "guest", realname: "No ones business")),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .ISON([.init(name: TestableConstants.origin.rawValue, deviceId: DeviceId())!]),
+            command: .isOn([.init(name: TestableConstants.origin.rawValue, deviceId: UUID())!]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .ISON([.init(name: TestableConstants.origin.rawValue, deviceId: DeviceId())!, .init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!]),
+            command: .isOn([.init(name: TestableConstants.origin.rawValue, deviceId: UUID())!, .init(name: TestableConstants.target.rawValue, deviceId: UUID())!]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .QUIT("See ya!"),
+            command: .quit("See ya!"),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .PING(server: TestableConstants.serverOne.rawValue, server2: nil),
+            command: .ping(server: TestableConstants.serverOne.rawValue, server2: nil),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .PING(server: TestableConstants.serverOne.rawValue, server2: TestableConstants.serverTwo.rawValue),
+            command: .ping(server: TestableConstants.serverOne.rawValue, server2: TestableConstants.serverTwo.rawValue),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .PONG(server: TestableConstants.serverOne.rawValue, server2: nil),
+            command: .pong(server: TestableConstants.serverOne.rawValue, server2: nil),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .PONG(server: TestableConstants.serverOne.rawValue, server2: TestableConstants.serverTwo.rawValue),
+            command: .pong(server: TestableConstants.serverOne.rawValue, server2: TestableConstants.serverTwo.rawValue),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .JOIN(channels: [.init(TestableConstants.channelOne.rawValue)!], keys: nil),
+            command: .join(channels: [.init(TestableConstants.channelOne.rawValue)!], keys: nil),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .JOIN(channels: [.init(TestableConstants.channelOne.rawValue)!], keys: [TestableConstants.channelOneKey.rawValue]),
+            command: .join(channels: [.init(TestableConstants.channelOne.rawValue)!], keys: [TestableConstants.channelOneKey.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .JOIN(channels: [.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!], keys: nil),
+            command: .join(channels: [.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!], keys: nil),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .JOIN(channels: [.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!], keys: [TestableConstants.channelOneKey.rawValue, TestableConstants.channelTwoKey.rawValue]),
+            command: .join(channels: [.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!], keys: [TestableConstants.channelOneKey.rawValue, TestableConstants.channelTwoKey.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .JOIN0,
+            command: .join0,
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .PART(channels: [.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!]),
+            command: .part(channels: [.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .LIST(channels: [.init(TestableConstants.channelOne.rawValue)!], target: nil),
+            command: .list(channels: [.init(TestableConstants.channelOne.rawValue)!], target: nil),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .LIST(channels: [.init(TestableConstants.channelOne.rawValue)!], target: TestableConstants.target.rawValue),
+            command: .list(channels: [.init(TestableConstants.channelOne.rawValue)!], target: TestableConstants.target.rawValue),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .LIST(channels: [.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!], target: nil),
+            command: .list(channels: [.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!], target: nil),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .LIST(channels: [.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!], target: TestableConstants.target.rawValue),
+            command: .list(channels: [.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!], target: TestableConstants.target.rawValue),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .LIST(channels: nil, target: nil),
+            command: .list(channels: nil, target: nil),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .LIST(channels: nil, target: TestableConstants.target.rawValue),
+            command: .list(channels: nil, target: TestableConstants.target.rawValue),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .PRIVMSG([.everything], "Welcome to our messaging sdk"),
+            command: .privMsg([.all], "Welcome to our messaging sdk"),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .PRIVMSG([.channel(.init(TestableConstants.channelOne.rawValue)!)], "Welcome to our messaging sdk"),
+            command: .privMsg([.channel(.init(TestableConstants.channelOne.rawValue)!)], "Welcome to our messaging sdk"),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .PRIVMSG([.nick(.init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!)], "Welcome to our messaging sdk"),
+            command: .privMsg([.nick(.init(name: TestableConstants.target.rawValue, deviceId: UUID())!)], "Welcome to our messaging sdk"),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .NOTICE([.everything], "Welcome to our messaging sdk"),
+            command: .notice([.all], "Welcome to our messaging sdk"),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .NOTICE([.channel(.init(TestableConstants.channelOne.rawValue)!)], "Welcome to our messaging sdk"),
+            command: .notice([.channel(.init(TestableConstants.channelOne.rawValue)!)], "Welcome to our messaging sdk"),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .NOTICE([.nick(.init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!)], "Welcome to our messaging sdk"),
+            command: .notice([.nick(.init(name: TestableConstants.target.rawValue, deviceId: UUID())!)], "Welcome to our messaging sdk"),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .MODE(.init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!, add: .away, remove: .blockUnidentified),
+            command: .mode(.init(name: TestableConstants.target.rawValue, deviceId: UUID())!, add: .away, remove: .blockUnidentified),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .MODEGET(.init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!),
+            command: .modeGet(.init(name: TestableConstants.target.rawValue, deviceId: UUID())!),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: .inviteOnly, addParameters: [], remove: nil, removeParameters: []),
+            command: .channelMode(.init(TestableConstants.channelOne.rawValue)!, addMode: .inviteOnly, addParameters: [], removeMode: nil, removeParameters: []),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: .banMask, addParameters: ["baduser1!*@*","baduser2!*@*"], remove: nil, removeParameters: []),
+            command: .channelMode(.init(TestableConstants.channelOne.rawValue)!, addMode: .banMask, addParameters: ["baduser1!*@*","baduser2!*@*"], removeMode: nil, removeParameters: []),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: .userLimit, addParameters: ["10"], remove: nil, removeParameters: []),
+            command: .channelMode(.init(TestableConstants.channelOne.rawValue)!, addMode: .userLimit, addParameters: ["10"], removeMode: nil, removeParameters: []),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: nil, addParameters: [], remove: .inviteOnly, removeParameters: []),
+            command: .channelMode(.init(TestableConstants.channelOne.rawValue)!, addMode: nil, addParameters: [], removeMode: .inviteOnly, removeParameters: []),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: nil, addParameters: [], remove: .banMask, removeParameters: ["baduser2!*@*","baduser3!*@*"]),
+            command: .channelMode(.init(TestableConstants.channelOne.rawValue)!, addMode: nil, addParameters: [], removeMode: .banMask, removeParameters: ["baduser2!*@*","baduser3!*@*"]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: .banMask, addParameters: ["baduser1!*@*","baduser2!*@*"], remove: .banMask, removeParameters: ["baduser1!*@*","baduser2!*@*"]),
+            command: .channelMode(.init(TestableConstants.channelOne.rawValue)!, addMode: .banMask, addParameters: ["baduser1!*@*","baduser2!*@*"], removeMode: .banMask, removeParameters: ["baduser1!*@*","baduser2!*@*"]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CHANNELMODE_GET(.init(TestableConstants.channelOne.rawValue)!),
+            command: .channelModeGet(.init(TestableConstants.channelOne.rawValue)!),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CHANNELMODE(.init(TestableConstants.channelOne.rawValue)!, add: .banMask, addParameters: [], remove: nil, removeParameters: []),
+            command: .channelMode(.init(TestableConstants.channelOne.rawValue)!, addMode: .banMask, addParameters: [], removeMode: nil, removeParameters: []),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CHANNELMODE_GET_BANMASK(.init(TestableConstants.channelOne.rawValue)!),
+            command: .channelModeGetBanMask(.init(TestableConstants.channelOne.rawValue)!),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .WHOIS(server: TestableConstants.serverOne.rawValue, usermasks: [TestableConstants.usermaskOne.rawValue, TestableConstants.usermaskTwo.rawValue]),
+            command: .whois(server: TestableConstants.serverOne.rawValue, usermasks: [TestableConstants.usermaskOne.rawValue, TestableConstants.usermaskTwo.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .WHO(usermask: TestableConstants.usermaskOne.rawValue, onlyOperators: false),
+            command: .who(usermask: TestableConstants.usermaskOne.rawValue, onlyOperators: false),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .WHO(usermask: TestableConstants.usermaskOne.rawValue, onlyOperators: true),
+            command: .who(usermask: TestableConstants.usermaskOne.rawValue, onlyOperators: true),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .KICK([.init(TestableConstants.channelOne.rawValue)!], [.init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!], ["GO AWAY"]),
+            command: .kick([.init(TestableConstants.channelOne.rawValue)!], [.init(name: TestableConstants.target.rawValue, deviceId: UUID())!], ["GO AWAY"]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .KICK([.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!], [.init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!], ["GO AWAY", "YOU GOT KICKED"]),
+            command: .kick([.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!], [.init(name: TestableConstants.target.rawValue, deviceId: UUID())!], ["GO AWAY", "YOU GOT KICKED"]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .KICK([.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!], [.init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!, .init(name: TestableConstants.origin.rawValue, deviceId: DeviceId())!], ["GO AWAY", "YOU GOT KICKED", "SEE YA!"]),
+            command: .kick([.init(TestableConstants.channelOne.rawValue)!, .init(TestableConstants.channelTwo.rawValue)!], [.init(name: TestableConstants.target.rawValue, deviceId: UUID())!, .init(name: TestableConstants.origin.rawValue, deviceId: UUID())!], ["GO AWAY", "YOU GOT KICKED", "SEE YA!"]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .KILL(.init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!, "KILLED IT"),
+            command: .kill(.init(name: TestableConstants.target.rawValue, deviceId: UUID())!, "KILLED IT"),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .KILL(.init(name: TestableConstants.target.rawValue, deviceId: DeviceId())!, "KILLED IT"),
+            command: .kill(.init(name: TestableConstants.target.rawValue, deviceId: UUID())!, "KILLED IT"),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CAP(.ACK, [TestableConstants.target.rawValue]),
+            command: .cap(.ack, [TestableConstants.target.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CAP(.END, [TestableConstants.target.rawValue]),
+            command: .cap(.end, [TestableConstants.target.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CAP(.LIST, [TestableConstants.target.rawValue]),
+            command: .cap(.list, [TestableConstants.target.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CAP(.LS, [TestableConstants.target.rawValue]),
+            command: .cap(.ls, [TestableConstants.target.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CAP(.NAK, [TestableConstants.target.rawValue]),
+            command: .cap(.nak, [TestableConstants.target.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .CAP(.REQ, [TestableConstants.target.rawValue]),
+            command: .cap(.req, [TestableConstants.target.rawValue]),
             tags: [])
     )
     messages.append(
@@ -443,7 +447,7 @@ func createIRCMessages() async -> [IRCMessage] {
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.readKeyBundle.rawValue, [TestableConstants.longMessage.rawValue]),
+            command: .otherCommand(Constants.findUserConfig.rawValue, [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(

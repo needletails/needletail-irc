@@ -38,17 +38,15 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
     }
 }
 
-public actor PacketDerivation {
+public struct PacketDerivation: Sendable {
     
     public init() {}
-    
-    public var streamContinuation: AsyncStream<MultipartPacket>.Continuation?
     
     public func calculateAndDispense(
         ircMessage: String,
         bufferingPolicy: AsyncStream<MultipartPacket>.Continuation.BufferingPolicy = .unbounded
     ) async -> AsyncStream<MultipartPacket> {
-        
+        var streamContinuation: AsyncStream<MultipartPacket>.Continuation?
         let stream = AsyncStream<MultipartPacket>(bufferingPolicy: bufferingPolicy) { continuation in
             streamContinuation = continuation
         }
@@ -94,13 +92,20 @@ public actor PacketBuilder {
     public init() {}
     
     public func processPacket(_ packet: MultipartPacket) -> String? {
-        
+        var packet = packet
         // Find the index of the group that contains the packet
         if let groupIndex = packets.firstIndex(where: { $0.first?.groupId == packet.groupId }) {
             // Append the packet to the existing group
+         
+            if packet.message.first == ":" {
+                packet.message = String(packet.message.dropFirst())
+            }
             packets[groupIndex].append(packet)
             return finishProcess(groupIndex: groupIndex)
         } else {
+            if packet.message.first == ":" {
+                packet.message = String(packet.message.dropFirst())
+            }
             // Create a new group with the packet
             packets.append([packet])
             return finishProcess(groupIndex: packets.count - 1)
@@ -122,7 +127,7 @@ public actor PacketBuilder {
 }
 
 
-public actor IRCMessageGenerator: Sendable {
+public struct IRCMessageGenerator: Sendable {
     
     private let packetBuilder = PacketBuilder()
     
@@ -131,7 +136,7 @@ public actor IRCMessageGenerator: Sendable {
     public func createMessages(
         origin: String,
         command: IRCCommand,
-        tags: [IRCTags]? = nil,
+        tags: [IRCTag]? = nil,
         logger: NeedleTailLogger
     ) async throws -> AsyncStream<IRCMessage> {
         
@@ -151,10 +156,10 @@ public actor IRCMessageGenerator: Sendable {
             var modifiedCommand = command
             
             switch command {
-            case .PRIVMSG(let recipients, _), .NOTICE(let recipients, _):
-                modifiedCommand = .PRIVMSG(recipients, currentPacket.message)
-            case .QUIT(_):
-                modifiedCommand = .QUIT(currentPacket.message)
+            case .privMsg(let recipients, _), .notice(let recipients, _):
+                modifiedCommand = .privMsg(recipients, currentPacket.message)
+            case .quit(_):
+                modifiedCommand = .quit(currentPacket.message)
             case .otherCommand(let otherCommand, _):
                 modifiedCommand = .otherCommand(otherCommand, [currentPacket.message])
             case .otherNumeric(let otherNumeric, _):
@@ -168,7 +173,7 @@ public actor IRCMessageGenerator: Sendable {
             
             do {
                 let packetMetadata = try BSONEncoder().encodeString(currentPacket)
-                mutableTags.append(IRCTags(key: "packetMetadata", value: packetMetadata))
+                mutableTags.append(IRCTag(key: "packetMetadata", value: packetMetadata))
             } catch {
                 logger.log(level: .error, message: "Failed to encode IRCTag for packet metadata: \(error)")
             }
@@ -186,7 +191,8 @@ public actor IRCMessageGenerator: Sendable {
         
         // Helper function to handle empty messages
         func handleEmptyMessage(for command: IRCCommand) async {
-            await createIRCMessage(for: command, currentPacket: createEmptyPacket())
+            let packet = await createEmptyPacket()
+            await createIRCMessage(for: command, currentPacket: packet)
         }
         
         // Helper function to process packets and create IRC messages
@@ -210,10 +216,10 @@ public actor IRCMessageGenerator: Sendable {
         }
         
         switch command {
-        case .PRIVMSG(_, let message), .NOTICE(_, let message):
+        case .privMsg(_, let message), .notice(_, let message):
             await handleMessage(for: command, message: message)
             
-        case .QUIT(let message):
+        case .quit(let message):
             if let message = message {
                 await handleMessage(for: command, message: message)
             } else {
@@ -231,11 +237,10 @@ public actor IRCMessageGenerator: Sendable {
         default:
             await handleEmptyMessage(for: command)
         }
-        //        print("SENDING MESSAGES FOR MESSAGE \(command.commandAsString)'n MESSAGE COUNT: ", ircMessages.count)
         return stream
     }
 
-    private func createEmptyPacket() -> MultipartPacket {
+    private func createEmptyPacket() async -> MultipartPacket {
         return MultipartPacket(
             groupId: UUID().uuidString,
             date: Date(),
@@ -249,34 +254,34 @@ public actor IRCMessageGenerator: Sendable {
         
         var packet: MultipartPacket?
         var ircMessage = ircMessage
-        
+
         for tag in ircMessage.tags ?? [] {
             if tag.key == "packetMetadata" {
                 packet = try BSONDecoder().decodeString(MultipartPacket.self, from: tag.value)
             }
         }
-        
+
         switch ircMessage.command {
-        case .PRIVMSG(let recipients, let message):
+        case .privMsg(let recipients, let message):
             packet?.message = message
             guard let packet = packet else { return nil }
             guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
             guard !processedMessage.isEmpty else { return nil }
-            ircMessage.command = .PRIVMSG(recipients, processedMessage)
-        case .NOTICE(let recipients, let message):
+            ircMessage.command = .privMsg(recipients, processedMessage)
+        case .notice(let recipients, let message):
             packet?.message = message
             guard let packet = packet else { return nil }
             guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
             guard !processedMessage.isEmpty else { return nil }
-            ircMessage.command = .NOTICE(recipients, processedMessage)
-        case .QUIT(let message):
+            ircMessage.command = .notice(recipients, processedMessage)
+        case .quit(let message):
             if let message = message {
                 packet?.message = message
             }
             guard let packet = packet else { return nil }
             guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
             guard !processedMessage.isEmpty else { return nil }
-            ircMessage.command = .QUIT(processedMessage)
+            ircMessage.command = .quit(processedMessage)
         case .otherCommand(let command, let messageArray):
             guard let message = messageArray.first else { return nil }
             packet?.message = message

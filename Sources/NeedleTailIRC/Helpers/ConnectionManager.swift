@@ -53,12 +53,6 @@ public class ConnectionManager: @unchecked Sendable {
         enableTLS: Bool = true
     ) async throws -> NIOAsyncChannel<ByteBuffer, ByteBuffer> {
         
-        if !connections.isEmpty {
-            if let currentConnection = connections.last {
-                try await shutdown(connection: currentConnection)   
-            }
-        }
-        
         func createBootstrap() throws -> NIOTSConnectionBootstrap {
             var bootstrap = NIOTSConnectionBootstrap(group: group)
             let tcpOptions = NWProtocolTCP.Options()
@@ -101,7 +95,6 @@ public class ConnectionManager: @unchecked Sendable {
             let connection = bootstrap
                 .connectTimeout(.minutes(1))
                 .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
-            
             do {
                 return try await connection.connect(host: host, port: port) { channel in
                     return createHandlers(channel)
@@ -205,6 +198,7 @@ public final class NetworkEventMonitor: ChannelInboundHandler, @unchecked Sendab
     public enum NetworkEvent: Sendable {
         case betterPathAvailable(NIOTSNetworkEvents.BetterPathAvailable)
         case betterPathUnavailable
+        case viabilityChanged(NIOTSNetworkEvents.ViabilityUpdate)
         case connectToNWEndpoint(NIOTSNetworkEvents.ConnectToNWEndpoint)
         case bindToNWEndpoint(NIOTSNetworkEvents.BindToNWEndpoint)
         case waitingForConnectivity(NIOTSNetworkEvents.WaitingForConnectivity)
@@ -226,6 +220,8 @@ public final class NetworkEventMonitor: ChannelInboundHandler, @unchecked Sendab
             eventType = .betterPathAvailable(event)
         case is NIOTSNetworkEvents.BetterPathUnavailable:
             eventType = .betterPathUnavailable
+        case let event as NIOTSNetworkEvents.ViabilityUpdate:
+            eventType = .viabilityChanged(event)
         case let event as NIOTSNetworkEvents.ConnectToNWEndpoint:
             eventType = .connectToNWEndpoint(event)
         case let event as NIOTSNetworkEvents.BindToNWEndpoint:

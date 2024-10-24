@@ -7,7 +7,6 @@
 
 import Testing
 import BSON
-import CypherMessaging
 import NeedleTailAsyncSequence
 @testable import NeedleTailIRC
 

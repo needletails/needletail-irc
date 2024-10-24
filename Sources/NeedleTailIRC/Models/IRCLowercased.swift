@@ -6,16 +6,14 @@
 //
 
 extension String {
-  // You wonder why, admit it! ;-)
-public  func ircLowercased() -> String {
-    return String(lowercased().map { c in
-      switch c {
-        case "[":  return "{"
-        case "]":  return "}"
-        case "\\": return "|"
-        case "~":  return "^"
-        default:   return c
-      }
-    })
-  }
+    /// A computed property that returns the string in lowercase,
+    /// with specific characters replaced to comply with IRC conventions.
+    public var ircLowercased: String {
+        // Lowercase the string and perform character substitutions
+        return self.lowercased()
+            .replacingOccurrences(of: "[", with: "{")
+            .replacingOccurrences(of: "]", with: "}")
+            .replacingOccurrences(of: "\\", with: "|")
+            .replacingOccurrences(of: "~", with: "^")
+    }
 }
