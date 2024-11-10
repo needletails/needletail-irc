@@ -71,16 +71,17 @@ public enum IRCCommand: Codable, Sendable {
         public var commandAsString: String { rawValue }
     }
     
-    // DCC Chat <filename> <port> <ip> <offset>
-    case dccChat(String, String, Int)
-    case dccSend(String, String, Int)
+    // DCC Chat <nick> <host> <ip>
+    case dccChat(NeedleTailNick, String, Int)
+    // DCC Chat <nick> <filename> <filesize> <host> <ip>
+    case dccSend(NeedleTailNick, String, Int, String, Int)
     // offset is bytes to resume
-    // DCC RESUME <filename> <port> <ip> <offset>
-    case dccResume(String, String, Int, Int)
+    // DCC RESUME <nick> <filename> <file_size> <ip_address> <port> <offset>
+    case dccResume(NeedleTailNick, String, Int, String, Int, Int)
     
-    case sdccChat(String, String, Int)
-    case sdccSend(String, String, Int)
-    case sdccResume(String, String, Int, Int)
+    case sdccChat(NeedleTailNick, String, Int)
+    case sdccSend(NeedleTailNick, String, Int, String, Int)
+    case sdccResume(NeedleTailNick, String, Int, String, Int, Int)
     
     // MARK: - Computed Properties
     
@@ -218,11 +219,11 @@ public enum IRCCommand: Codable, Sendable {
         case .kill(let nick, let comment):
             return [nick.stringValue, comment]
         case .dccChat(let nickname, let address, let port), .sdccChat(let nickname, let address, let port):
-            return [nickname, address, String(port)]
-        case .dccSend(let filename, let address, let port), .sdccSend(let filename, let address, let port):
-            return [filename, address, String(port)]
-        case .dccResume(let filename, let address, let port, let offset), .sdccResume(let filename, let address, let port, let offset):
-            return [filename, address, String(port), String(offset)]
+            return [nickname.stringValue, address, String(port)]
+        case .dccSend(let nickname, let filename, let filesize, let address, let port), .sdccSend(let nickname, let filename, let filesize, let address, let port):
+            return [nickname.stringValue, filename, String(filesize), address, String(port)]
+        case .dccResume(let nickname, let filename, let filesize, let address, let port, let offset), .sdccResume(let nickname, let filename, let filesize, let address, let port, let offset):
+            return [nickname.stringValue, filename, String(filesize), address, String(port), String(offset)]
         case .numeric(_, let args), .otherCommand(_, let args), .otherNumeric(_, let args):
             return args
         case .cap(let subCommand, let parameters):

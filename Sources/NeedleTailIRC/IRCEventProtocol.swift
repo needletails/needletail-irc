@@ -138,16 +138,16 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     /// Sends a file to a specified recipient using DCC.
     /// - Parameters:
     ///   - packet: The DCCPacket.
-    func doDCCSend(with packet: DCCPacket, isSecure: Bool) async throws
+    func doDCCSend(with packet: DCCPacket, sender: String) async throws
     
     /// Initiates a DCC chat with a specified recipient.
     /// - Parameter packet: The DCCPacket.
-    func doDCCChat(with packet: DCCPacket, isSecure: Bool) async throws
+    func doDCCChat(with packet: DCCPacket, sender: String) async throws
     
     /// Resumes a DCC file transfer to a specified recipient.
     /// - Parameters:
     ///   - packet: The DCCPacket
-    func doDCCResume(with packet: DCCPacket, isSecure: Bool) async throws
+    func doDCCResume(with packet: DCCPacket, sender: String) async throws
     
     /// Disconnects a DCC session with a specified recipient.
     func doDCCDisconnect() async throws
@@ -249,9 +249,9 @@ public extension IRCEventProtocol {
     func doIsOnline(nicks: [NeedleTailNick]) async throws {}
     func doList(channels: [NeedleTailChannel]?, target: String?) async throws {}
     func doQuit(message: String?) async throws {}
-    func doDCCSend(with packet: DCCPacket, isSecure: Bool) async throws {}
-    func doDCCChat(with packet: DCCPacket, isSecure: Bool) async throws {}
-    func doDCCResume(with packet: DCCPacket, isSecure: Bool) async throws {}
+    func doDCCSend(with packet: DCCPacket, sender: String) async throws {}
+    func doDCCChat(with packet: DCCPacket, sender: String) async throws {}
+    func doDCCResume(with packet: DCCPacket, sender: String) async throws {}
     func doDCCDisconnect() async throws {}
     func doPublishUserConfiguration(packet: [String]) async throws {}
     func doFindUserConfiguration(packet: [String]) async throws {}

@@ -14,7 +14,7 @@ struct NeedleTailIRCCommandParser: Sendable {
     enum CommandParserErrors: Error, Sendable {
         case invalidNick(String), invalidInfo, invalidArgument(String), invalidChannelName(String), missingRecipient, invalidMessageTarget(String), missingArgument, unexpectedArguments(String)
     }
-
+//TODO: PARSE REST OF THE COMMANDS
     /// Parses the IRC command and its arguments.
     /// - Parameters:
     ///   - command: The command string (e.g., "NICK").
@@ -57,6 +57,18 @@ struct NeedleTailIRCCommandParser: Sendable {
             return try parseIsOnCommand(arguments)
         case Constants.cap.rawValue:
             return try parseCapCommand(arguments)
+        case Constants.dccChat.rawValue:
+            return try parseDCCChatCommand(arguments, isSecure: false)
+        case Constants.sdccChat.rawValue:
+            return try parseDCCChatCommand(arguments, isSecure: true)
+        case Constants.dccSend.rawValue:
+            return try parseDCCSendCommand(arguments, isSecure: false)
+        case Constants.sdccSend.rawValue:
+            return try parseDCCSendCommand(arguments, isSecure: true)
+        case Constants.dccResume.rawValue:
+            return try parseDCCResumeCommand(arguments, isSecure: false)
+        case Constants.sdccResume.rawValue:
+            return try parseDCCResumeCommand(arguments, isSecure: true)
         default:
             return .otherCommand(uppercasedCommand, arguments)
         }
@@ -323,6 +335,47 @@ struct NeedleTailIRCCommandParser: Sendable {
         return .cap(subcmd, capIDs)
     }
 
+    private static func parseDCCChatCommand(_ arguments: [String], isSecure: Bool) throws -> IRCCommand {
+        guard arguments.count == 3 else {
+            throw CommandParserErrors.unexpectedArguments("Expected: 3 Found: \(arguments.count)")
+        }
+        
+        let nickname = arguments[0]
+        let ipaddress = arguments[1]
+        let port = arguments[2]
+        guard let constructedNick = nickname.constructedNick else { throw NeedleTailError.nilNickName }
+        return isSecure ? .sdccChat(constructedNick, ipaddress, Int(port) ?? 0) : .dccChat(constructedNick, ipaddress, Int(port) ?? 0)
+    }
+    
+    private static func parseDCCSendCommand(_ arguments: [String], isSecure: Bool) throws -> IRCCommand {
+        guard arguments.count == 5 else {
+            throw CommandParserErrors.unexpectedArguments("Expected: 5 Found: \(arguments.count)")
+        }
+        
+        let nickname = arguments[0]
+        let filename = arguments[1]
+        let filesize = arguments[2]
+        let isAddress = arguments[3]
+        let port = arguments[4]
+        guard let constructedNick = nickname.constructedNick else { throw NeedleTailError.nilNickName }
+        return isSecure ? .sdccSend(constructedNick, filename, Int(filesize) ?? 0, isAddress, Int(port) ?? 0) : .dccSend(constructedNick, filename, Int(filesize) ?? 0, isAddress, Int(port) ?? 0)
+    }
+    
+    private static func parseDCCResumeCommand(_ arguments: [String], isSecure: Bool) throws -> IRCCommand {
+        guard arguments.count == 6 else {
+            throw CommandParserErrors.unexpectedArguments("Expected: 6 Found: \(arguments.count)")
+        }
+        
+        let nickname = arguments[0]
+        let filename = arguments[1]
+        let filesize = arguments[2]
+        let isAddress = arguments[3]
+        let port = arguments[4]
+        let offset = arguments[5]
+        guard let constructedNick = nickname.constructedNick else { throw NeedleTailError.nilNickName }
+        return isSecure ? .dccResume(constructedNick, filename, Int(filesize) ?? 0, isAddress, Int(port) ?? 0, Int(offset) ?? 0) : .dccResume(constructedNick, filename, Int(filesize) ?? 0, isAddress, Int(port) ?? 0, Int(offset) ?? 0)
+    }
+    
     /// Extracts channels and optional metadata/message from the arguments.
     /// - Parameter arguments: The list of arguments containing channels and metadata.
     /// - Throws: `CommandParserErrors` if any argument is invalid.

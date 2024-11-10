@@ -182,15 +182,34 @@ public struct NeedleTailIRCParser: Sendable {
             default:
                 // For other commands, handle arguments based on the presence of a colon
                 if argumentString.contains(Constants.colon.rawValue) {
-                    let splitArgs = splitArguments(argumentString)
+                    var splitArgs = splitArguments(argumentString)
                     // Split the part before the colon into space-separated arguments
                     let initialArgs = splitArgs.0.components(separatedBy: Constants.space.rawValue)
                     arguments.append(contentsOf: initialArgs.filter { !$0.isEmpty }) // Filter out empty strings
                     // Append the part after the colon
+                    if splitArgs.1.first == Constants.colon.rawValue.first {
+                        splitArgs.1.removeFirst()
+                    }
                     arguments.append(splitArgs.1)
                 } else {
                     // If no colon is present, split the entire argument string by spaces
                     arguments.append(contentsOf: argumentString.components(separatedBy: Constants.space.rawValue).filter { !$0.isEmpty })
+                }
+                if let firstArgument = arguments.first, !firstArgument.isEmpty {
+                    // Check if the first character of the first argument matches the constant
+                    if firstArgument.first == Constants.colon.rawValue.first {
+                        var firstItem = arguments[0]
+                        
+                        // Check if the first item has at least one character
+                        if firstItem.count > 0 {
+                            // Remove the first character
+                            firstItem.remove(at: firstItem.startIndex)
+                            
+                            // Update the array with the modified string
+                            arguments[0] = firstItem
+                        }
+
+                    }
                 }
             }
         case .int(_):

@@ -110,11 +110,11 @@ public struct NeedleTailIRCEncoder: Sendable {
             components.append(create(arguments: comments.lazy.map { $0 }, buildWithColon: true, joinWithSpace: true))
         case .kill(let nick, let comment):
             components.append("\(nick.stringValue)\(Constants.space.rawValue)\(Constants.colon.rawValue)\(comment)")
-        case .dccChat(let unused, let address, let port), .sdccChat(let unused, let address, let port):
-            components.append("\(Constants.space.rawValue)\(unused)\(Constants.space.rawValue)\(address)\(Constants.space.rawValue)\(port)")
-        case .dccSend(let filename, let address, let port), .sdccSend(let filename, let address, let port):
-            components.append("\(filename)\(Constants.space.rawValue)\(address)\(Constants.space.rawValue)\(port)")
-        case .dccResume(let filename, let address, let port, let offset), .sdccResume(let filename, let address, let port, let offset):
+        case .dccChat(let nickname, let address, let port), .sdccChat(let nickname, let address, let port):
+            components.append("\(nickname.stringValue)\(Constants.space.rawValue)\(address)\(Constants.space.rawValue)\(port)")
+        case .dccSend(let nickname, let filename, let filesize, let address, let port), .sdccSend(let nickname, let filename, let filesize, let address, let port):
+            components.append("\(nickname.stringValue)\(Constants.space.rawValue)\(filename)\(Constants.space.rawValue)\(filesize)\(Constants.space.rawValue)\(address)\(Constants.space.rawValue)\(port)")
+        case .dccResume(let nickname, let filename, let filesize, let address, let port, let offset), .sdccResume(let nickname, let filename, let filesize, let address, let port, let offset):
             components.append("\(filename)\(Constants.space.rawValue)\(address)\(Constants.space.rawValue)\(port)\(Constants.space.rawValue)\(offset)")
         case .numeric(_, let args), .otherCommand(_, let args), .otherNumeric(_, let args):
             components.append(create(arguments: args, buildWithColon: true, buildWithComma: true))

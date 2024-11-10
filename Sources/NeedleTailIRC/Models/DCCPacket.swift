@@ -6,13 +6,17 @@
 //
 
 public struct DCCPacket: Sendable {
-    public let initialParameter: String
+    public let nickname: NeedleTailNick
+    public let filename: String?
+    public let filesize: Int?
     public let address: String
     public let port: Int
     public let offsetBytes: Int?
     
-    public init(initialParameter: String, address: String, port: Int, offsetBytes: Int? = nil) {
-        self.initialParameter = initialParameter
+    public init(nickname: NeedleTailNick, filename: String? = nil, filesize: Int? = nil, address: String, port: Int, offsetBytes: Int? = nil) {
+        self.nickname = nickname
+        self.filename = filename
+        self.filesize = filesize
         self.address = address
         self.port = port
         self.offsetBytes = offsetBytes

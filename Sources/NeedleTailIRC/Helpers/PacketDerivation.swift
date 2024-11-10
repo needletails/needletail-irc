@@ -21,20 +21,23 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
     public var date: Date
     public var partNumber: Int
     public let totalParts: Int
-    public var message: String
+    public var message: String?
+    public var data: Data?
     
     public init(
         groupId: String,
         date: Date = Date(),
         partNumber: Int = 0,
         totalParts: Int,
-        message: String = ""
+        message: String? = nil,
+        data: Data? = nil
     ) {
         self.groupId = groupId
         self.date = date
         self.partNumber = partNumber
         self.totalParts = totalParts
         self.message = message
+        self.data = data
     }
 }
 
@@ -42,44 +45,72 @@ public struct PacketDerivation: Sendable {
     
     public init() {}
     
+    //IRC Requirement is a count of 512
     public func calculateAndDispense(
-        ircMessage: String,
+        text: String? = nil,
+        data: Data? = nil,
+        chunkCount: Int = 512,
         bufferingPolicy: AsyncStream<MultipartPacket>.Continuation.BufferingPolicy = .unbounded
     ) async -> AsyncStream<MultipartPacket> {
         var streamContinuation: AsyncStream<MultipartPacket>.Continuation?
         let stream = AsyncStream<MultipartPacket>(bufferingPolicy: bufferingPolicy) { continuation in
             streamContinuation = continuation
         }
-        
         let groupId = UUID().uuidString
-        let chunks = ircMessage.chunks(ofCount: 512)
-        let totalParts = chunks.count
-        let packetDate = Date() // Create the date once
+        let packetDate = Date()
         
-        // Pre-allocate an array for packets
-        var packets = [MultipartPacket]()
-        packets.reserveCapacity(totalParts) // Reserve capacity to avoid reallocations
-        
-        for (index, chunk) in chunks.enumerated() {
-            let packet = MultipartPacket(
-                groupId: groupId,
-                date: packetDate,
-                partNumber: index + 1, // Use index for part number
-                totalParts: totalParts,
-                message: String(chunk)
-            )
-            packets.append(packet)
+        if let text {
+            let chunks = text.chunks(ofCount: chunkCount)
+            let totalParts = chunks.count
+            var packets = [MultipartPacket]()
+            packets.reserveCapacity(totalParts)
+            
+            for (index, chunk) in chunks.enumerated() {
+                    let packet = MultipartPacket(
+                        groupId: groupId,
+                        date: packetDate,
+                        partNumber: index + 1, // Use index for part number
+                        totalParts: totalParts,
+                        message: String(chunk)
+                    )
+                    packets.append(packet)
+            }
+
+            for packet in packets.sorted(by: { $0.partNumber < $1.partNumber }) {
+                streamContinuation?.yield(packet)
+            }
+            
+            // Finish the stream if all packets have been yielded
+            if totalParts > 0 {
+                streamContinuation?.finish()
+            }
+            
+        } else if let data {
+            let chunks = data.chunks(ofCount: chunkCount)
+            let totalParts = chunks.count
+            var packets = [MultipartPacket]()
+            packets.reserveCapacity(totalParts)
+            
+            for (index, chunk) in chunks.enumerated() {
+                let packet = MultipartPacket(
+                    groupId: groupId,
+                    date: packetDate,
+                    partNumber: index + 1, // Use index for part number
+                    totalParts: totalParts,
+                    data: chunk
+                )
+                packets.append(packet)
+            }
+            
+            for packet in packets.sorted(by: { $0.partNumber < $1.partNumber }) {
+                streamContinuation?.yield(packet)
+            }
+            
+            // Finish the stream if all packets have been yielded
+            if totalParts > 0 {
+                streamContinuation?.finish()
+            }
         }
-        // Yield all packets at once
-        for packet in packets.sorted(by: { $0.partNumber < $1.partNumber }) {
-            streamContinuation?.yield(packet)
-        }
-        
-        // Finish the stream if all packets have been yielded
-        if totalParts > 0 {
-            streamContinuation?.finish()
-        }
-        
         return stream
     }
 }
@@ -91,20 +122,30 @@ public actor PacketBuilder {
     
     public init() {}
     
-    public func processPacket(_ packet: MultipartPacket) -> String? {
+    public enum ProcessedResult: Sendable {
+        case message(String)
+        case data(Data)
+        case none
+    }
+    
+    public func processPacket(_ packet: MultipartPacket) -> ProcessedResult {
         var packet = packet
         // Find the index of the group that contains the packet
         if let groupIndex = packets.firstIndex(where: { $0.first?.groupId == packet.groupId }) {
             // Append the packet to the existing group
          
-            if packet.message.first == ":" {
-                packet.message = String(packet.message.dropFirst())
+            if var message = packet.message {
+                if message.first == ":" {
+                    message = String(message.dropFirst())
+                }
             }
             packets[groupIndex].append(packet)
             return finishProcess(groupIndex: groupIndex)
         } else {
-            if packet.message.first == ":" {
-                packet.message = String(packet.message.dropFirst())
+            if var message = packet.message {
+                if message.first == ":" {
+                    message = String(message.dropFirst())
+                }
             }
             // Create a new group with the packet
             packets.append([packet])
@@ -112,17 +153,33 @@ public actor PacketBuilder {
         }
     }
     
-    private func finishProcess(groupIndex: Int) -> String? {
+    private func finishProcess(groupIndex: Int) -> ProcessedResult {
         let groupPackets = packets[groupIndex]
-        
+
         // Check if we have all parts
         if groupPackets.count == groupPackets.first?.totalParts {
+            print("PART_NUMBER:", groupPackets.count)
+            print("TOTAL_PARTS:", groupPackets.first?.totalParts)
             let sortedParts = groupPackets.sorted { $0.partNumber < $1.partNumber }
-            packets.remove(at: groupIndex) // Remove the completed group
-            return sortedParts.compactMap { $0.message }.joined()
+            var builtData = Data()
+            var joinedMessage = ""
+
+            for packet in sortedParts {
+                if let message = packet.message {
+                    joinedMessage += message
+                } else if let data = packet.data {
+                    builtData.append(data)
+                }
+            }
+
+            // Return either the joined message or the built data
+            if !joinedMessage.isEmpty {
+                return .message(joinedMessage)
+            } else if !builtData.isEmpty {
+                return .data(builtData)
+            }
         }
-        
-        return nil
+        return .none
     }
 }
 
@@ -138,7 +195,7 @@ public struct IRCMessageGenerator: Sendable {
         command: IRCCommand,
         tags: [IRCTag]? = nil,
         logger: NeedleTailLogger
-    ) async throws -> AsyncStream<IRCMessage> {
+    ) async -> AsyncStream<IRCMessage> {
         
         var streamContinuation: AsyncStream<IRCMessage>.Continuation?
         let stream = AsyncStream<IRCMessage>(bufferingPolicy: .unbounded) { continuation in
@@ -154,16 +211,16 @@ public struct IRCMessageGenerator: Sendable {
         ) async {
             var mutableTags = tags ?? []
             var modifiedCommand = command
-            
+            guard let packetMessage = currentPacket.message else { return }
             switch command {
             case .privMsg(let recipients, _), .notice(let recipients, _):
-                modifiedCommand = .privMsg(recipients, currentPacket.message)
+                modifiedCommand = .privMsg(recipients, packetMessage)
             case .quit(_):
                 modifiedCommand = .quit(currentPacket.message)
             case .otherCommand(let otherCommand, _):
-                modifiedCommand = .otherCommand(otherCommand, [currentPacket.message])
+                modifiedCommand = .otherCommand(otherCommand, [packetMessage])
             case .otherNumeric(let otherNumeric, _):
-                modifiedCommand = .otherNumeric(otherNumeric, [currentPacket.message])
+                modifiedCommand = .otherNumeric(otherNumeric, [packetMessage])
             default:
                 break
             }
@@ -210,7 +267,7 @@ public struct IRCMessageGenerator: Sendable {
             if message.isEmpty {
                 await handleEmptyMessage(for: command)
             } else {
-                let packets = try await packetDeriver.calculateAndDispense(ircMessage: message)
+                let packets = try await packetDeriver.calculateAndDispense(text: message)
                 await processPackets(packets: packets, command: command)
             }
         }
@@ -265,39 +322,59 @@ public struct IRCMessageGenerator: Sendable {
         case .privMsg(let recipients, let message):
             packet?.message = message
             guard let packet = packet else { return nil }
-            guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
-            guard !processedMessage.isEmpty else { return nil }
-            ircMessage.command = .privMsg(recipients, processedMessage)
+            switch await packetBuilder.processPacket(packet) {
+            case .message(let processedMessage):
+                guard !processedMessage.isEmpty else { return nil }
+                ircMessage.command = .privMsg(recipients, processedMessage)
+            default:
+                return nil
+            }
         case .notice(let recipients, let message):
             packet?.message = message
             guard let packet = packet else { return nil }
-            guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
-            guard !processedMessage.isEmpty else { return nil }
-            ircMessage.command = .notice(recipients, processedMessage)
+            switch await packetBuilder.processPacket(packet) {
+            case .message(let processedMessage):
+                guard !processedMessage.isEmpty else { return nil }
+                ircMessage.command = .notice(recipients, processedMessage)
+            default:
+                return nil
+            }
         case .quit(let message):
             if let message = message {
                 packet?.message = message
             }
             guard let packet = packet else { return nil }
-            guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
-            guard !processedMessage.isEmpty else { return nil }
-            ircMessage.command = .quit(processedMessage)
+            switch await packetBuilder.processPacket(packet) {
+            case .message(let processedMessage):
+                guard !processedMessage.isEmpty else { return nil }
+                ircMessage.command = .quit(processedMessage)
+            default:
+                return nil
+            }
         case .otherCommand(let command, let messageArray):
             guard let message = messageArray.first else { return nil }
             packet?.message = message
             guard let packet = packet else { return nil }
-            guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
-            guard !processedMessage.isEmpty else { return nil }
-            let rebuiltArray = processedMessage.components(separatedBy: Constants.comma.rawValue)
-            ircMessage.command = .otherCommand(command, rebuiltArray)
+            switch await packetBuilder.processPacket(packet) {
+            case .message(let processedMessage):
+                guard !processedMessage.isEmpty else { return nil }
+                let rebuiltArray = processedMessage.components(separatedBy: Constants.comma.rawValue)
+                ircMessage.command = .otherCommand(command, rebuiltArray)
+            default:
+                return nil
+            }
         case .otherNumeric(let command, let messageArray):
             guard let message = messageArray.first else { return nil }
             packet?.message = message
             guard let packet = packet else { return nil }
-            guard let processedMessage = await packetBuilder.processPacket(packet) else { return nil }
-            guard !processedMessage.isEmpty else { return nil }
-            let rebuiltArray = processedMessage.components(separatedBy: Constants.comma.rawValue)
-            ircMessage.command = .otherNumeric(command, rebuiltArray)
+            switch await packetBuilder.processPacket(packet) {
+            case .message(let processedMessage):
+                guard !processedMessage.isEmpty else { return nil }
+                let rebuiltArray = processedMessage.components(separatedBy: Constants.comma.rawValue)
+                ircMessage.command = .otherNumeric(command, rebuiltArray)
+            default:
+                return nil
+            }
         default:
             return ircMessage
         }
