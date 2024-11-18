@@ -115,7 +115,7 @@ public struct NeedleTailIRCEncoder: Sendable {
         case .dccSend(let nickname, let filename, let filesize, let address, let port), .sdccSend(let nickname, let filename, let filesize, let address, let port):
             components.append("\(nickname.stringValue)\(Constants.space.rawValue)\(filename)\(Constants.space.rawValue)\(filesize)\(Constants.space.rawValue)\(address)\(Constants.space.rawValue)\(port)")
         case .dccResume(let nickname, let filename, let filesize, let address, let port, let offset), .sdccResume(let nickname, let filename, let filesize, let address, let port, let offset):
-            components.append("\(filename)\(Constants.space.rawValue)\(address)\(Constants.space.rawValue)\(port)\(Constants.space.rawValue)\(offset)")
+            components.append("\(nickname)\(Constants.space.rawValue)\(filename)\(Constants.space.rawValue)\(filesize)\(Constants.space.rawValue)\(address)\(Constants.space.rawValue)\(port)\(Constants.space.rawValue)\(offset)")
         case .numeric(_, let args), .otherCommand(_, let args), .otherNumeric(_, let args):
             components.append(create(arguments: args, buildWithColon: true, buildWithComma: true))
         case .cap(let subCommand, let capabilityIds):

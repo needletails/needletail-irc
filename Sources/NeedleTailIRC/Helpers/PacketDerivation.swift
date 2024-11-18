@@ -119,6 +119,8 @@ public struct PacketDerivation: Sendable {
 public actor PacketBuilder {
     
     private var packets = [[MultipartPacket]]()
+    private var builtData: Data?
+    private var joinedMessage: String?
     
     public init() {}
     
@@ -129,7 +131,6 @@ public actor PacketBuilder {
     }
     
     public func processPacket(_ packet: MultipartPacket) -> ProcessedResult {
-        var packet = packet
         // Find the index of the group that contains the packet
         if let groupIndex = packets.firstIndex(where: { $0.first?.groupId == packet.groupId }) {
             // Append the packet to the existing group
@@ -152,32 +153,49 @@ public actor PacketBuilder {
             return finishProcess(groupIndex: packets.count - 1)
         }
     }
-    
+
     private func finishProcess(groupIndex: Int) -> ProcessedResult {
         let groupPackets = packets[groupIndex]
-
         // Check if we have all parts
         if groupPackets.count == groupPackets.first?.totalParts {
-            print("PART_NUMBER:", groupPackets.count)
-            print("TOTAL_PARTS:", groupPackets.first?.totalParts)
             let sortedParts = groupPackets.sorted { $0.partNumber < $1.partNumber }
-            var builtData = Data()
-            var joinedMessage = ""
-
+            
+            
             for packet in sortedParts {
                 if let message = packet.message {
-                    joinedMessage += message
+                    if joinedMessage == nil {
+                        joinedMessage = ""
+                    }
+                    
+                    if let currentJoinedMessage = joinedMessage {
+                        joinedMessage = currentJoinedMessage + message
+                    }
+                    
                 } else if let data = packet.data {
-                    builtData.append(data)
+                    // Initialize builtData if it's nil
+                    if builtData == nil {
+                        builtData = Data()
+                    }
+                    
+                    // Safely append the data to builtData
+                    if var currentBuiltData = builtData {
+                        currentBuiltData.append(data)
+                        builtData = currentBuiltData // Update the instance variable
+                    }
                 }
             }
-
+            
+            defer {
+                joinedMessage = nil
+                builtData = nil
+            }
             // Return either the joined message or the built data
-            if !joinedMessage.isEmpty {
+            if let joinedMessage {
                 return .message(joinedMessage)
-            } else if !builtData.isEmpty {
+            } else if let builtData {
                 return .data(builtData)
             }
+            return .none
         }
         return .none
     }
@@ -232,7 +250,7 @@ public struct IRCMessageGenerator: Sendable {
                 let packetMetadata = try BSONEncoder().encodeString(currentPacket)
                 mutableTags.append(IRCTag(key: "packetMetadata", value: packetMetadata))
             } catch {
-                logger.log(level: .error, message: "Failed to encode IRCTag for packet metadata: \(error)")
+                await logger.log(level: .error, message: "Failed to encode IRCTag for packet metadata: \(error)")
             }
             
             let message = IRCMessage(
@@ -240,7 +258,7 @@ public struct IRCMessageGenerator: Sendable {
                 command: modifiedCommand,
                 tags: mutableTags)
             streamContinuation?.yield(message)
-            
+         
             if modifiedPacket.partNumber == modifiedPacket.totalParts {
                 streamContinuation?.finish()
             }
@@ -267,7 +285,7 @@ public struct IRCMessageGenerator: Sendable {
             if message.isEmpty {
                 await handleEmptyMessage(for: command)
             } else {
-                let packets = try await packetDeriver.calculateAndDispense(text: message)
+                let packets = await packetDeriver.calculateAndDispense(text: message)
                 await processPackets(packets: packets, command: command)
             }
         }
@@ -324,8 +342,11 @@ public struct IRCMessageGenerator: Sendable {
             guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
-                guard !processedMessage.isEmpty else { return nil }
-                ircMessage.command = .privMsg(recipients, processedMessage)
+                if !processedMessage.isEmpty {
+                    ircMessage.command = .privMsg(recipients, processedMessage)
+                } else {
+                    ircMessage.command = .privMsg(recipients, "")
+                }
             default:
                 return nil
             }
@@ -334,8 +355,11 @@ public struct IRCMessageGenerator: Sendable {
             guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
-                guard !processedMessage.isEmpty else { return nil }
-                ircMessage.command = .notice(recipients, processedMessage)
+                if !processedMessage.isEmpty {
+                    ircMessage.command = .notice(recipients, processedMessage)
+                } else {
+                    ircMessage.command = .notice(recipients, "")
+                }
             default:
                 return nil
             }
@@ -346,20 +370,27 @@ public struct IRCMessageGenerator: Sendable {
             guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
-                guard !processedMessage.isEmpty else { return nil }
-                ircMessage.command = .quit(processedMessage)
+                if !processedMessage.isEmpty {
+                    ircMessage.command = .quit(processedMessage)
+                } else {
+                    ircMessage.command = .quit("")
+                }
             default:
                 return nil
             }
         case .otherCommand(let command, let messageArray):
-            guard let message = messageArray.first else { return nil }
-            packet?.message = message
+            if let message = messageArray.first {
+                packet?.message = message
+            }
             guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
-                guard !processedMessage.isEmpty else { return nil }
-                let rebuiltArray = processedMessage.components(separatedBy: Constants.comma.rawValue)
-                ircMessage.command = .otherCommand(command, rebuiltArray)
+                if !processedMessage.isEmpty {
+                    let rebuiltArray = processedMessage.components(separatedBy: Constants.comma.rawValue)
+                    ircMessage.command = .otherCommand(command, rebuiltArray)
+                } else {
+                    ircMessage.command = .otherCommand(command, [""])
+                }
             default:
                 return nil
             }
@@ -369,9 +400,12 @@ public struct IRCMessageGenerator: Sendable {
             guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
-                guard !processedMessage.isEmpty else { return nil }
-                let rebuiltArray = processedMessage.components(separatedBy: Constants.comma.rawValue)
-                ircMessage.command = .otherNumeric(command, rebuiltArray)
+                if !processedMessage.isEmpty {
+                    let rebuiltArray = processedMessage.components(separatedBy: Constants.comma.rawValue)
+                    ircMessage.command = .otherNumeric(command, rebuiltArray)
+                } else {
+                    ircMessage.command = .otherNumeric(command, [""])
+                }
             default:
                 return nil
             }
@@ -381,3 +415,5 @@ public struct IRCMessageGenerator: Sendable {
         return ircMessage
     }
 }
+
+

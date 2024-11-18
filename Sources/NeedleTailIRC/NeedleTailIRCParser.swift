@@ -37,7 +37,7 @@ public struct NeedleTailIRCParser: Sendable {
         var taglessMessage = ""
         
         // Log the start of the parsing process
-        self.logger.log(level: .trace, message: "Parsing Message....")
+//        await self.logger.log(level: .trace, message: "Parsing Message....")
         
         // 1. Separate Tags
         if message.contains(Constants.atString.rawValue) {
@@ -129,7 +129,7 @@ public struct NeedleTailIRCParser: Sendable {
             tagArray.append(IRCTag(key: String(key), value: String(value)))
         }
         
-        self.logger.log(level: .trace, message: "Parsing Tags")
+//        self.logger.log(level: .trace, message: "Parsing Tags")
         return tagArray
     }
     

@@ -58,9 +58,6 @@ public struct IRCUserIdentifier: Codable, Hashable, CustomStringConvertible, Sen
             guard let nick = NeedleTailNick(name: s, deviceId: deviceId) else { return nil }
             self.nick = nick
         }
-        
-        // Ensure nickname creation was successful
-        guard self.nick != nil else { return nil }
     }
     
     /// Hashable conformance to compute a hash value.

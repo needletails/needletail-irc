@@ -53,7 +53,7 @@ extension NeedleTailWriterDelegate {
                     do {
                         try await writer.write(ByteBuffer(string: messageString))
                     } catch {
-                        logger.log(level: .error, message: "\(error)")
+                       await logger.log(level: .error, message: "\(error)")
                         return
                     }
                 }
@@ -76,7 +76,7 @@ extension NeedleTailClientDelegate {
                                  tags: [IRCTag]? = nil
     ) async throws {
         let messageGenerator = IRCMessageGenerator()
-        let messageStream = try await messageGenerator.createMessages(
+        let messageStream = await messageGenerator.createMessages(
             origin: origin,
             command: command,
             tags: tags,
@@ -105,34 +105,30 @@ extension NeedleTailServerMessageDelegate {
                                     writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                                     message: IRCMessage
     ) async throws {
-        do {
-            if #available(iOS 17.0, macOS 14, *) {
-                try await withThrowingDiscardingTaskGroup { group in
-                    group.addTask {
-                        let messageString = await NeedleTailIRCEncoder.encode(value: message)
-                        do {
-                            try await writer.write(ByteBuffer(string: messageString))
-                        } catch {
-                            logger.log(level: .error, message: "\(error)")
-                            return
-                        }
-                    }
-                }
-            } else {
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    group.addTask {
-                        let messageString = await NeedleTailIRCEncoder.encode(value: message)
-                        do {
-                            try await writer.write(ByteBuffer(string: messageString))
-                        } catch {
-                            logger.log(level: .error, message: "\(error)")
-                            return
-                        }
+        if #available(iOS 17.0, macOS 14, *) {
+            await withDiscardingTaskGroup { group in
+                group.addTask {
+                    let messageString = await NeedleTailIRCEncoder.encode(value: message)
+                    do {
+                        try await writer.write(ByteBuffer(string: messageString))
+                    } catch {
+                        await logger.log(level: .error, message: "\(error)")
+                        return
                     }
                 }
             }
-        } catch {
-            throw error
+        } else {
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    let messageString = await NeedleTailIRCEncoder.encode(value: message)
+                    do {
+                        try await writer.write(ByteBuffer(string: messageString))
+                    } catch {
+                        await logger.log(level: .error, message: "\(error)")
+                        return
+                    }
+                }
+            }
         }
     }
     

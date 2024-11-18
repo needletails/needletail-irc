@@ -13,7 +13,7 @@ import Foundation
 public struct IRCChannelBlob<C: Codable & Sendable>: Codable, Sendable {
     
     /// A unique identifier for the channel blob, generated as a UUID string in uppercase.
-    public let id: String = UUID().uuidString.uppercased()
+    public var id: String = UUID().uuidString.uppercased()
     
     /// Metadata associated with the channel, represented by a `NeedleTailChannelPacket`.
     public var metadata: NeedleTailChannelPacket

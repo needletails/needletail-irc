@@ -197,9 +197,15 @@ struct NeedleTailIRCCommandParser: Sendable {
                 } else if c == Character(Constants.minus.rawValue) {
                     isAdd = false
                 } else if let mode = IRCUserModeFlags(String(c)) {
-                    isAdd ? add.insert(mode) : remove.insert(mode)
+                    if isAdd {
+                        add.insert(mode)
+                    } else {
+                        remove.insert(mode)
+                    }
                 } else {
-                    NeedleTailLogger(.init(label: "[IRCCommand]")).log(level: .warning, message: "IRCParser: unexpected IRC mode: \(c) \(arg)")
+                    Task {
+                        await NeedleTailLogger(.init(label: "[IRCCommand]")).log(level: .warning, message: "IRCParser: unexpected IRC mode: \(c) \(arg)")
+                    }
                 }
             }
         }
