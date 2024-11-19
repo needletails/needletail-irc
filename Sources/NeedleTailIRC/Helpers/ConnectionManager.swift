@@ -18,22 +18,19 @@ public protocol ConnectionDelegate: Sendable {
 #endif
 }
 
-
 public class ConnectionManager: @unchecked Sendable {
     
     public var delegate: ConnectionDelegate?
-    fileprivate var asyncChannel: NIOAsyncChannel<ByteBuffer, ByteBuffer>?
+    private var asyncChannel: NIOAsyncChannel<ByteBuffer, ByteBuffer>?
     private let lock = NIOLock()
     private let group: EventLoopGroup
-    
+    private var connections = [NTConnection]()
     
     public struct NTConnection: Sendable {
         let id = UUID()
         var group: EventLoopGroup
         var childChannel: NIOAsyncChannel<ByteBuffer, ByteBuffer>
     }
-    
-    internal var connections = [NTConnection]()
     
     public init() {
 #if canImport(Network)
@@ -124,7 +121,7 @@ public class ConnectionManager: @unchecked Sendable {
                     ),
                 ])
                 let childChannel = try NIOAsyncChannel<ByteBuffer, ByteBuffer>(wrappingChannelSynchronously: channel)
-                setChannel(asyncChannel)
+                setChannel(asyncChannel: childChannel)
                 if let errorStream = monitor.errorStream {
                     delegate?.handleError(errorStream)
                 }
@@ -137,12 +134,11 @@ public class ConnectionManager: @unchecked Sendable {
         }
     }
     
-    @Sendable private func setChannel(_ asyncChannel: NIOAsyncChannel<ByteBuffer, ByteBuffer>?) {
+    @Sendable private func setChannel(asyncChannel: NIOAsyncChannel<ByteBuffer, ByteBuffer>?) {
         lock.lock()
         defer { lock.unlock() }
         self.asyncChannel = asyncChannel
     }
-    
     
     public func shutdown(connection: NTConnection? = nil) async {
         // Use the provided connection or the first one in the list if none is provided
@@ -153,10 +149,10 @@ public class ConnectionManager: @unchecked Sendable {
         do {
             // Shut down the connection gracefully and remove it from the list
             try await connection.group.shutdownGracefully()
+            connections.removeAll(where: { $0.id == connection.id })
         } catch {
-            print("Error shutting down connection group Error:", error)
+            print("Error shutting down connection group: \(error)")
         }
-        connections.removeAll(where: { $0.id == connection.id })
     }
 }
 
@@ -164,18 +160,20 @@ public final class NetworkEventMonitor: ChannelInboundHandler, @unchecked Sendab
     public typealias InboundIn = ByteBuffer
     
     private let didSetError = ManagedAtomic(false)
+#if canImport(Network)
     var errorStream: AsyncStream<NWError>?
     private var errorContinuation: AsyncStream<NWError>.Continuation?
     var eventStream: AsyncStream<NetworkEvent>?
     private var eventContinuation: AsyncStream<NetworkEvent>.Continuation?
+#endif
     
-    init () {
+    init() {
 #if canImport(Network)
-        errorStream = AsyncStream<NWError>(bufferingPolicy: .unbounded) { continuation in
+        errorStream = AsyncStream<NWError>(bufferingPolicy: .bufferingNewest(1)) { continuation in
             self.errorContinuation = continuation
         }
         
-        eventStream = AsyncStream<NetworkEvent>(bufferingPolicy: .unbounded) { continuation in
+        eventStream = AsyncStream<NetworkEvent>(bufferingPolicy: .bufferingNewest(1)) { continuation in
             self.eventContinuation = continuation
         }
 #endif
@@ -236,7 +234,7 @@ public final class NetworkEventMonitor: ChannelInboundHandler, @unchecked Sendab
         if let eventType = eventType {
             eventContinuation?.yield(eventType)
         }
-        
 #endif
     }
 }
+
