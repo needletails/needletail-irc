@@ -109,7 +109,7 @@ public class ConnectionManager: @unchecked Sendable {
         return try await socketChannelCreator()
 #endif
         
-#if canImport(Network)
+        
         @Sendable func createHandlers(_ channel: Channel) -> EventLoopFuture<NIOAsyncChannel<ByteBuffer, ByteBuffer>> {
             let monitor = NetworkEventMonitor()
             return channel.eventLoop.makeCompletedFuture {
@@ -123,17 +123,18 @@ public class ConnectionManager: @unchecked Sendable {
                 ])
                 let childChannel = try NIOAsyncChannel<ByteBuffer, ByteBuffer>(wrappingChannelSynchronously: channel)
                 setChannel(asyncChannel: childChannel)
+#if canImport(Network)
                 if let errorStream = monitor.errorStream {
                     delegate?.handleError(errorStream)
                 }
                 if let eventStream = monitor.eventStream {
                     delegate?.handleNetworkEvents(eventStream)
                 }
+#endif
                 connections.append(.init(group: self.group, childChannel: childChannel))
                 return childChannel
             }
         }
-#endif
     }
     
     @Sendable private func setChannel(asyncChannel: NIOAsyncChannel<ByteBuffer, ByteBuffer>?) {
