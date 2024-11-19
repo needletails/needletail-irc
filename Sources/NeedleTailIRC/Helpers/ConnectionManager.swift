@@ -49,7 +49,7 @@ public class ConnectionManager: @unchecked Sendable {
         port: Int,
         enableTLS: Bool = true
     ) async throws -> NIOAsyncChannel<ByteBuffer, ByteBuffer> {
-        
+#if canImport(Network)
         func createBootstrap() throws -> NIOTSConnectionBootstrap {
             var bootstrap = NIOTSConnectionBootstrap(group: group)
             let tcpOptions = NWProtocolTCP.Options()
@@ -62,7 +62,7 @@ public class ConnectionManager: @unchecked Sendable {
             
             return bootstrap
         }
-        
+#endif
         func socketChannelCreator() async throws -> NIOAsyncChannel<ByteBuffer, ByteBuffer> {
             let sslContext = try NIOSSLContext(configuration: TLSConfiguration.makeClientConfiguration())
             let client = ClientBootstrap(group: group)
@@ -109,6 +109,7 @@ public class ConnectionManager: @unchecked Sendable {
         return try await socketChannelCreator()
 #endif
         
+#if canImport(Network)
         @Sendable func createHandlers(_ channel: Channel) -> EventLoopFuture<NIOAsyncChannel<ByteBuffer, ByteBuffer>> {
             let monitor = NetworkEventMonitor()
             return channel.eventLoop.makeCompletedFuture {
@@ -132,6 +133,7 @@ public class ConnectionManager: @unchecked Sendable {
                 return childChannel
             }
         }
+#endif
     }
     
     @Sendable private func setChannel(asyncChannel: NIOAsyncChannel<ByteBuffer, ByteBuffer>?) {
