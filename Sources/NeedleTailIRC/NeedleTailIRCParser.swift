@@ -8,7 +8,6 @@
 import Foundation
 import NIOConcurrencyHelpers
 import NeedleTailLogger
-import NeedleTailStructures
 
 public enum MessageParsingErrors: Error, Sendable {
     case invalidArguments(String), invalidCAPCommand(String), invalidTag

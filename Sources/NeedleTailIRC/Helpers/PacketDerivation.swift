@@ -13,8 +13,6 @@ import DequeModule
 import NeedleTailAsyncSequence
 import AsyncAlgorithms
 import NeedleTailLogger
-import NeedleTailStructures
-
 
 public struct MultipartPacket: Sendable, Codable, Hashable {
     public let groupId: String

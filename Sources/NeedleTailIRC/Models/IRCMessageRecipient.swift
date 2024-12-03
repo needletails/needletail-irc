@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import NeedleTailStructures
 
 /// Represents a recipient of an IRC message payload, which can be a channel, a nickname, or a wildcard for all recipients.
 public enum IRCMessageRecipient: Codable, Hashable, Sendable {

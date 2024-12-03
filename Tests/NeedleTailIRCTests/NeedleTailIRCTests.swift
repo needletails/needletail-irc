@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 import BSON
-import NeedleTailStructures
+
 @testable import NeedleTailIRC
 
 final class NeedleTailIRCTests {

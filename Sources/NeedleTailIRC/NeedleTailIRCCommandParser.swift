@@ -7,7 +7,6 @@
 
 import Foundation
 import NeedleTailLogger
-import NeedleTailStructures
 
 struct NeedleTailIRCCommandParser: Sendable {
     
@@ -69,6 +68,12 @@ struct NeedleTailIRCCommandParser: Sendable {
             return try parseDCCResumeCommand(arguments, isSecure: false)
         case Constants.sdccResume.rawValue:
             return try parseDCCResumeCommand(arguments, isSecure: true)
+        case Constants.sQuit.rawValue:
+            return try parseSQuitCommand(arguments)
+        case Constants.server.rawValue:
+            return try parseServerCommand(arguments)
+        case Constants.links.rawValue:
+            return try parseLinksCommand(arguments)
         default:
             return .otherCommand(uppercasedCommand, arguments)
         }
@@ -380,6 +385,34 @@ struct NeedleTailIRCCommandParser: Sendable {
         let offset = arguments[5]
         guard let constructedNick = nickname.constructedNick else { throw NeedleTailError.nilNickName }
         return isSecure ? .dccResume(constructedNick, filename, Int(filesize) ?? 0, isAddress, Int(port) ?? 0, Int(offset) ?? 0) : .dccResume(constructedNick, filename, Int(filesize) ?? 0, isAddress, Int(port) ?? 0, Int(offset) ?? 0)
+    }
+    
+    private static func parseSQuitCommand(_ arguments: [String]) throws -> IRCCommand {
+        guard arguments.count == 2 else {
+            throw CommandParserErrors.unexpectedArguments("Expected: 1 Found: \(arguments.count)")
+        }
+        let serverName = arguments[0]
+        let reason = arguments[1]
+        return .sQuit(serverName, reason)
+    }
+    
+    private static func parseServerCommand(_ arguments: [String]) throws -> IRCCommand {
+        guard arguments.count == 4 else {
+            throw CommandParserErrors.unexpectedArguments("Expected: 1 Found: \(arguments.count)")
+        }
+        let serverName = arguments[0]
+        let version = arguments[1]
+        let hopCount = arguments[0]
+        let info = arguments[1]
+        return .server(serverName, version, Int(hopCount) ?? 0, info)
+    }
+    
+    private static func parseLinksCommand(_ arguments: [String]) throws -> IRCCommand {
+        guard arguments.count == 1 else {
+            throw CommandParserErrors.unexpectedArguments("Expected: 1 Found: \(arguments.count)")
+        }
+        let mask = arguments[0]
+        return .links(mask)
     }
     
     /// Extracts channels and optional metadata/message from the arguments.

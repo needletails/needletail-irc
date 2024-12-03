@@ -5,7 +5,6 @@
 //  Created by Cole M on 9/28/22.
 //
 import Foundation
-import NeedleTailStructures
 
 /// Represents an identifier for a user in the IRC (Internet Relay Chat) protocol.
 /// It includes the user's nickname, optional username, and host information.

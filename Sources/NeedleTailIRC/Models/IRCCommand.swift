@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import NeedleTailStructures
 
 /// Represents a command in the IRC (Internet Relay Chat) protocol.
 public enum IRCCommand: Codable, Sendable {
@@ -55,6 +54,12 @@ public enum IRCCommand: Codable, Sendable {
     case kick([NeedleTailChannel], [NeedleTailNick], [String])
     /// KILL disconnects a user from the IRC network.
     case kill(NeedleTailNick, String)
+    /// This message is used to remove a server from the network. It informs other servers that a specific server is being shut down or disconnected.
+    case sQuit(String, String) // SQUIT command with server name and reason
+    /// This message is used when a server connects to another server. It includes information about the server, such as its name, version, and the number of hops from the originating server.
+    case server(String, String, Int, String) // SERVER command with name, version, hopcount, and info
+    /// A server can request a list of connected servers from another server using the LINKS command.
+    case links(String?) // LINKS command with an optional mask
     /// Numeric commands are standardized codes for communication responses in IRC.
     case numeric(IRCCommandCode, [String])
     /// Other commands that may be used depending on the server.
@@ -108,6 +113,9 @@ public enum IRCCommand: Codable, Sendable {
         case .channelModeGet, .channelModeGetBanMask: return Constants.mode.rawValue
         case .kick: return Constants.kick.rawValue
         case .kill: return Constants.kill.rawValue
+        case .sQuit: return Constants.sQuit.rawValue
+        case .server: return Constants.server.rawValue
+        case .links: return Constants.links.rawValue
          /// Avoid using non-secure
         case .dccChat: return Constants.dccChat.rawValue
         case .dccSend: return Constants.dccSend.rawValue
@@ -218,6 +226,16 @@ public enum IRCCommand: Codable, Sendable {
             return [channelList, userList, comments.joined(separator: Constants.comma.rawValue)]
         case .kill(let nick, let comment):
             return [nick.stringValue, comment]
+        case .sQuit(let serverName, let reason):
+            return [serverName, reason]
+        case .server(let serverName, let version, let hopCount, let info):
+            return [serverName, version, String(hopCount), info]
+        case .links(let mask):
+            if let mask = mask {
+                return [mask]
+            } else {
+                return []
+            }
         case .dccChat(let nickname, let address, let port), .sdccChat(let nickname, let address, let port):
             return [nickname.stringValue, address, String(port)]
         case .dccSend(let nickname, let filename, let filesize, let address, let port), .sdccSend(let nickname, let filename, let filesize, let address, let port):

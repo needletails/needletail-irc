@@ -23,7 +23,6 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-algorithms.git", .upToNextMajor(from: "1.2.0")),
         .package(url: "https://github.com/needletails/needletail-logger.git", .upToNextMajor(from: "2.0.1")),
         .package(url: "https://github.com/needletails/needletail-algorithms.git", .upToNextMajor(from: "1.0.11")),
-        .package(url: "git@github.com:needletails/needletail-structures.git", .upToNextMajor(from: "1.0.6")),
         .package(url: "https://github.com/vapor/jwt.git", .upToNextMajor(from: "5.0.0")),
         .package(url: "https://github.com/apple/swift-testing.git", .upToNextMajor(from: "0.99.0"))
     ],
@@ -43,7 +42,6 @@ let package = Package(
                 .product(name: "Algorithms", package: "swift-algorithms"),
                 .product(name: "NeedleTailLogger", package: "needletail-logger"),
                 .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
-                .product(name: "NeedleTailStructures", package: "needletail-structures"),
                 .product(name: "JWT", package: "jwt")
             ]),
         .testTarget(

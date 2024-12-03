@@ -9,7 +9,6 @@ import NIOCore
 import Logging
 import NeedleTailLogger
 import NeedleTailAsyncSequence
-import NeedleTailStructures
 import AsyncAlgorithms
 import BSON
 

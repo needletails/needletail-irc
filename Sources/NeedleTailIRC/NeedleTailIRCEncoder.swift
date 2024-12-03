@@ -8,7 +8,6 @@
 import NIOCore
 import DequeModule
 import NeedleTailAsyncSequence
-import NeedleTailStructures
 
 /// A struct that provides encoding functionality for IRC messages.
 public struct NeedleTailIRCEncoder: Sendable {
@@ -124,6 +123,14 @@ public struct NeedleTailIRCEncoder: Sendable {
             components.append(create(arguments: [server, server2].compactMap { $0 }, buildWithComma: true))
         case .join0:
             components.append("\(Constants.star.rawValue)")
+        case .sQuit(let serverName, let reason):
+            components.append("\(serverName)\(Constants.space.rawValue)\(Constants.colon.rawValue)\(reason)")
+        case .server(let serverName, let version, let hopCount, let info):
+            components.append("\(serverName)\(Constants.space.rawValue)\(version)\(Constants.space.rawValue)\(String(hopCount))\(Constants.space.rawValue)\(Constants.colon.rawValue)\(info)")
+        case .links(let mask):
+            if let mask = mask {
+                components.append("\(mask)")
+            }
         }
         
         // Join all components and trim any trailing whitespace

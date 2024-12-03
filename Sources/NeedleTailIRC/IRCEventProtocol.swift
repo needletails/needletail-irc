@@ -5,8 +5,6 @@
 //  Created by Cole M on 9/28/22.
 //
 
-import NeedleTailStructures
-
 /// A protocol that defines the events and commands for handling IRC operations.
 public protocol IRCEventProtocol: AnyObject, Sendable {
     
@@ -168,7 +166,7 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     
     /// Sets a password for the user.
     /// - Parameter password: An array containing the password.
-    func doPassword(password: [String]) async throws
+    func doPassword(password: [String], associatedTags: [IRCTag]) async throws
     
     /// Registers a new device.
     /// - Parameter info: An array containing device information.
@@ -256,7 +254,7 @@ public extension IRCEventProtocol {
     func doPublishUserConfiguration(packet: [String]) async throws {}
     func doFindUserConfiguration(packet: [String]) async throws {}
     func doRegisterAPN(token: [String]) async throws {}
-    func doPassword(password: [String]) async throws {}
+    func doPassword(password: [String], associatedTags: [IRCTag]) async throws {}
     func doNewDevice(info: [String]) async throws {}
     func doPublishBlob(packet: [String]) async throws {}
     func doReadBlob(packet: [String]) async throws {}
