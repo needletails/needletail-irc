@@ -11,7 +11,7 @@ final class NeedleTailIRCTests {
     }
     @Test func testReadKeyBundle() async throws  {
         let base64 = try! BSONEncoder().encodeString(Base64Struct(string:TestableConstants.longMessage.rawValue))
-        let messages = try await generator.createMessages(
+        let messages = await generator.createMessages(
             origin: TestableConstants.origin.rawValue,
             command: .otherCommand(Constants.findUserConfig.rawValue,
                                    [base64]),
@@ -19,6 +19,25 @@ final class NeedleTailIRCTests {
         
         for await message in messages {
             if let rebuiltMessage = try await generator.messageReassembler(ircMessage: message) {
+                #expect(message == rebuiltMessage)
+            }
+        }
+        
+    }
+    
+    @Test func testServerMessage() async throws  {
+        let base64 = try! BSONEncoder().encodeString(Base64Struct(string:TestableConstants.longMessage.rawValue))
+        
+        let messages = await generator.createMessages(
+            origin: TestableConstants.origin.rawValue,
+            command: .server("Server1", "1.0.0", 1, "Server Message"),
+            tags: [],
+            logger: .init())
+        
+        for await message in messages {
+            print(message)
+            if let rebuiltMessage = try await generator.messageReassembler(ircMessage: message) {
+                print(rebuiltMessage)
                 #expect(message == rebuiltMessage)
             }
         }
@@ -556,6 +575,12 @@ func createIRCMessages() async -> [IRCMessage] {
             target: TestableConstants.target.rawValue,
             command: .otherNumeric(999, ["uknown", "message"]),
             tags: [])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            command: .server("serverName", "1.0.0", 1, "Welcome"),
+            tags: [IRCTag(key: "someTag", value: "someValue")])
     )
     return messages
 }

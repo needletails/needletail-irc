@@ -132,7 +132,7 @@ public struct NeedleTailIRCEncoder: Sendable {
                 components.append("\(mask)")
             }
         }
-        
+        print(components)
         // Join all components and trim any trailing whitespace
         return components.joined().trimmingCharacters(in: .whitespaces)
     }

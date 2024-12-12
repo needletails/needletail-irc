@@ -402,8 +402,8 @@ struct NeedleTailIRCCommandParser: Sendable {
         }
         let serverName = arguments[0]
         let version = arguments[1]
-        let hopCount = arguments[0]
-        let info = arguments[1]
+        let hopCount = arguments[2]
+        let info = arguments[3]
         return .server(serverName, version, Int(hopCount) ?? 0, info)
     }
     

@@ -1,5 +1,5 @@
 {
-  "originHash" : "a2b1f3efca3932b5939e7e45c52e527bd4e141501c86872d2b523c4cfaebd232",
+  "originHash" : "df214954e942be8a973509b955ff1e3b0b0fbb12f5f12d2bb704338a6b4ccd8b",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "e048c8ee94967e8d8a1c2ec0e1156d6f7fa34d31",
         "version" : "1.20.0"
+      }
+    },
+    {
+      "identity" : "bson",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/orlandos-nl/BSON.git",
+      "state" : {
+        "revision" : "d918a5c24d875deeb6bcc9082a68bd097ac24d92",
+        "version" : "8.1.2"
       }
     },
     {
