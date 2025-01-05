@@ -25,8 +25,6 @@ public protocol NeedleTailClientDelegate: AnyObject, Sendable, IRCEventProtocol,
 }
 
 public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
-    
-    
     func sendAndFlushMessage(_
                              consumer: NeedleTailAsyncConsumer<ByteBuffer>,
                              logger: NeedleTailLogger,
@@ -45,21 +43,17 @@ extension NeedleTailWriterDelegate {
                                     writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                                     message: IRCMessage
     ) async throws {
-        do {
             try await withThrowingDiscardingTaskGroup { group in
                 group.addTask {
                     let messageString = await NeedleTailIRCEncoder.encode(value: message)
                     do {
                         try await writer.write(ByteBuffer(string: messageString))
                     } catch {
-                       await logger.log(level: .error, message: "\(error)")
-                        return
+                       await logger.log(level: .error, message: "Send And Flush Error: \(error)")
+                        throw error
                     }
                 }
             }
-        } catch {
-            throw error
-        }
     }
 }
 
@@ -81,7 +75,7 @@ extension NeedleTailClientDelegate {
             tags: tags,
             logger: logger)
         
-        for await message in messageStream {
+        for try await message in messageStream {
             try await self.sendAndFlushMessage(
                 consumer,
                 logger: logger,
@@ -104,30 +98,20 @@ extension NeedleTailServerMessageDelegate {
                                     writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                                     message: IRCMessage
     ) async throws {
-        if #available(iOS 17.0, macOS 14, *) {
-            await withDiscardingTaskGroup { group in
+        do {
+            try await withThrowingDiscardingTaskGroup { group in
                 group.addTask {
                     let messageString = await NeedleTailIRCEncoder.encode(value: message)
                     do {
                         try await writer.write(ByteBuffer(string: messageString))
                     } catch {
-                        await logger.log(level: .error, message: "\(error)")
-                        return
+                       await logger.log(level: .error, message: "Send And Flush Error: \(error)")
+                        throw error
                     }
                 }
             }
-        } else {
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    let messageString = await NeedleTailIRCEncoder.encode(value: message)
-                    do {
-                        try await writer.write(ByteBuffer(string: messageString))
-                    } catch {
-                        await logger.log(level: .error, message: "\(error)")
-                        return
-                    }
-                }
-            }
+        } catch {
+            throw error
         }
     }
     

@@ -21,7 +21,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-extras.git", .upToNextMajor(from: "1.20.0")),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", .upToNextMajor(from: "2.25.0")),
         .package(url: "https://github.com/apple/swift-algorithms.git", .upToNextMajor(from: "1.2.0")),
-        .package(url: "https://github.com/needletails/needletail-logger.git", .upToNextMajor(from: "2.0.1")),
+        .package(url: "https://github.com/needletails/needletail-logger.git", .upToNextMajor(from: "2.0.5")),
         .package(url: "https://github.com/needletails/needletail-algorithms.git", .upToNextMajor(from: "1.0.11")),
         .package(url: "https://github.com/vapor/jwt.git", .upToNextMajor(from: "5.0.0")),
         .package(url: "https://github.com/apple/swift-testing.git", .upToNextMajor(from: "0.99.0")),

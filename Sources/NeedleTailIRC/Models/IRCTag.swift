@@ -57,3 +57,8 @@ public struct IRCTag: Hashable, Codable, Sendable {
         return string.count < 4096
     }
 }
+
+
+enum TagKey: String {
+    case privateMessage, dccChat, passTag, reachableServers, externalNickOnline, externalNickOffline, membersOnline, cacheSession
+}

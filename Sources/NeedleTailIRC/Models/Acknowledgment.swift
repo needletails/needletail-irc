@@ -37,7 +37,3 @@ public struct Acknowledgment: Codable, Sendable {
         self.acknowledgment = acknowledgment
     }
 }
-
-public enum DCCState: Sendable, Codable {
-    case none, requested, accepted, connecting, connected, disconnected
-}
