@@ -13,7 +13,7 @@ import AsyncAlgorithms
 import BSON
 
 public protocol NeedleTailClientDelegate: AnyObject, Sendable, IRCEventProtocol, NeedleTailWriterDelegate {
-    
+
     func transportMessage(_
                           consumer: NeedleTailAsyncConsumer<ByteBuffer>,
                           logger: NeedleTailLogger,
@@ -32,7 +32,7 @@ public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
                              message: IRCMessage
     ) async throws
 }
-
+import Foundation
 
 //TODO: Fa Fu: Getting fat/rich
 extension NeedleTailWriterDelegate {
@@ -76,6 +76,9 @@ extension NeedleTailClientDelegate {
             logger: logger)
         
         for try await message in messageStream {
+            let messageString = await NeedleTailIRCEncoder.encode(value: message)
+            let bb = ByteBuffer(string: messageString)
+            
             try await self.sendAndFlushMessage(
                 consumer,
                 logger: logger,

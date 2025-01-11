@@ -24,7 +24,6 @@ let package = Package(
         .package(url: "https://github.com/needletails/needletail-logger.git", .upToNextMajor(from: "2.0.5")),
         .package(url: "https://github.com/needletails/needletail-algorithms.git", .upToNextMajor(from: "1.0.11")),
         .package(url: "https://github.com/vapor/jwt.git", .upToNextMajor(from: "5.0.0")),
-        .package(url: "https://github.com/apple/swift-testing.git", .upToNextMajor(from: "0.99.0")),
         .package(url: "https://github.com/orlandos-nl/BSON.git", .upToNextMajor(from: "8.1.1")),
     ],
     targets: [
@@ -50,7 +49,6 @@ let package = Package(
             name: "NeedleTailIRCTests",
             dependencies: [
                 "NeedleTailIRC",
-                .product(name: "Testing", package: "swift-testing"),
                 .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
                 .product(name: "BSON", package: "BSON")
             ],

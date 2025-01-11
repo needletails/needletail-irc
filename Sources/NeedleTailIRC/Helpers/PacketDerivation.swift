@@ -13,7 +13,6 @@ import DequeModule
 import NeedleTailAsyncSequence
 import AsyncAlgorithms
 import NeedleTailLogger
-import NeedleTailHelpers
 
 public struct MultipartPacket: Sendable, Codable, Hashable {
     public let groupId: String
@@ -63,7 +62,6 @@ public struct PacketDerivation: Sendable {
             let totalParts = chunks.count
             var packets = [MultipartPacket]()
             packets.reserveCapacity(totalParts)
-            
             for (index, chunk) in chunks.enumerated() {
                     let packet = MultipartPacket(
                         groupId: groupId,
@@ -89,7 +87,7 @@ public struct PacketDerivation: Sendable {
             let totalParts = chunks.count
             var packets = [MultipartPacket]()
             packets.reserveCapacity(totalParts)
-            
+
             for (index, chunk) in chunks.enumerated() {
                 let packet = MultipartPacket(
                     groupId: groupId,
@@ -231,13 +229,13 @@ public struct IRCMessageGenerator: Sendable {
             guard let packetMessage = currentPacket.message else { return }
             switch command {
             case .privMsg(let recipients, _), .notice(let recipients, _):
-                modifiedCommand = .privMsg(recipients, packetMessage)
+                modifiedCommand = .privMsg(recipients, "")
             case .quit(_):
                 modifiedCommand = .quit(currentPacket.message)
             case .otherCommand(let otherCommand, _):
-                modifiedCommand = .otherCommand(otherCommand, [packetMessage])
+                modifiedCommand = .otherCommand(otherCommand, [])
             case .otherNumeric(let otherNumeric, _):
-                modifiedCommand = .otherNumeric(otherNumeric, [packetMessage])
+                modifiedCommand = .otherNumeric(otherNumeric, [])
             default:
                 break
             }
@@ -246,7 +244,7 @@ public struct IRCMessageGenerator: Sendable {
             modifiedPacket.message = ""
             
             do {
-                let packetMetadata = try BSONEncoder().encodeString(currentPacket)
+                let packetMetadata = try BSONEncoder().encode(currentPacket).makeData().base64EncodedString()
                 mutableTags.append(IRCTag(key: "packetMetadata", value: packetMetadata))
             } catch {
                 await logger.log(level: .error, message: "Failed to encode IRCTag for packet metadata: \(error)")
@@ -256,13 +254,15 @@ public struct IRCMessageGenerator: Sendable {
                 origin: origin,
                 command: modifiedCommand,
                 tags: mutableTags)
+            
+            let messageString = await NeedleTailIRCEncoder.encode(value: message)
             streamContinuation?.yield(message)
          
             if modifiedPacket.partNumber == modifiedPacket.totalParts {
                 streamContinuation?.finish()
             }
         }
-        
+
         // Helper function to handle empty messages
         func handleEmptyMessage(for command: IRCCommand) async {
             let packet = await createEmptyPacket()
@@ -274,17 +274,17 @@ public struct IRCMessageGenerator: Sendable {
             packets: AsyncStream<MultipartPacket>,
             command: IRCCommand
         ) async {
-            for await currentPacket in packets {
-                await createIRCMessage(for: command, currentPacket: currentPacket)
+            for await packet in packets {
+                await createIRCMessage(for: command, currentPacket: packet)
             }
         }
         
         // Function to handle message processing
-        func handleMessage(for command: IRCCommand, message: String) async  {
+        func handleMessage(for command: IRCCommand, message: String, chunkCount: Int = 512) async {
             if message.isEmpty {
                 await handleEmptyMessage(for: command)
             } else {
-                let packets = await packetDeriver.calculateAndDispense(text: message)
+                let packets = await packetDeriver.calculateAndDispense(text: message, chunkCount: chunkCount)
                 await processPackets(packets: packets, command: command)
             }
         }
@@ -301,8 +301,12 @@ public struct IRCMessageGenerator: Sendable {
             }
             
         case .otherCommand(let otherCommand, let messageArray):
+            //5mb chunk size
+            let chunkSize = 5 * 1024 * 1024
             let message = messageArray.joined(separator: Constants.comma.rawValue)
-            await handleMessage(for: .otherCommand(otherCommand, [message]), message: message)
+            await handleMessage(for: .otherCommand(otherCommand, [message]),
+                                message: message,
+                                chunkCount: (otherCommand == Constants.multipartMediaUpload.rawValue || otherCommand == Constants.multipartMediaDownload.rawValue) ? chunkSize : 512)
             
         case .otherNumeric(let otherNumeric, let messageArray):
             let message = messageArray.joined(separator: Constants.comma.rawValue)
@@ -324,6 +328,9 @@ public struct IRCMessageGenerator: Sendable {
         )
     }
     
+    /// Reassembles a chunked IRCMessage. A chunked IRCMessage is a wrapper arround an IRCMessage that contains basic IRCMessage information. The wrapper message contains an IRCTag containin the chuncked packetMetadata for reassembly.
+    /// - Parameter ircMessage: Wrapper IRCMessage with the chunked metasata
+    /// - Returns: A Reassembled IRCMessage
     public func messageReassembler(ircMessage: IRCMessage) async throws -> IRCMessage? {
         
         var packet: MultipartPacket?
@@ -331,13 +338,13 @@ public struct IRCMessageGenerator: Sendable {
 
         for tag in ircMessage.tags ?? [] {
             if tag.key == "packetMetadata" {
-                packet = try BSONDecoder().decodeString(MultipartPacket.self, from: tag.value)
+                guard let data = Data(base64Encoded: tag.value) else { return nil }
+                packet = try BSONDecoder().decode(MultipartPacket.self, from: Document(data: data))
             }
         }
 
         switch ircMessage.command {
-        case .privMsg(let recipients, let message):
-            packet?.message = message
+        case .privMsg(let recipients, _):
             guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
@@ -349,8 +356,7 @@ public struct IRCMessageGenerator: Sendable {
             default:
                 return nil
             }
-        case .notice(let recipients, let message):
-            packet?.message = message
+        case .notice(let recipients, _):
             guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
@@ -362,10 +368,7 @@ public struct IRCMessageGenerator: Sendable {
             default:
                 return nil
             }
-        case .quit(let message):
-            if let message = message {
-                packet?.message = message
-            }
+        case .quit(_):
             guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
@@ -377,10 +380,7 @@ public struct IRCMessageGenerator: Sendable {
             default:
                 return nil
             }
-        case .otherCommand(let command, let messageArray):
-            if let message = messageArray.first {
-                packet?.message = message
-            }
+        case .otherCommand(let command, _):
             guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
@@ -393,9 +393,7 @@ public struct IRCMessageGenerator: Sendable {
             default:
                 return nil
             }
-        case .otherNumeric(let command, let messageArray):
-            guard let message = messageArray.first else { return nil }
-            packet?.message = message
+        case .otherNumeric(let command, _):
             guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
@@ -414,33 +412,3 @@ public struct IRCMessageGenerator: Sendable {
         return ircMessage
     }
 }
-
-//
-//
-//extension BSONDecoder {
-//    enum Errors: Error, Sendable {
-//        case nilData
-//    }
-//    public func decodeString<T: Codable>(_ type: T.Type, from string: String) throws -> T {
-//        guard let data = Data(base64Encoded: string) else { throw Errors.nilData }
-//        return try decode(type, from: Document(data: data))
-//    }
-//
-//    public func decodeData<T: Codable>(_ type: T.Type, from data: Data) throws -> T {
-//        return try decode(type, from: Document(data: data))
-//    }
-//
-//    public func decodeBuffer<T: Codable>(_ type: T.Type, from buffer: ByteBuffer) throws -> T {
-//        return try decode(type, from: Document(buffer: buffer))
-//    }
-//}
-//
-//extension BSONEncoder {
-//    public func encodeString<T: Codable>(_ encodable: T) throws -> String {
-//        try encode(encodable).makeData().base64EncodedString()
-//    }
-//
-//    public func encodeData<T: Codable>(_ encodable: T) throws -> Data {
-//        try encode(encodable).makeData()
-//    }
-//}

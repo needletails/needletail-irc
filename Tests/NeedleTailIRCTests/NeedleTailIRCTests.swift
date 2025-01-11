@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import BSON
+import NIOCore
 
 @testable import NeedleTailIRC
 
@@ -10,7 +11,7 @@ final class NeedleTailIRCTests {
         var string: String
     }
     @Test func testReadKeyBundle() async throws  {
-        let base64 = try! BSONEncoder().encodeString(Base64Struct(string:TestableConstants.longMessage.rawValue))
+        let base64 = try! BSONEncoder().encode(Base64Struct(string:TestableConstants.longMessage.rawValue)).makeData().base64EncodedString()
         let messages = await generator.createMessages(
             origin: TestableConstants.origin.rawValue,
             command: .otherCommand(Constants.findUserConfig.rawValue,
@@ -26,7 +27,7 @@ final class NeedleTailIRCTests {
     }
     
     @Test func testServerMessage() async throws  {
-        let base64 = try! BSONEncoder().encodeString(Base64Struct(string:TestableConstants.longMessage.rawValue))
+        let base64 = try! BSONEncoder().encode(Base64Struct(string:TestableConstants.longMessage.rawValue)).makeData().base64EncodedString()
         
         let messages = await generator.createMessages(
             origin: TestableConstants.origin.rawValue,
@@ -49,9 +50,11 @@ final class NeedleTailIRCTests {
             await #expect(throws: Never.self, performing: {
                 let messageToParse = await NeedleTailIRCEncoder.encode(value: message)
                 let parsed = try NeedleTailIRCParser.parseMessage(messageToParse)
+
             })
         }
     }
+
     //
     //    @Test func derivePacketsToSend() async throws {
     //        let packetDerivation = PacketDerivation()
@@ -111,6 +114,22 @@ final class NeedleTailIRCTests {
     ////        }
     //    }
 }
+enum ClientType: Codable {
+    case server, client
+}
+
+struct ReachableServers: Codable, Sendable {
+    let host: String
+    let port: Int
+    let cacheKey: CacheKey
+    let isSecure: Bool
+}
+
+enum CacheKey: String, Equatable, CaseIterable, Codable {
+    case irc1, irc2, irc3, irc4, irc5
+    case client1, client2, client3
+    case none
+}
 
 func createIRCMessages() async -> [IRCMessage] {
     var messages = [IRCMessage]()
@@ -119,6 +138,20 @@ func createIRCMessages() async -> [IRCMessage] {
             origin: TestableConstants.origin.rawValue,
             command: .otherCommand(Constants.pass.rawValue, ["123", "456"]),
             tags: [])
+    )
+    
+    let reachableServers: [ReachableServers] = []
+    let serverPassword = "321"
+    let value = try! BSONEncoder().encode(ClientType.server).makeData().base64EncodedString()
+    let passTag = IRCTag(key: TagKey.passTag.rawValue, value: value)
+    let servers = try! BSONEncoder().encode(reachableServers).makeData().base64EncodedString()
+    let tag = IRCTag(key: TagKey.reachableServers.rawValue, value: servers)
+    
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            command: .otherCommand(Constants.pass.rawValue, [serverPassword]),
+            tags: [passTag, tag])
     )
     messages.append(
         IRCMessage(
@@ -136,7 +169,7 @@ func createIRCMessages() async -> [IRCMessage] {
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
             command: .nick(.init(name: TestableConstants.origin.rawValue, deviceId: UUID())!),
-            arguments: ["hop_count_0"],
+//            arguments: ["hop_count_0"],
             tags: [])
     )
     messages.append(

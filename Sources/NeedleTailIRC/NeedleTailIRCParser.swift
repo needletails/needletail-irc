@@ -83,7 +83,8 @@ public struct NeedleTailIRCParser: Sendable {
         }
         
         // 8. Return the constructed IRCMessage
-        return IRCMessage(origin: origin, target: target, command: builtCommand, arguments: arguments, tags: parsedTags)
+//        return IRCMessage(origin: origin, target: target, command: builtCommand, arguments: arguments, tags: parsedTags)
+        return IRCMessage(origin: origin, target: target, command: builtCommand, tags: parsedTags)
     }
     
     
