@@ -128,8 +128,6 @@ public struct NeedleTailIRCParser: Sendable {
             }
             tagArray.append(IRCTag(key: String(key), value: String(value)))
         }
-        
-//        self.logger.log(level: .trace, message: "Parsing Tags")
         return tagArray
     }
     

@@ -45,7 +45,6 @@ public enum Constants: String, Sendable {
     case registryRequest = "REGISTRYREQUEST"
     case registryResponse = "REGISTRYRESPONSE"
     case newDevice = "NEWDEVICE"
-    case findUserConfig = "FINDUSERCONFIG"
     case offlineMessages = "OFFLINEMESSAGES"
     case deleteOfflineMessage = "DELETEOFFLINEMESSAGE"
     case pass = "PASS"

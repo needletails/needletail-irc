@@ -25,9 +25,6 @@ public struct IRCMessage: Codable, Sendable {
     /// The IRC messageType associated with the message.
     public var command: IRCCommand
     
-    /// Arguments for the command, with a maximum of 15 allowed.
-//    public var arguments: [String]?
-    
     /// Optional tags associated with the message.
     public var tags: [IRCTag]?
 
@@ -48,13 +45,11 @@ public struct IRCMessage: Codable, Sendable {
         origin: String? = nil,
         target: String? = nil,
         command: IRCCommand,
-//        arguments: [String]? = nil,
         tags: [IRCTag]? = nil
     ) {
         self.origin = origin
         self.target = target
         self.command = command
-//        self.arguments = arguments
         self.tags = tags
     }
 
@@ -62,9 +57,8 @@ public struct IRCMessage: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case origin = "a"
         case target = "b"
-//        case arguments = "c"
-        case command = "d"
-        case tags = "e"
+        case command = "c"
+        case tags = "d"
     }
 
     // MARK: - Codable Conformance
@@ -72,7 +66,6 @@ public struct IRCMessage: Codable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         origin = try container.decodeIfPresent(String.self, forKey: .origin)
         command = try container.decode(IRCCommand.self, forKey: .command)
-//        arguments = try container.decodeIfPresent([String].self, forKey: .arguments)
         tags = try container.decodeIfPresent([IRCTag].self, forKey: .tags)
     }
 
@@ -81,7 +74,6 @@ public struct IRCMessage: Codable, Sendable {
         try container.encodeIfPresent(origin, forKey: .origin)
         try container.encodeIfPresent(target, forKey: .target)
         try container.encode(command, forKey: .command)
-//        try container.encodeIfPresent(arguments, forKey: .arguments)
         try container.encodeIfPresent(tags, forKey: .tags)
     }
 }

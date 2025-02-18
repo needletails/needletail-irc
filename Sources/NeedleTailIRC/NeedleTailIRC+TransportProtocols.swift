@@ -4,7 +4,7 @@
 //
 //  Created by Cole M on 9/28/22.
 //
-
+import Foundation
 import NIOCore
 import Logging
 import NeedleTailLogger
@@ -20,7 +20,8 @@ public protocol NeedleTailClientDelegate: AnyObject, Sendable, IRCEventProtocol,
                           writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                           origin: String,
                           command: IRCCommand,
-                          tags: [IRCTag]?
+                          tags: [IRCTag]?,
+                          authPacket: AuthPacket?
     ) async throws
 }
 
@@ -32,7 +33,6 @@ public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
                              message: IRCMessage
     ) async throws
 }
-import Foundation
 
 //TODO: Fa Fu: Getting fat/rich
 extension NeedleTailWriterDelegate {
@@ -66,13 +66,15 @@ extension NeedleTailClientDelegate {
                                  writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                                  origin: String = "",
                                  command: IRCCommand,
-                                 tags: [IRCTag]? = nil
+                                 tags: [IRCTag]? = nil,
+                                 authPacket: AuthPacket? = nil
     ) async throws {
         let messageGenerator = IRCMessageGenerator()
         let messageStream = await messageGenerator.createMessages(
             origin: origin,
             command: command,
             tags: tags,
+            authPacket: authPacket,
             logger: logger)
         
         for try await message in messageStream {

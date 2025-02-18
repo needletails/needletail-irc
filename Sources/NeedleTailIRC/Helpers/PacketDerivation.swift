@@ -14,6 +14,19 @@ import NeedleTailAsyncSequence
 import AsyncAlgorithms
 import NeedleTailLogger
 
+public struct AuthPacket: Codable, Sendable {
+    public let jwt: String?
+    public let nick: String?
+    
+    public init(
+        jwt: String,
+        nick: String
+    ) {
+        self.jwt = jwt
+        self.nick = nick
+    }
+}
+
 public struct MultipartPacket: Sendable, Codable, Hashable {
     public let groupId: String
     public var date: Date
@@ -209,6 +222,7 @@ public struct IRCMessageGenerator: Sendable {
         origin: String,
         command: IRCCommand,
         tags: [IRCTag]? = nil,
+        authPacket: AuthPacket? = nil,
         logger: NeedleTailLogger
     ) async -> AsyncStream<IRCMessage> {
         
@@ -218,6 +232,13 @@ public struct IRCMessageGenerator: Sendable {
         }
         
         let packetDeriver = PacketDerivation()
+        
+      
+        if let authPacket {
+            var tags = tags
+            let value = try! BSONEncoder().encode(authPacket).makeData().base64EncodedString()
+            tags?.append(IRCTag(key: "irc-protected", value: value))
+        }
         
         // Helper function to create an IRCMessage
         func createIRCMessage(for
@@ -245,7 +266,7 @@ public struct IRCMessageGenerator: Sendable {
             
             do {
                 let packetMetadata = try BSONEncoder().encode(currentPacket).makeData().base64EncodedString()
-                mutableTags.append(IRCTag(key: "packetMetadata", value: packetMetadata))
+                mutableTags.append(IRCTag(key: "packet-metadata", value: packetMetadata))
             } catch {
                 await logger.log(level: .error, message: "Failed to encode IRCTag for packet metadata: \(error)")
             }
@@ -337,7 +358,7 @@ public struct IRCMessageGenerator: Sendable {
         var ircMessage = ircMessage
 
         for tag in ircMessage.tags ?? [] {
-            if tag.key == "packetMetadata" {
+            if tag.key == "packet-metadata" {
                 guard let data = Data(base64Encoded: tag.value) else { return nil }
                 packet = try BSONDecoder().decode(MultipartPacket.self, from: Document(data: data))
             }
