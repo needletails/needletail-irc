@@ -209,7 +209,7 @@ struct NeedleTailIRCCommandParser: Sendable {
                     }
                 } else {
                     Task {
-                        await NeedleTailLogger(.init(label: "[IRCCommand]")).log(level: .warning, message: "IRCParser: unexpected IRC mode: \(c) \(arg)")
+                        await NeedleTailLogger(.init(label: "[ com.needletails.irc.command.parser ]")).log(level: .warning, message: "IRCParser: unexpected IRC mode: \(c) \(arg)")
                     }
                 }
             }
@@ -428,7 +428,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         guard let channelStrings = joinedArguments.first else { throw CommandParserErrors.invalidArgument("") }
         
         for channelName in channelStrings.split(separator: ",").map(String.init) {
-            guard let verified = channelName.ircChanneled else {
+            guard let verified = channelName.constructedChannel else {
                 throw CommandParserErrors.invalidChannelName(channelName)
             }
             verifiedChannels.append(verified)

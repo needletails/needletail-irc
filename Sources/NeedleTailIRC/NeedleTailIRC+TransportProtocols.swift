@@ -39,7 +39,7 @@ extension NeedleTailWriterDelegate {
     
     public func sendAndFlushMessage(_
                                     consumer: NeedleTailAsyncConsumer<ByteBuffer>,
-                                    logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[NeedleTailWriterDelegate]")),
+                                    logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[ com.needletails.writer.delegate ]")),
                                     writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                                     message: IRCMessage
     ) async throws {
@@ -62,7 +62,7 @@ extension NeedleTailClientDelegate {
     
     public func transportMessage(_
                                  consumer: NeedleTailAsyncConsumer<ByteBuffer>,
-                                 logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[NeedleTailWriter]")),
+                                 logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[ com.needletails.client.delegate ]")),
                                  writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                                  origin: String = "",
                                  command: IRCCommand,
@@ -99,7 +99,7 @@ extension NeedleTailServerMessageDelegate {
     
     public func sendAndFlushMessage(_
                                     consumer: NeedleTailAsyncConsumer<ByteBuffer>,
-                                    logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[NeedleTailServerMessageDelegate]")),
+                                    logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[ com.needletails.server.delegate ]")),
                                     writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                                     message: IRCMessage
     ) async throws {

@@ -93,10 +93,6 @@ public final class NeedleTailChannel: Codable, Hashable, CustomStringConvertible
 
 // MARK: - String Extension
 extension String {
-    /// Converts a String to an IRCChannelIdentifier if valid.
-    public var ircChanneled: NeedleTailChannel? {
-        NeedleTailChannel(self)
-    }
     public var constructedChannel: NeedleTailChannel? {
         return NeedleTailChannel(self)
     }

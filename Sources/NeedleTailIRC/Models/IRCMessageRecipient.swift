@@ -45,7 +45,7 @@ public extension IRCMessageRecipient {
     init?(_ string: String) {
         if string == Constants.star.rawValue {
             self = .all
-        } else if let channel = string.ircChanneled {
+        } else if let channel = string.constructedChannel {
             self = .channel(channel)
         } else if let nick = IRCMessageRecipient.createNick(from: string) {
             self = .nick(nick)

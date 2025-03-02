@@ -15,7 +15,7 @@ public enum MessageParsingErrors: Error, Sendable {
 
 /// A parser for IRC messages conforming to the IRC message syntax.
 public struct NeedleTailIRCParser: Sendable {
-    static let logger = NeedleTailLogger(.init(label: "[MessageParser]"))
+    static let logger = NeedleTailLogger(.init(label: "[ com.needletails.irc.message.parser ]"))
     
     public init() {}
     
@@ -83,7 +83,6 @@ public struct NeedleTailIRCParser: Sendable {
         }
         
         // 8. Return the constructed IRCMessage
-//        return IRCMessage(origin: origin, target: target, command: builtCommand, arguments: arguments, tags: parsedTags)
         return IRCMessage(origin: origin, target: target, command: builtCommand, tags: parsedTags)
     }
     
