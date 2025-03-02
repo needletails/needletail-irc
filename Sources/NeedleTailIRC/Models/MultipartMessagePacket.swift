@@ -38,18 +38,18 @@ public struct MultipartUploadAckPacket: Sendable, Codable, Equatable {
 
     public var id = UUID()
     public var name: String
-    public var mediaId: String?
+    public var sharedMessageIdentity: String?
     public var size: Int
     public var state: MultipartUploadState
     
     public init(
         name: String,
-        mediaId: String?,
+        sharedMessageIdentity: String?,
         size: Int,
         state: MultipartUploadState
     ) {
         self.name = name
-        self.mediaId = mediaId
+        self.sharedMessageIdentity = sharedMessageIdentity
         self.size = size
         self.state = state
     }
@@ -65,18 +65,19 @@ public enum MultipartDownloadState: Codable, Sendable, Equatable {
 
 public struct MultipartDownloadAckPacket: Sendable, Codable, Equatable {
 
+    
     public var id = UUID()
     public var name: String
-    public var mediaId: String
+    public var sharedMessageIdentity: String
     public var state: MultipartDownloadState
     
     public init(
         name: String,
-        mediaId: String,
+        sharedMessageIdentity: String,
         state: MultipartDownloadState
     ) {
         self.name = name
-        self.mediaId = mediaId
+        self.sharedMessageIdentity = sharedMessageIdentity
         self.state = state
     }
     
