@@ -34,7 +34,6 @@ public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
     ) async throws
 }
 
-//TODO: Fa Fu: Getting fat/rich
 extension NeedleTailWriterDelegate {
     
     public func sendAndFlushMessage(_

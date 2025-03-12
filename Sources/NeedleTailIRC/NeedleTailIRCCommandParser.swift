@@ -13,7 +13,7 @@ struct NeedleTailIRCCommandParser: Sendable {
     enum CommandParserErrors: Error, Sendable {
         case invalidNick(String), invalidInfo, invalidArgument(String), invalidChannelName(String), missingRecipient, invalidMessageTarget(String), missingArgument, unexpectedArguments(String)
     }
-//TODO: PARSE REST OF THE COMMANDS
+
     /// Parses the IRC command and its arguments.
     /// - Parameters:
     ///   - command: The command string (e.g., "NICK").
