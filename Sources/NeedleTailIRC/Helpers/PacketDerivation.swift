@@ -236,8 +236,12 @@ public struct IRCMessageGenerator: Sendable {
       
         if let authPacket {
             var tags = tags
-            let value = try! BSONEncoder().encode(authPacket).makeData().base64EncodedString()
-            tags?.append(IRCTag(key: "irc-protected", value: value))
+            do {
+                let value = try BSONEncoder().encode(authPacket).makeData().base64EncodedString()
+                tags?.append(IRCTag(key: "irc-protected", value: value))
+            } catch {
+                await logger.log(level: .error, message: "Error Encoding Auth Packet, \(error)")
+            }
         }
         
         // Helper function to create an IRCMessage
