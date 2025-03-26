@@ -232,13 +232,12 @@ public struct IRCMessageGenerator: Sendable {
         }
         
         let packetDeriver = PacketDerivation()
-        
+        var mutableTags = tags ?? []
       
         if let authPacket {
-            var tags = tags
             do {
                 let value = try BSONEncoder().encode(authPacket).makeData().base64EncodedString()
-                tags?.append(IRCTag(key: "irc-protected", value: value))
+                mutableTags.append(IRCTag(key: "irc-protected", value: value))
             } catch {
                 await logger.log(level: .error, message: "Error Encoding Auth Packet, \(error)")
             }
@@ -249,7 +248,6 @@ public struct IRCMessageGenerator: Sendable {
                               command: IRCCommand,
                               currentPacket: MultipartPacket
         ) async {
-            var mutableTags = tags ?? []
             var modifiedCommand = command
             guard let packetMessage = currentPacket.message else { return }
             switch command {
@@ -327,7 +325,8 @@ public struct IRCMessageGenerator: Sendable {
             
         case .otherCommand(let otherCommand, let messageArray):
             //5mb chunk size
-            let chunkSize = 5 * 1024 * 1024
+//            let chunkSize = 5 * 1024 * 1024
+            let chunkSize = 512
             let message = messageArray.joined(separator: Constants.comma.rawValue)
             await handleMessage(for: .otherCommand(otherCommand, [message]),
                                 message: message,

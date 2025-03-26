@@ -75,8 +75,11 @@ extension NeedleTailClientDelegate {
             tags: tags,
             authPacket: authPacket,
             logger: logger)
-        
+        var packetsSent: Int = 0
         for try await message in messageStream {
+            if command.commandAsString == Constants.multipartMediaUpload.rawValue {
+                packetsSent += 1
+            }
             let messageString = await NeedleTailIRCEncoder.encode(value: message)
             let bb = ByteBuffer(string: messageString)
             
