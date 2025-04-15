@@ -76,16 +76,16 @@ public struct PacketDerivation: Sendable {
             var packets = [MultipartPacket]()
             packets.reserveCapacity(totalParts)
             for (index, chunk) in chunks.enumerated() {
-                    let packet = MultipartPacket(
-                        groupId: groupId,
-                        date: packetDate,
-                        partNumber: index + 1, // Use index for part number
-                        totalParts: totalParts,
-                        message: String(chunk)
-                    )
-                    packets.append(packet)
+                let packet = MultipartPacket(
+                    groupId: groupId,
+                    date: packetDate,
+                    partNumber: index + 1, // Use index for part number
+                    totalParts: totalParts,
+                    message: String(chunk)
+                )
+                packets.append(packet)
             }
-
+            
             for packet in packets.sorted(by: { $0.partNumber < $1.partNumber }) {
                 streamContinuation?.yield(packet)
             }
@@ -100,7 +100,7 @@ public struct PacketDerivation: Sendable {
             let totalParts = chunks.count
             var packets = [MultipartPacket]()
             packets.reserveCapacity(totalParts)
-
+            
             for (index, chunk) in chunks.enumerated() {
                 let packet = MultipartPacket(
                     groupId: groupId,
@@ -128,11 +128,18 @@ public struct PacketDerivation: Sendable {
 
 public actor PacketBuilder {
     
+    private let executor: AnyExecutor
     private var packets = [[MultipartPacket]]()
     private var builtData: Data?
     private var joinedMessage: String?
     
-    public init() {}
+    public init(executor: AnyExecutor) {
+        self.executor = executor
+    }
+    
+    public nonisolated var unownedExecutor: UnownedSerialExecutor {
+        executor.asUnownedSerialExecutor()
+    }
     
     public enum ProcessedResult: Sendable {
         case message(String)
@@ -144,7 +151,7 @@ public actor PacketBuilder {
         // Find the index of the group that contains the packet
         if let groupIndex = packets.firstIndex(where: { $0.first?.groupId == packet.groupId }) {
             // Append the packet to the existing group
-         
+            
             if var message = packet.message {
                 if message.first == ":" {
                     message = String(message.dropFirst())
@@ -163,13 +170,12 @@ public actor PacketBuilder {
             return finishProcess(groupIndex: packets.count - 1)
         }
     }
-
+    
     private func finishProcess(groupIndex: Int) -> ProcessedResult {
         let groupPackets = packets[groupIndex]
         // Check if we have all parts
         if groupPackets.count == groupPackets.first?.totalParts {
             let sortedParts = groupPackets.sorted { $0.partNumber < $1.partNumber }
-            
             
             for packet in sortedParts {
                 if let message = packet.message {
@@ -212,11 +218,82 @@ public actor PacketBuilder {
 }
 
 
-public struct IRCMessageGenerator: Sendable {
+public actor IRCMessageGenerator: Sendable {
     
-    private let packetBuilder = PacketBuilder()
+    let executor: AnyExecutor
     
-    public init() {}
+    private let packetBuilder: PacketBuilder
+    
+    public init(executor: AnyExecutor) {
+        self.executor = executor
+        self.packetBuilder = PacketBuilder(executor: executor)
+    }
+    
+    public nonisolated var unownedExecutor: UnownedSerialExecutor {
+        executor.asUnownedSerialExecutor()
+    }
+    
+    
+    
+    // Helper function to create an IRCMessage
+    func createIRCMessage(
+        for command: IRCCommand,
+        origin: String,
+        tags: [IRCTag]? = nil,
+        authPacket: AuthPacket? = nil,
+        logger: NeedleTailLogger,
+        currentPacket: MultipartPacket,
+        continuation: AsyncStream<IRCMessage>.Continuation
+    ) async {
+        var mutableTags = [IRCTag]()
+        
+        if let authPacket {
+            do {
+                let value = try BSONEncoder().encode(authPacket).makeData().base64EncodedString()
+                mutableTags.append(IRCTag(key: "irc-protected", value: value))
+            } catch {
+                logger.log(level: .error, message: "Error Encoding Auth Packet, \(error)")
+            }
+        }
+        if let tags {
+            mutableTags.append(contentsOf: tags)
+        }
+        
+        var modifiedCommand = command
+        guard let packetMessage = currentPacket.message else { return }
+        switch command {
+        case .privMsg(let recipients, _), .notice(let recipients, _):
+            modifiedCommand = .privMsg(recipients, "")
+        case .quit(_):
+            modifiedCommand = .quit(currentPacket.message)
+        case .otherCommand(let otherCommand, _):
+            modifiedCommand = .otherCommand(otherCommand, [])
+        case .otherNumeric(let otherNumeric, _):
+            modifiedCommand = .otherNumeric(otherNumeric, [])
+        default:
+            break
+        }
+        
+        var modifiedPacket = currentPacket
+        modifiedPacket.message = ""
+        
+        do {
+            let packetMetadata = try BSONEncoder().encode(currentPacket).makeData().base64EncodedString()
+            mutableTags.append(IRCTag(key: "packet-metadata", value: packetMetadata))
+        } catch {
+            logger.log(level: .error, message: "Failed to encode IRCTag for packet metadata: \(error)")
+        }
+        
+        let message = IRCMessage(
+            origin: origin,
+            command: modifiedCommand,
+            tags: mutableTags)
+        //Yields a message but the message mutable tags are empty.
+        continuation.yield(message)
+        if modifiedPacket.partNumber == modifiedPacket.totalParts {
+            continuation.finish()
+        }
+    }
     
     public func createMessages(
         origin: String,
@@ -225,71 +302,24 @@ public struct IRCMessageGenerator: Sendable {
         authPacket: AuthPacket? = nil,
         logger: NeedleTailLogger
     ) async -> AsyncStream<IRCMessage> {
-        
+        let packetDeriver = PacketDerivation()
         var streamContinuation: AsyncStream<IRCMessage>.Continuation?
         let stream = AsyncStream<IRCMessage>(bufferingPolicy: .unbounded) { continuation in
             streamContinuation = continuation
         }
         
-        let packetDeriver = PacketDerivation()
-        var mutableTags = tags ?? []
-      
-        if let authPacket {
-            do {
-                let value = try BSONEncoder().encode(authPacket).makeData().base64EncodedString()
-                mutableTags.append(IRCTag(key: "irc-protected", value: value))
-            } catch {
-                await logger.log(level: .error, message: "Error Encoding Auth Packet, \(error)")
-            }
-        }
-        
-        // Helper function to create an IRCMessage
-        func createIRCMessage(for
-                              command: IRCCommand,
-                              currentPacket: MultipartPacket
-        ) async {
-            var modifiedCommand = command
-            guard let packetMessage = currentPacket.message else { return }
-            switch command {
-            case .privMsg(let recipients, _), .notice(let recipients, _):
-                modifiedCommand = .privMsg(recipients, "")
-            case .quit(_):
-                modifiedCommand = .quit(currentPacket.message)
-            case .otherCommand(let otherCommand, _):
-                modifiedCommand = .otherCommand(otherCommand, [])
-            case .otherNumeric(let otherNumeric, _):
-                modifiedCommand = .otherNumeric(otherNumeric, [])
-            default:
-                break
-            }
-            
-            var modifiedPacket = currentPacket
-            modifiedPacket.message = ""
-            
-            do {
-                let packetMetadata = try BSONEncoder().encode(currentPacket).makeData().base64EncodedString()
-                mutableTags.append(IRCTag(key: "packet-metadata", value: packetMetadata))
-            } catch {
-                await logger.log(level: .error, message: "Failed to encode IRCTag for packet metadata: \(error)")
-            }
-            
-            let message = IRCMessage(
-                origin: origin,
-                command: modifiedCommand,
-                tags: mutableTags)
-            
-            let messageString = await NeedleTailIRCEncoder.encode(value: message)
-            streamContinuation?.yield(message)
-         
-            if modifiedPacket.partNumber == modifiedPacket.totalParts {
-                streamContinuation?.finish()
-            }
-        }
-
         // Helper function to handle empty messages
         func handleEmptyMessage(for command: IRCCommand) async {
             let packet = await createEmptyPacket()
-            await createIRCMessage(for: command, currentPacket: packet)
+            guard let continuation = streamContinuation else { return }
+            await createIRCMessage(
+                for: command,
+                origin: origin,
+                tags: tags,
+                authPacket: authPacket,
+                logger: logger,
+                currentPacket: packet,
+                continuation: continuation)
         }
         
         // Helper function to process packets and create IRC messages
@@ -297,8 +327,17 @@ public struct IRCMessageGenerator: Sendable {
             packets: AsyncStream<MultipartPacket>,
             command: IRCCommand
         ) async {
+            guard let continuation = streamContinuation else { return }
             for await packet in packets {
-                await createIRCMessage(for: command, currentPacket: packet)
+                //Packets from the stream are properly fed here, but when we create messages the next stream that the CreateMessages method calls contains the next continuation items but the items are empty. Yields a message but the message mutable tags are empty.
+                await createIRCMessage(
+                    for: command,
+                    origin: origin,
+                    tags: tags,
+                    authPacket: authPacket,
+                    logger: logger,
+                    currentPacket: packet,
+                    continuation: continuation)
             }
         }
         
@@ -325,13 +364,11 @@ public struct IRCMessageGenerator: Sendable {
             
         case .otherCommand(let otherCommand, let messageArray):
             //5mb chunk size
-//            let chunkSize = 5 * 1024 * 1024
-            let chunkSize = 512
+            let chunkSize = 5 * 1024 * 1024
             let message = messageArray.joined(separator: Constants.comma.rawValue)
             await handleMessage(for: .otherCommand(otherCommand, [message]),
                                 message: message,
                                 chunkCount: (otherCommand == Constants.multipartMediaUpload.rawValue || otherCommand == Constants.multipartMediaDownload.rawValue) ? chunkSize : 512)
-            
         case .otherNumeric(let otherNumeric, let messageArray):
             let message = messageArray.joined(separator: Constants.comma.rawValue)
             await handleMessage(for: .otherNumeric(otherNumeric, [message]), message: message)
@@ -341,7 +378,7 @@ public struct IRCMessageGenerator: Sendable {
         }
         return stream
     }
-
+    
     private func createEmptyPacket() async -> MultipartPacket {
         return MultipartPacket(
             groupId: UUID().uuidString,
@@ -356,20 +393,14 @@ public struct IRCMessageGenerator: Sendable {
     /// - Parameter ircMessage: Wrapper IRCMessage with the chunked metasata
     /// - Returns: A Reassembled IRCMessage
     public func messageReassembler(ircMessage: IRCMessage) async throws -> IRCMessage? {
-        
-        var packet: MultipartPacket?
         var ircMessage = ircMessage
-
-        for tag in ircMessage.tags ?? [] {
-            if tag.key == "packet-metadata" {
-                guard let data = Data(base64Encoded: tag.value) else { return nil }
-                packet = try BSONDecoder().decode(MultipartPacket.self, from: Document(data: data))
-            }
-        }
-
+        
+        guard let packetTag = ircMessage.tags?.first(where: { $0.key == "packet-metadata" }) else { return nil }
+        guard let data = Data(base64Encoded: packetTag.value) else { return nil }
+        let packet = try BSONDecoder().decode(MultipartPacket.self, from: Document(data: data))
+        
         switch ircMessage.command {
         case .privMsg(let recipients, _):
-            guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
                 if !processedMessage.isEmpty {
@@ -381,7 +412,6 @@ public struct IRCMessageGenerator: Sendable {
                 return nil
             }
         case .notice(let recipients, _):
-            guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
                 if !processedMessage.isEmpty {
@@ -393,7 +423,6 @@ public struct IRCMessageGenerator: Sendable {
                 return nil
             }
         case .quit(_):
-            guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
                 if !processedMessage.isEmpty {
@@ -405,7 +434,6 @@ public struct IRCMessageGenerator: Sendable {
                 return nil
             }
         case .otherCommand(let command, _):
-            guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
                 if !processedMessage.isEmpty {
@@ -418,7 +446,6 @@ public struct IRCMessageGenerator: Sendable {
                 return nil
             }
         case .otherNumeric(let command, _):
-            guard let packet = packet else { return nil }
             switch await packetBuilder.processPacket(packet) {
             case .message(let processedMessage):
                 if !processedMessage.isEmpty {

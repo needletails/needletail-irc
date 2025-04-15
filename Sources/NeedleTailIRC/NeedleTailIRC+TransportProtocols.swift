@@ -13,7 +13,7 @@ import AsyncAlgorithms
 import BSON
 
 public protocol NeedleTailClientDelegate: AnyObject, Sendable, IRCEventProtocol, NeedleTailWriterDelegate {
-
+    
     func transportMessage(_
                           consumer: NeedleTailAsyncConsumer<ByteBuffer>,
                           logger: NeedleTailLogger,
@@ -28,6 +28,7 @@ public protocol NeedleTailClientDelegate: AnyObject, Sendable, IRCEventProtocol,
 public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
     func sendAndFlushMessage(_
                              consumer: NeedleTailAsyncConsumer<ByteBuffer>,
+                             executor: AnyExecutor,
                              logger: NeedleTailLogger,
                              writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                              message: IRCMessage
@@ -38,57 +39,21 @@ extension NeedleTailWriterDelegate {
     
     public func sendAndFlushMessage(_
                                     consumer: NeedleTailAsyncConsumer<ByteBuffer>,
+                                    executor: AnyExecutor,
                                     logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[ com.needletails.writer.delegate ]")),
                                     writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                                     message: IRCMessage
     ) async throws {
-            try await withThrowingDiscardingTaskGroup { group in
-                group.addTask {
-                    let messageString = await NeedleTailIRCEncoder.encode(value: message)
-                    do {
-                        try await writer.write(ByteBuffer(string: messageString))
-                    } catch {
-                       await logger.log(level: .error, message: "Send And Flush Error: \(error)")
-                        throw error
-                    }
+        try await withThrowingDiscardingTaskGroup { group in
+            group.addTask(executorPreference: executor) {
+                let messageString = await NeedleTailIRCEncoder.encode(value: message)
+                do {
+                    try await writer.write(ByteBuffer(string: messageString))
+                } catch {
+                    logger.log(level: .error, message: "Send And Flush Error: \(error)")
+                    throw error
                 }
             }
-    }
-}
-
-//MARK: Client Side
-extension NeedleTailClientDelegate {
-    
-    public func transportMessage(_
-                                 consumer: NeedleTailAsyncConsumer<ByteBuffer>,
-                                 logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[ com.needletails.client.delegate ]")),
-                                 writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
-                                 origin: String = "",
-                                 command: IRCCommand,
-                                 tags: [IRCTag]? = nil,
-                                 authPacket: AuthPacket? = nil
-    ) async throws {
-        let messageGenerator = IRCMessageGenerator()
-        let messageStream = await messageGenerator.createMessages(
-            origin: origin,
-            command: command,
-            tags: tags,
-            authPacket: authPacket,
-            logger: logger)
-        var packetsSent: Int = 0
-        for try await message in messageStream {
-            if command.commandAsString == Constants.multipartMediaUpload.rawValue {
-                packetsSent += 1
-            }
-            let messageString = await NeedleTailIRCEncoder.encode(value: message)
-            let bb = ByteBuffer(string: messageString)
-            
-            try await self.sendAndFlushMessage(
-                consumer,
-                logger: logger,
-                writer: writer,
-                message: message
-            )
         }
     }
 }
@@ -112,7 +77,7 @@ extension NeedleTailServerMessageDelegate {
                     do {
                         try await writer.write(ByteBuffer(string: messageString))
                     } catch {
-                       await logger.log(level: .error, message: "Send And Flush Error: \(error)")
+                        logger.log(level: .error, message: "Send And Flush Error: \(error)")
                         throw error
                     }
                 }

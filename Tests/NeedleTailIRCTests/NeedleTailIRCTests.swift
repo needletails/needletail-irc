@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import BSON
 import NIOCore
+import NeedleTailLogger
 
 @testable import NeedleTailIRC
 
@@ -14,9 +15,9 @@ final class NeedleTailIRCTests {
         let base64 = try! BSONEncoder().encode(Base64Struct(string:TestableConstants.longMessage.rawValue)).makeData().base64EncodedString()
         let messages = await generator.createMessages(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.findUserConfig.rawValue,
+            command: IRCCommand.otherCommand(Constants.readPublishedBlob.rawValue,
                                    [base64]),
-            logger: .init())
+            logger: NeedleTailLogger())
         
         for await message in messages {
             if let rebuiltMessage = try await generator.messageReassembler(ircMessage: message) {
@@ -31,14 +32,12 @@ final class NeedleTailIRCTests {
         
         let messages = await generator.createMessages(
             origin: TestableConstants.origin.rawValue,
-            command: .server("Server1", "1.0.0", 1, "Server Message"),
+            command: IRCCommand.server("Server1", "1.0.0", 1, "Server Message"),
             tags: [],
-            logger: .init())
+            logger:  NeedleTailLogger())
         
         for await message in messages {
-            print(message)
             if let rebuiltMessage = try await generator.messageReassembler(ircMessage: message) {
-                print(rebuiltMessage)
                 #expect(message == rebuiltMessage)
             }
         }
@@ -494,12 +493,6 @@ func createIRCMessages() async -> [IRCMessage] {
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
             command: .otherCommand(Constants.newDevice.rawValue, [TestableConstants.longMessage.rawValue]),
-            tags: [])
-    )
-    messages.append(
-        IRCMessage(
-            origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.findUserConfig.rawValue, [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(

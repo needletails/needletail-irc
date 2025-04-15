@@ -203,11 +203,11 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     
     /// Downloads a multipart message.
     /// - Parameter packet: An array containing the multipart message data.
-    func doMultipartMessageDownload(packet: [String]) async throws
+    func doMultipartMessageDownload(packet: [String]) async
     
     /// Uploads a multipart message.
     /// - Parameter packet: An array containing the multipart message data.
-    func doMultipartMessageUpload(packet: [String]) async throws
+    func doMultipartMessageUpload(packet: [String]) async
     
     /// Lists a bucket of data.
     /// - Parameter packet: An array containing the bucket data.
@@ -262,8 +262,8 @@ public extension IRCEventProtocol {
     func doDeleteOfflineMessages(from contact: String) async throws {}
     func doKick(channels: [NeedleTailChannel], users: [String], comments: [String]?) async throws {}
     func doKill(nick: NeedleTailNick, comment: String) async throws {}
-    func doMultipartMessageDownload(packet: [String]) async throws {}
-    func doMultipartMessageUpload(packet: [String]) async throws {}
+    func doMultipartMessageDownload(packet: [String]) async {}
+    func doMultipartMessageUpload(packet: [String]) async {}
     func doListBucket(packet: [String]) async throws {}
     func badgeCountUpdate(count: Int) async throws {}
     func doIsTyping(packet: [String]) async throws {}
