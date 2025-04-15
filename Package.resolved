@@ -1,5 +1,5 @@
 {
-  "originHash" : "e7ce218bf201afc30d71e26d96a13eb72268fe400ba638a2e0d26c1103a35472",
+  "originHash" : "b88055a9c945ebf0934ef04a7c1489b85f4a41c2723bebf8a800292897ae8fd2",
   "pins" : [
     {
       "identity" : "bson",
@@ -15,17 +15,17 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/needletails/needletail-algorithms.git",
       "state" : {
-        "revision" : "9d599d6adc7bfb61aa052e0d749befec087082f1",
-        "version" : "1.0.11"
+        "revision" : "506f917aa216a1705e6ffae3b61b4feda2ee3a7e",
+        "version" : "2.0.0"
       }
     },
     {
       "identity" : "needletail-logger",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/needletails/needletail-logger.git",
+      "location" : "git@github.com:needle-tail/needletail-logger.git",
       "state" : {
-        "branch" : "main",
-        "revision" : "e3b8083726b519e5f186a992f14f9171feb90f39"
+        "revision" : "e3b8083726b519e5f186a992f14f9171feb90f39",
+        "version" : "3.0.0"
       }
     },
     {
@@ -78,8 +78,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
       "state" : {
-        "revision" : "96a2f8a0fa41e9e09af4585e2724c4e825410b91",
-        "version" : "1.6.2"
+        "revision" : "3d8596ed08bd13520157f0355e35caed215ffbfa",
+        "version" : "1.6.3"
       }
     },
     {

@@ -28,7 +28,7 @@ public protocol NeedleTailClientDelegate: AnyObject, Sendable, IRCEventProtocol,
 public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
     func sendAndFlushMessage(_
                              consumer: NeedleTailAsyncConsumer<ByteBuffer>,
-                             executor: AnyExecutor,
+                             executor: any AnyExecutor,
                              logger: NeedleTailLogger,
                              writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                              message: IRCMessage
@@ -39,7 +39,7 @@ extension NeedleTailWriterDelegate {
     
     public func sendAndFlushMessage(_
                                     consumer: NeedleTailAsyncConsumer<ByteBuffer>,
-                                    executor: AnyExecutor,
+                                    executor: any AnyExecutor,
                                     logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[ com.needletails.writer.delegate ]")),
                                     writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
                                     message: IRCMessage

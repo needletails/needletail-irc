@@ -128,12 +128,12 @@ public struct PacketDerivation: Sendable {
 
 public actor PacketBuilder {
     
-    private let executor: AnyExecutor
+    private let executor: any AnyExecutor
     private var packets = [[MultipartPacket]]()
     private var builtData: Data?
     private var joinedMessage: String?
     
-    public init(executor: AnyExecutor) {
+    public init(executor: any AnyExecutor) {
         self.executor = executor
     }
     
@@ -220,11 +220,11 @@ public actor PacketBuilder {
 
 public actor IRCMessageGenerator: Sendable {
     
-    let executor: AnyExecutor
+    let executor: any AnyExecutor
     
     private let packetBuilder: PacketBuilder
     
-    public init(executor: AnyExecutor) {
+    public init(executor: any AnyExecutor) {
         self.executor = executor
         self.packetBuilder = PacketBuilder(executor: executor)
     }
@@ -265,7 +265,7 @@ public actor IRCMessageGenerator: Sendable {
         case .privMsg(let recipients, _), .notice(let recipients, _):
             modifiedCommand = .privMsg(recipients, "")
         case .quit(_):
-            modifiedCommand = .quit(currentPacket.message)
+            modifiedCommand = .quit(packetMessage)
         case .otherCommand(let otherCommand, _):
             modifiedCommand = .otherCommand(otherCommand, [])
         case .otherNumeric(let otherNumeric, _):

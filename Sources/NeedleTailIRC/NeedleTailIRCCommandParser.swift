@@ -13,7 +13,7 @@ struct NeedleTailIRCCommandParser: Sendable {
     enum CommandParserErrors: Error, Sendable {
         case invalidNick(String), invalidInfo, invalidArgument(String), invalidChannelName(String), missingRecipient, invalidMessageTarget(String), missingArgument, unexpectedArguments(String)
     }
-
+    
     /// Parses the IRC command and its arguments.
     /// - Parameters:
     ///   - command: The command string (e.g., "NICK").
@@ -78,7 +78,7 @@ struct NeedleTailIRCCommandParser: Sendable {
             return .otherCommand(uppercasedCommand, arguments)
         }
     }
-
+    
     // Individual command parsing methods
     private static func parseNickCommand(_ arguments: [String]) throws -> IRCCommand {
         guard arguments.count == 1 else {
@@ -96,7 +96,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         }
         return .nick(nick)
     }
-
+    
     private static func parseUserCommand(_ arguments: [String]) throws -> IRCCommand {
         guard arguments.count == 4 else {
             throw CommandParserErrors.unexpectedArguments("Expected: 4 Found: \(arguments.count)")
@@ -114,14 +114,14 @@ struct NeedleTailIRCCommandParser: Sendable {
             return .user(IRCUserDetails(username: username, hostname: modeOrHostname, servername: maskOrServername, realname: realname))
         }
     }
-
+    
     private static func parseQuitCommand(_ arguments: [String]) throws -> IRCCommand {
         guard arguments.count == 1 else {
             throw CommandParserErrors.unexpectedArguments("Expected: 1 Found: \(arguments.count)")
         }
         return .quit(arguments.first)
     }
-
+    
     private static func parseJoinCommand(_ arguments: [String]) throws -> IRCCommand {
         guard (1...2).contains(arguments.count) else {
             throw CommandParserErrors.unexpectedArguments("Expected between 1 and 2 arguments Found: \(arguments.count)")
@@ -133,7 +133,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         }
         return .join0
     }
-
+    
     private static func parsePartCommand(_ arguments: [String]) throws -> IRCCommand {
         guard (1...2).contains(arguments.count) else {
             throw CommandParserErrors.unexpectedArguments("Expected between 1 and 2 arguments \(arguments.count)")
@@ -141,7 +141,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         let (channels, _, _) = try getChannels(arguments)
         return .part(channels: channels)
     }
-
+    
     private static func parseModeCommand(_ arguments: [String]) throws -> IRCCommand {
         guard arguments.count >= 1, let recipientString = arguments.first, let recipient = IRCMessageRecipient(recipientString) else {
             throw CommandParserErrors.missingRecipient
@@ -156,7 +156,7 @@ struct NeedleTailIRCCommandParser: Sendable {
             throw CommandParserErrors.invalidMessageTarget(arguments.first ?? "")
         }
     }
-
+    
     private static func parseChannelMode(_ arguments: [String], channelName: String) throws -> IRCCommand {
         guard let channelName = channelName.constructedChannel else { throw CommandParserErrors.invalidChannelName(channelName) }
         guard arguments.count > 1 else { return .channelModeGet(channelName) }
@@ -187,7 +187,7 @@ struct NeedleTailIRCCommandParser: Sendable {
             return .channelMode(channelName, addMode: add, addParameters: addParameters, removeMode: remove, removeParameters: removeParameters)
         }
     }
-
+    
     private static func parseNickMode(_ arguments: [String], nick: NeedleTailNick) throws -> IRCCommand {
         guard arguments.count > 1 else { return .modeGet(nick) }
         
@@ -208,15 +208,13 @@ struct NeedleTailIRCCommandParser: Sendable {
                         remove.insert(mode)
                     }
                 } else {
-                    Task {
-                        await NeedleTailLogger(.init(label: "[ com.needletails.irc.command.parser ]")).log(level: .warning, message: "IRCParser: unexpected IRC mode: \(c) \(arg)")
-                    }
+                    NeedleTailLogger(.init(label: "[ com.needletails.irc.command.parser ]")).log(level: .warning, message: "IRCParser: unexpected IRC mode: \(c) \(arg)")
                 }
             }
         }
         return .mode(nick, add: add, remove: remove)
     }
-
+    
     private static func parseListCommand(_ arguments: [String]) throws -> IRCCommand {
         guard arguments.count <= 2 else {
             throw CommandParserErrors.unexpectedArguments("Expected at max 2 arguments Found: \(arguments.count)")
@@ -229,7 +227,7 @@ struct NeedleTailIRCCommandParser: Sendable {
             return .list(channels: channels, target: serverList?.first)
         }
     }
-
+    
     private static func parseKickCommand(_ arguments: [String]) throws -> IRCCommand {
         guard arguments.count == 3 else {
             throw CommandParserErrors.unexpectedArguments("Expected: 3 Found: \(arguments.count)")
@@ -245,7 +243,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         
         return .kick(channels, nicks, message)
     }
-
+    
     private static func parsePrivMsgOrNoticeCommand(_ arguments: [String], command: String) throws -> IRCCommand {
         guard arguments.count == 2, let recipientString = arguments.first, let message = arguments.last else {
             throw CommandParserErrors.missingArgument
@@ -255,7 +253,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         
         return command == Constants.privMsg.rawValue ? .privMsg(recipients, message) : .notice(recipients, message)
     }
-
+    
     private static func parseWhoCommand(_ arguments: [String]) throws -> IRCCommand {
         guard arguments.count <= 2 else {
             throw CommandParserErrors.unexpectedArguments("Expected less than or equal to: 2 Found: \(arguments.count)")
@@ -268,7 +266,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         let onlyOperators = arguments.count == 2 && arguments[1] == Constants.oString.rawValue
         return .who(usermask: first, onlyOperators: onlyOperators)
     }
-
+    
     private static func parseWhoIsCommand(_ arguments: [String]) throws -> IRCCommand {
         guard (1...2).contains(arguments.count) else {
             throw CommandParserErrors.unexpectedArguments("Expected between 1 and 2 arguments Found: \(arguments.count)")
@@ -278,7 +276,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         let masks = maskArg.split(separator: ",").map(String.init)
         return .whois(server: arguments.count == 1 ? nil : arguments.first, usermasks: Array(masks))
     }
-
+    
     private static func parseKillCommand(_ arguments: [String]) throws -> IRCCommand {
         guard arguments.count == 2 else {
             throw CommandParserErrors.unexpectedArguments("Expected 2 arguments Found: \(arguments.count)")
@@ -293,7 +291,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         
         return .kill(nick, last)
     }
-
+    
     private static func parsePingCommand(_ arguments: [String]) throws -> IRCCommand {
         guard (1...2).contains(arguments.count) else {
             throw CommandParserErrors.unexpectedArguments("Expected between 1 and 2 arguments Found: \(arguments.count)")
@@ -303,7 +301,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         let last = arguments.count > 1 ? arguments.last : nil
         return .ping(server: first, server2: last)
     }
-
+    
     private static func parsePongCommand(_ arguments: [String]) throws -> IRCCommand {
         guard (1...2).contains(arguments.count) else {
             throw CommandParserErrors.unexpectedArguments("Expected between 1 and 2 arguments Found: \(arguments.count)")
@@ -313,7 +311,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         let last = arguments.count > 1 ? arguments.last : nil
         return .pong(server: first, server2: last)
     }
-
+    
     private static func parseIsOnCommand(_ arguments: [String]) throws -> IRCCommand {
         guard arguments.count >= 1 else {
             throw CommandParserErrors.unexpectedArguments("Expected at least 1 arguments Found: \(arguments.count)")
@@ -328,7 +326,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         
         return .isOn(nicks)
     }
-
+    
     private static func parseCapCommand(_ arguments: [String]) throws -> IRCCommand {
         guard (1...2).contains(arguments.count) else {
             throw CommandParserErrors.unexpectedArguments("Expected between 1 and 2 arguments Found: \(arguments.count)")
@@ -345,7 +343,7 @@ struct NeedleTailIRCCommandParser: Sendable {
         let capIDs = arguments.count > 1 ? arguments[1].components(separatedBy: Constants.space.rawValue) : []
         return .cap(subcmd, capIDs)
     }
-
+    
     private static func parseDCCChatCommand(_ arguments: [String], isSecure: Bool) throws -> IRCCommand {
         guard arguments.count == 3 else {
             throw CommandParserErrors.unexpectedArguments("Expected: 3 Found: \(arguments.count)")
