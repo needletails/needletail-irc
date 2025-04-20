@@ -48,7 +48,7 @@ public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
     /// - Throws: An error if sending or flushing the message fails.
     func sendAndFlushMessage(
         _ consumer: NeedleTailAsyncConsumer<ByteBuffer>,
-        executor: any AnyExecutor,
+        executor: (any AnyExecutor)?,
         logger: NeedleTailLogger,
         writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
         message: IRCMessage
