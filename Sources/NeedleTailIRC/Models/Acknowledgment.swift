@@ -23,6 +23,7 @@ public struct Acknowledgment: Codable, Sendable {
         case unblocked
         case quited
         case publishedKeyBundle(String)
+        case synchronizedKeyBundle
         case multipartReceived
         case multipartUploadNotification(MultipartUploadAckPacket)
         case multipartDownloadNotification(MultipartDownloadAckPacket)
