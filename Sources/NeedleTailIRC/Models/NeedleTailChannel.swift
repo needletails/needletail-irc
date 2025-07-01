@@ -1,11 +1,17 @@
 //
-//  IRCChannelIdentifier.swift
-//
+//  NeedleTailChannel.swift
+//  needletail-irc
 //
 //  Created by Cole M on 9/23/22.
 //
-
-import Foundation
+//  Copyright (c) 2025 NeedleTails Organization.
+//  This project is licensed under the MIT License.
+//
+//  See the LICENSE file for more information.
+//
+//  This file is part of the NeedleTailIRC SDK, which provides
+//  IRC protocol implementation and messaging capabilities.
+//
 
 /// A representation of an IRC channel name that is thread-safe and conforms to Codable,
 /// Hashable, and CustomStringConvertible protocols. This class uses a lock to protect

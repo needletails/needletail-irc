@@ -1,31 +1,96 @@
 //
-//  IRCPayloadRecipient.swift
-//
+//  IRCMessage.swift
+//  needletail-irc
 //
 //  Created by Cole M on 9/28/22.
+//
+//  Copyright (c) 2025 NeedleTails Organization.
+//  This project is licensed under the MIT License.
+//
+//  See the LICENSE file for more information.
+//
+//  This file is part of the NeedleTailIRC SDK, which provides
+//  IRC protocol implementation and messaging capabilities.
 //
 
 import Foundation
 
-/// `<IRCProtocolMessage: @example=test from=user1 to=#general command=PRIVMSG>`
-/// `:alice!alice@localhost PRIVMSG #general :Hello, everyone! @exampleTag=value`
-/// `:prefix COMMAND [params...] [tags]`
-/// Represents a message in the IRC protocol, containing details such as origin, target, command, arguments, and optional tags.
+/// A comprehensive representation of an IRC protocol message.
+///
+/// `IRCMessage` encapsulates all the components of an IRC message according to RFC 2812 and RFC 1459 standards,
+/// including support for IRCv3 message tags. It provides a structured way to work with IRC messages
+/// in a type-safe manner.
+///
+/// ## Message Structure
+///
+/// An IRC message follows this format:
+/// ```
+/// [@tags] [:prefix] command [parameters] [:trailing]
+/// ```
+///
+/// ## Examples
+///
+/// ```swift
+/// // Simple private message
+/// let message = IRCMessage(
+///     origin: "alice!alice@localhost",
+///     command: .privMsg([.channel(NeedleTailChannel("#general")!)], "Hello, everyone!")
+/// )
+///
+/// // Message with IRCv3 tags
+/// let taggedMessage = IRCMessage(
+///     origin: "alice",
+///     command: .privMsg([.channel(NeedleTailChannel("#general")!)], "Hello!"),
+///     tags: [IRCTag(key: "time", value: "2023-01-01T12:00:00Z")]
+/// )
+///
+/// // Server response
+/// let serverMessage = IRCMessage(
+///     origin: "server.example.com",
+///     target: "alice",
+///     command: .numeric(.replyWelcome, ["Welcome to the server!"])
+/// )
+/// ```
+///
+/// ## Thread Safety
+///
+/// This struct is thread-safe and can be used concurrently from multiple threads.
 public struct IRCMessage: Codable, Sendable {
     
-    /// Unique identifier for the message.
+    /// A unique identifier for the message, automatically generated.
+    ///
+    /// This ID can be used for message tracking, deduplication, or correlation purposes.
     public var id: UUID = UUID()
     
-    /// The origin of the message, typically the sender's nickname.
+    /// The origin of the message, typically the sender's nickname or server name.
+    ///
+    /// The origin can be in various formats:
+    /// - `nickname!username@hostname` for user messages
+    /// - `servername` for server messages
+    /// - `nil` for messages without an origin
     public var origin: String?
     
     /// The target of the message, which can be a channel or a user.
+    ///
+    /// For numeric responses, this is typically the target user's nickname.
+    /// For other commands, it may represent the intended recipient.
     public var target: String?
     
-    /// The IRC messageType associated with the message.
+    /// The IRC command associated with the message.
+    ///
+    /// This can be any valid IRC command including:
+    /// - Standard commands (PRIVMSG, JOIN, PART, etc.)
+    /// - Numeric responses (001, 433, etc.)
+    /// - Custom commands
     public var command: IRCCommand
     
-    /// Optional tags associated with the message.
+    /// Optional IRCv3 message tags associated with the message.
+    ///
+    /// Tags provide additional metadata about the message, such as:
+    /// - Timestamps
+    /// - Account information
+    /// - Message IDs
+    /// - Custom metadata
     public var tags: [IRCTag]?
 
     /// A string representation of the message for logging and debugging.

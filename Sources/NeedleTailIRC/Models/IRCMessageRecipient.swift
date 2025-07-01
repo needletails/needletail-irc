@@ -1,8 +1,16 @@
 //
 //  IRCMessageRecipient.swift
-//
+//  needletail-irc
 //
 //  Created by Cole M on 9/28/22.
+//
+//  Copyright (c) 2025 NeedleTails Organization.
+//  This project is licensed under the MIT License.
+//
+//  See the LICENSE file for more information.
+//
+//  This file is part of the NeedleTailIRC SDK, which provides
+//  IRC protocol implementation and messaging capabilities.
 //
 
 import Foundation
@@ -40,7 +48,7 @@ public enum IRCMessageRecipient: Codable, Hashable, Sendable {
 
 public extension IRCMessageRecipient {
     /// Initializes an `IRCPayloadRecipient` from a string.
-    /// - Parameter s: The string representation of the recipient.
+    /// - Parameter string: The string representation of the recipient.
     /// - Returns: An optional `IRCPayloadRecipient`. Returns `nil` if parsing fails.
     init?(_ string: String) {
         if string == Constants.star.rawValue {

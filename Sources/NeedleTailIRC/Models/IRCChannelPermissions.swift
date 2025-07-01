@@ -1,116 +1,172 @@
 //
 //  IRCChannelPermissions.swift
-//
+//  needletail-irc
 //
 //  Created by Cole M on 9/28/22.
 //
-
-import Foundation
+//  Copyright (c) 2025 NeedleTails Organization.
+//  This project is licensed under the MIT License.
+//
+//  See the LICENSE file for more information.
+//
+//  This file is part of the NeedleTailIRC SDK, which provides
+//  IRC protocol implementation and messaging capabilities.
+//
 
 /// Represents various modes that can be set on an IRC channel, conforming to Codable, OptionSet,
 /// Sendable, and Hashable protocols. Each mode grants specific privileges or restrictions to channel users.
+/// 
+/// This implementation follows IETF RFC 2811 and RFC 1459 specifications for IRC channel modes.
 public struct IRCChannelPermissions: Codable, OptionSet, Sendable, Hashable {
     
-    public let rawValue: UInt16
+    public let rawValue: UInt32
     
-    public init(rawValue: UInt16) {
+    public init(rawValue: UInt32) {
         self.rawValue = rawValue
     }
     
-    // MARK: - Channel Modes
+    // MARK: - Standard IRC Channel Modes (RFC 2811, RFC 1459)
     
-    /// Admin over all other permissions
-    public static let channelOperatorAdmin = IRCChannelPermissions(rawValue: 1 << 0)
+    /// O: Channel founder/creator (highest level of channel operator)
+    public static let founder = IRCChannelPermissions(rawValue: 1 << 0)
     
-    /*
-     Channel operators have various privileges, including:
-     The ability to kick or ban users from the channel.
-     The ability to change channel modes.
-     The ability to invite users to the channel.
-     The ability to set and remove channel operator status from other users.
-     There may be multiple Channel Operators for a given channel and therefore a list needs to be kept. When Listing operators characters such as @ or % are used to identify operators.
-     */
-    
+    /// o: Channel operator (can manage channel)
     public static let channelOperator = IRCChannelPermissions(rawValue: 1 << 1)
     
-    /*
-     This mode enhances the privacy and security of the channel by making it invite-only, meaning that only users who have been explicitly invited by a channel operator can join and participate in the channel. Private message can be listed and known to those outside of the channel if they know the channel name. They are not in a public list of channels.
-     */
+    /// p: Private channel (not shown in channel list)
     public static let `private` = IRCChannelPermissions(rawValue: 1 << 2)
     
-    /*
-     The secret channel mode, often represented by the *s* flag, is used to create channels that are not listed in the channel list and are not visible to users who are not already in the channel. The secret mode enhances privacy and confidentiality by making the channel effectively invisible and accessible only to users who have been explicitly invited or are already members of the channel. To join a secret channel you must be invited.
-     */
+    /// s: Secret channel (not shown in channel list or WHOIS)
     public static let secret = IRCChannelPermissions(rawValue: 1 << 3)
     
-    /*
-     The invite-only channel mode, often represented by the +i flag, is used to create channels where users can only join if they have been explicitly invited by a channel operator or another user with the authority to invite. The invite-only mode enhances control over channel access by requiring users to have an invitation to join the channel, thereby ensuring that only selected individuals can participate in the discussions. If Invite Only Mode is used alone it can be listed and seen by public sources, but it cannot be joined without the invitation.
-     */
+    /// i: Invite-only channel (requires invitation to join)
     public static let inviteOnly = IRCChannelPermissions(rawValue: 1 << 4)
     
-    /*
-     TopicOnlyByOperator: Only channel operators (ops) have the ability to set or change the channel topic. This mode restricts the modification of the channel topic to operators, ensuring that only authorized users can update the topic displayed to all users in the channel.
-     */
+    /// t: Topic protection (only operators can change topic)
+    public static let topicProtection = IRCChannelPermissions(rawValue: 1 << 5)
     
-    public static let topicOnlyByOperator = IRCChannelPermissions(rawValue: 1 << 5)
+    /// n: No external messages (only channel members can send messages)
+    public static let noExternalMessages = IRCChannelPermissions(rawValue: 1 << 6)
     
-    /*
-     No Outside Clients is used to restrict messages from users who are not in the channel. When the n mode is set on a channel, users who are not currently in the channel are prevented from sending messages to the channel. This mode helps maintain the channel's focus on internal discussions among the channel members and prevents external users from disrupting the conversation. Basically allows users to see the conversation, but they cannot participate.
-     */
-    public static let noOutsideClients = IRCChannelPermissions(rawValue: 1 << 6)
-    
-    /*
-     The Moderated Mode, often represented by the +m flag, is a channel mode that allows channel operators (ops) to control who can send messages in the channel. When the moderated mode is enabled, only channel operators and users with voice (+v) or other specific privileges can send messages, while regular users are restricted from sending messages to the channel. This mode helps maintain order, control discussions, and prevent spam or disruptive behavior within the channel. Basically even if we are a member we can only participate if we are an operator or a voice(speakControl) permissions.
-     */
+    /// m: Moderated channel (only operators and voiced users can speak)
     public static let moderated = IRCChannelPermissions(rawValue: 1 << 7)
     
-    /*
-     The UserLimit Mode, often represented by the +l flag, is used to set a limit on the maximum number of users allowed in a channel. When the userLimit mode is enabled with a specific limit, additional users attempting to join the channel beyond the set limit will be prevented from entering the channel. This mode helps control the number of users in a channel, manage channel capacity, and maintain a certain level of activity within the channel.
-     */
+    /// l: User limit (sets maximum number of users)
     public static let userLimit = IRCChannelPermissions(rawValue: 1 << 8)
     
-    /*
-     The BanMask Channel Mode, often represented by the +b flag, is used to ban users from a channel based on a specified ban mask. A ban mask is a pattern that matches a user's hostname, IP address, or nickname, allowing channel operators to prevent specific users or groups of users from joining the channel. When the banMask mode is set with a ban mask, users matching the ban mask are prohibited from entering the channel.
-     */
+    /// b: Ban mask (bans users matching the mask)
     public static let banMask = IRCChannelPermissions(rawValue: 1 << 9)
     
-    /*
-     The SpeakControl Mode refers to the voice mode in a channel. When a user is given the voice mode (denoted by the "+" symbol), they are allowed to speak in a channel that is set to moderated mode.
-     In a moderated channel, only users with voice mode (+V) or operator status (@) are allowed to send messages. Users without voice mode or operator status can listen to the conversation but cannot actively participate by sending messages.
-     Voice mode is often used in larger channels or during events where there is a need to control the flow of conversation and prevent chaos or spam. By granting voice mode to trusted users, channel operators can ensure that meaningful discussions can take place while maintaining order within the channel.
-     */
-    public static let speakControl = IRCChannelPermissions(rawValue: 1 << 10)
+    /// v: Voice (allows speaking in moderated channels)
+    public static let voice = IRCChannelPermissions(rawValue: 1 << 10)
     
-    /*
-     The Password Mode allows channel operators to set a password for a specific channel. Users who want to join the channel must provide the correct password to gain access.
-     Setting a password for a channel can help control who can join the channel and maintain privacy or exclusivity within the channel. It is commonly used for private or restricted channels where only invited users should have access.
-     When the password mode is enabled on a channel, users attempting to join the channel will be prompted to enter the correct password. If the password is entered correctly, the user will be granted access to the channel. If the password is incorrect or not provided, the user will be unable to join the channel.
-     Channel operators can change the password at any time to maintain security and control over who can access the channel.
-     */
-    public static let password = IRCChannelPermissions(rawValue: 1 << 11)
+    /// k: Channel key/password (requires password to join)
+    public static let key = IRCChannelPermissions(rawValue: 1 << 11)
+    
+    /// e: Exception list (exempts users from ban masks)
+    public static let exceptionList = IRCChannelPermissions(rawValue: 1 << 12)
+    
+    /// I: Invite exception list (exempts users from invite-only)
+    public static let inviteExceptionList = IRCChannelPermissions(rawValue: 1 << 13)
+    
+    // MARK: - Extended Channel Modes (Modern IRC)
+    
+    /// L: Channel redirect (redirects users to another channel when limit is reached)
+    public static let redirect = IRCChannelPermissions(rawValue: 1 << 14)
+    
+    /// q: Quiet list (silences users without banning them)
+    public static let quietList = IRCChannelPermissions(rawValue: 1 << 15)
+    
+    /// f: Forward (forwards users to another channel)
+    public static let forward = IRCChannelPermissions(rawValue: 1 << 16)
+    
+    /// j: Join throttle (limits join frequency)
+    public static let joinThrottle = IRCChannelPermissions(rawValue: 1 << 17)
+    
+    /// J: Join delay (delays join messages)
+    public static let joinDelay = IRCChannelPermissions(rawValue: 1 << 18)
+    
+    /// c: Block color codes
+    public static let blockColor = IRCChannelPermissions(rawValue: 1 << 19)
+    
+    /// C: Block caps (block excessive capitalization)
+    public static let blockCaps = IRCChannelPermissions(rawValue: 1 << 20)
+    
+    /// E: Block repeated messages
+    public static let blockRepeated = IRCChannelPermissions(rawValue: 1 << 21)
+    
+    /// F: Flood protection
+    public static let floodProtection = IRCChannelPermissions(rawValue: 1 << 22)
+    
+    /// S: Strip color codes
+    public static let stripColor = IRCChannelPermissions(rawValue: 1 << 23)
+    
+    /// T: Block CTCP messages
+    public static let blockCTCP = IRCChannelPermissions(rawValue: 1 << 24)
+    
+    /// N: Block notices
+    public static let blockNotices = IRCChannelPermissions(rawValue: 1 << 25)
+    
+    /// V: Block invites
+    public static let blockInvites = IRCChannelPermissions(rawValue: 1 << 26)
+    
+    /// K: Block kicks
+    public static let blockKicks = IRCChannelPermissions(rawValue: 1 << 27)
+    
+    /// M: Block nick changes
+    public static let blockNickChange = IRCChannelPermissions(rawValue: 1 << 28)
+    
+    /// R: Registered users only
+    public static let registeredOnly = IRCChannelPermissions(rawValue: 1 << 29)
+    
+    /// D: Delay join (delays join messages)
+    public static let delayJoin = IRCChannelPermissions(rawValue: 1 << 30)
+    
+    /// W: Block WHO requests
+    public static let blockWHO = IRCChannelPermissions(rawValue: 1 << 31)
     
     /// The mask value representing the combined modes.
-    public var maskValue: UInt16 { return rawValue }
+    public var maskValue: UInt32 { return rawValue }
     
     /// Initializes a new IRCChannelPermissions from a string representation of modes.
     /// - Parameter string: A string containing channel mode characters.
     /// - Returns: An optional IRCChannelPermissions instance; returns nil if invalid.
     public init?(_ string: String) {
-        var mask: UInt16 = 0
+        var mask: UInt32 = 0
         for c in string {
             switch c {
-            case "O": mask |= IRCChannelPermissions.channelOperatorAdmin.rawValue
+            case "O": mask |= IRCChannelPermissions.founder.rawValue
             case "o": mask |= IRCChannelPermissions.channelOperator.rawValue
             case "p": mask |= IRCChannelPermissions.`private`.rawValue
             case "s": mask |= IRCChannelPermissions.secret.rawValue
             case "i": mask |= IRCChannelPermissions.inviteOnly.rawValue
-            case "t": mask |= IRCChannelPermissions.topicOnlyByOperator.rawValue
-            case "n": mask |= IRCChannelPermissions.noOutsideClients.rawValue
+            case "t": mask |= IRCChannelPermissions.topicProtection.rawValue
+            case "n": mask |= IRCChannelPermissions.noExternalMessages.rawValue
             case "m": mask |= IRCChannelPermissions.moderated.rawValue
             case "l": mask |= IRCChannelPermissions.userLimit.rawValue
             case "b": mask |= IRCChannelPermissions.banMask.rawValue
-            case "v": mask |= IRCChannelPermissions.speakControl.rawValue
-            case "k": mask |= IRCChannelPermissions.password.rawValue
+            case "v": mask |= IRCChannelPermissions.voice.rawValue
+            case "k": mask |= IRCChannelPermissions.key.rawValue
+            case "e": mask |= IRCChannelPermissions.exceptionList.rawValue
+            case "I": mask |= IRCChannelPermissions.inviteExceptionList.rawValue
+            case "L": mask |= IRCChannelPermissions.redirect.rawValue
+            case "q": mask |= IRCChannelPermissions.quietList.rawValue
+            case "f": mask |= IRCChannelPermissions.forward.rawValue
+            case "j": mask |= IRCChannelPermissions.joinThrottle.rawValue
+            case "J": mask |= IRCChannelPermissions.joinDelay.rawValue
+            case "c": mask |= IRCChannelPermissions.blockColor.rawValue
+            case "C": mask |= IRCChannelPermissions.blockCaps.rawValue
+            case "E": mask |= IRCChannelPermissions.blockRepeated.rawValue
+            case "F": mask |= IRCChannelPermissions.floodProtection.rawValue
+            case "S": mask |= IRCChannelPermissions.stripColor.rawValue
+            case "T": mask |= IRCChannelPermissions.blockCTCP.rawValue
+            case "N": mask |= IRCChannelPermissions.blockNotices.rawValue
+            case "V": mask |= IRCChannelPermissions.blockInvites.rawValue
+            case "K": mask |= IRCChannelPermissions.blockKicks.rawValue
+            case "M": mask |= IRCChannelPermissions.blockNickChange.rawValue
+            case "R": mask |= IRCChannelPermissions.registeredOnly.rawValue
+            case "D": mask |= IRCChannelPermissions.delayJoin.rawValue
+            case "W": mask |= IRCChannelPermissions.blockWHO.rawValue
             default: return nil
             }
         }
@@ -121,18 +177,38 @@ public struct IRCChannelPermissions: Codable, OptionSet, Sendable, Hashable {
     /// Returns the string representation of the channel modes.
     public var stringValue: String {
         var mode = ""
-        if contains(.channelOperatorAdmin) { mode += "O" }
+        if contains(.founder) { mode += "O" }
         if contains(.channelOperator) { mode += "o" }
         if contains(.`private`) { mode += "p" }
         if contains(.secret) { mode += "s" }
         if contains(.inviteOnly) { mode += "i" }
-        if contains(.topicOnlyByOperator) { mode += "t" }
-        if contains(.noOutsideClients) { mode += "n" }
+        if contains(.topicProtection) { mode += "t" }
+        if contains(.noExternalMessages) { mode += "n" }
         if contains(.moderated) { mode += "m" }
         if contains(.userLimit) { mode += "l" }
         if contains(.banMask) { mode += "b" }
-        if contains(.speakControl) { mode += "v" }
-        if contains(.password) { mode += "k" }
+        if contains(.voice) { mode += "v" }
+        if contains(.key) { mode += "k" }
+        if contains(.exceptionList) { mode += "e" }
+        if contains(.inviteExceptionList) { mode += "I" }
+        if contains(.redirect) { mode += "L" }
+        if contains(.quietList) { mode += "q" }
+        if contains(.forward) { mode += "f" }
+        if contains(.joinThrottle) { mode += "j" }
+        if contains(.joinDelay) { mode += "J" }
+        if contains(.blockColor) { mode += "c" }
+        if contains(.blockCaps) { mode += "C" }
+        if contains(.blockRepeated) { mode += "E" }
+        if contains(.floodProtection) { mode += "F" }
+        if contains(.stripColor) { mode += "S" }
+        if contains(.blockCTCP) { mode += "T" }
+        if contains(.blockNotices) { mode += "N" }
+        if contains(.blockInvites) { mode += "V" }
+        if contains(.blockKicks) { mode += "K" }
+        if contains(.blockNickChange) { mode += "M" }
+        if contains(.registeredOnly) { mode += "R" }
+        if contains(.delayJoin) { mode += "D" }
+        if contains(.blockWHO) { mode += "W" }
         return mode
     }
 }

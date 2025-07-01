@@ -1,8 +1,16 @@
 //
 //  IRCEventProtocol.swift
-//
+//  needletail-irc
 //
 //  Created by Cole M on 9/28/22.
+//
+//  Copyright (c) 2025 NeedleTails Organization.
+//  This project is licensed under the MIT License.
+//
+//  See the LICENSE file for more information.
+//
+//  This file is part of the NeedleTailIRC SDK, which provides
+//  IRC protocol implementation and messaging capabilities.
 //
 
 /// A protocol that defines the events and commands for handling IRC operations.
@@ -136,15 +144,19 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     /// Sends a file to a specified recipient using DCC.
     /// - Parameters:
     ///   - packet: The DCCPacket.
+    ///   - sender: The Sender
     func doDCCSend(with packet: DCCMetadata, sender: String) async throws
     
     /// Initiates a DCC chat with a specified recipient.
-    /// - Parameter packet: The DCCPacket.
+    /// - Parameters:
+    ///   - packet: The DCCPacket
+    ///   - sender: The Sender
     func doDCCChat(with packet: DCCMetadata, sender: String) async throws
     
     /// Resumes a DCC file transfer to a specified recipient.
     /// - Parameters:
     ///   - packet: The DCCPacket
+    ///   - sender: The Sender
     func doDCCResume(with packet: DCCMetadata, sender: String) async throws
     
     /// Disconnects a DCC session with a specified recipient.
@@ -153,11 +165,11 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     // MARK: - Additional Methods
     
     /// Publishes a key bundle.
-    /// - Parameter keyBundle: An array of keys to publish.
+    ///- Parameter packet: A packet as an Array
     func doPublishUserConfiguration(packet: [String]) async throws
     
     /// Reads a key bundle.
-    /// - Parameter keyBundle: An array of keys to read.
+    ///- Parameter packet: A packet as an Array
     func doFindUserConfiguration(packet: [String]) async throws
     
     /// Registers an APN token for push notifications.
@@ -166,6 +178,7 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     
     /// Sets a password for the user.
     /// - Parameter password: An array containing the password.
+    ///- Parameter associatedTags: IRCTags associated with the password command
     func doPassword(password: [String], associatedTags: [IRCTag]) async throws
     
     /// Registers a new device.
@@ -173,11 +186,11 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     func doNewDevice(info: [String]) async throws
     
     /// Publishes a blob of data.
-    /// - Parameter blob: An array containing the blob data.
+    ///- Parameter packet: A packet as an Array
     func doPublishBlob(packet: [String]) async throws
     
     /// Reads a blob of data.
-    /// - Parameter blob: An array containing the blob data.
+    ///- Parameter packet: A packet as an Array
     func doReadBlob(packet: [String]) async throws
     
     /// Retrieves offline messages for a specified user.
@@ -194,7 +207,7 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     ///   - users: An array of user nicknames to kick.
     ///   - comments: Optional comments to include with the kick.
     func doKick(channels: [NeedleTailChannel], users: [String], comments: [String]?) async throws
-
+    
     /// Kills a specified user.
     /// - Parameters:
     ///   - nick: The nickname of the user to kill.

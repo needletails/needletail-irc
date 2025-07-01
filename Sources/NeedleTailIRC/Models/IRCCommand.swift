@@ -1,13 +1,56 @@
 //
 //  IRCCommand.swift
-//
+//  needletail-irc
 //
 //  Created by Cole M on 9/23/22.
 //
+//  Copyright (c) 2025 NeedleTails Organization.
+//  This project is licensed under the MIT License.
+//
+//  See the LICENSE file for more information.
+//
+//  This file is part of the NeedleTailIRC SDK, which provides
+//  IRC protocol implementation and messaging capabilities.
+//
 
-import Foundation
-
-/// Represents a command in the IRC (Internet Relay Chat) protocol.
+/// A comprehensive representation of all IRC commands supported by the protocol.
+///
+/// `IRCCommand` provides type-safe access to all standard IRC commands as defined in RFC 2812 and RFC 1459,
+/// plus additional IRCv3 extensions and custom commands. Each command case includes the necessary
+/// parameters and provides compile-time safety for IRC operations.
+///
+/// ## Command Categories
+///
+/// The commands are organized into several categories:
+/// - **Connection Commands**: NICK, USER, PASS, QUIT
+/// - **Channel Commands**: JOIN, PART, LIST, MODE
+/// - **Messaging Commands**: PRIVMSG, NOTICE
+/// - **Information Commands**: WHOIS, WHO, ISON
+/// - **Administrative Commands**: KICK, KILL, OPER
+/// - **Server Commands**: PING, PONG, SQUIT
+/// - **DCC Commands**: DCCCHAT, DCCSEND, DCCRESUME
+/// - **CAP Commands**: IRCv3 capability negotiation
+/// - **Numeric Commands**: Server responses and error codes
+///
+/// ## Examples
+///
+/// ```swift
+/// // Join a channel
+/// let joinCommand = IRCCommand.join(channels: [NeedleTailChannel("#general")!], keys: nil)
+///
+/// // Send a private message
+/// let privMsgCommand = IRCCommand.privMsg([.channel(NeedleTailChannel("#general")!)], "Hello!")
+///
+/// // Change nickname
+/// let nickCommand = IRCCommand.nick(NeedleTailNick(name: "newNick", deviceId: UUID())!)
+///
+/// // Set user mode
+/// let modeCommand = IRCCommand.mode(nick, add: .invisible, remove: nil)
+/// ```
+///
+/// ## Thread Safety
+///
+/// This enum is thread-safe and can be used concurrently from multiple threads.
 public enum IRCCommand: Codable, Sendable {
     
     // MARK: - Cases
@@ -88,6 +131,107 @@ public enum IRCCommand: Codable, Sendable {
     case sdccSend(NeedleTailNick, String, Int, String, Int)
     case sdccResume(NeedleTailNick, String, Int, String, Int, Int)
     
+    // MARK: - Additional IRC Commands for 100% Conformance (RFC 2812, RFC 1459, IRCv3)
+    // These are added for protocol completeness. Implementation may be stubbed/TODO.
+    /// Sets or removes the away status for a user.
+    case away(String?) // AWAY command
+    /// Authenticates a user as an IRC operator.
+    case oper(String, String) // OPER command (username, password)
+    /// Requests an invite to an invite-only channel.
+    case knock(NeedleTailChannel, String?) // KNOCK command (channel, optional message)
+    /// Sets or removes a silence mask for ignoring users.
+    case silence(String) // SILENCE command (mask)
+    /// Invites a user to a channel.
+    case invite(NeedleTailNick, NeedleTailChannel) // INVITE command
+    /// Sets or gets the topic for a channel.
+    case topic(NeedleTailChannel, String?) // TOPIC command (channel, optional topic)
+    /// Lists users in a channel or all channels.
+    case names(NeedleTailChannel?) // NAMES command (optional channel)
+    /// Bans a user from a channel.
+    case ban(NeedleTailChannel, String) // BAN command (channel, mask)
+    /// Unbans a user from a channel.
+    case unban(NeedleTailChannel, String) // UNBAN command (channel, mask)
+    /// Kicks and bans a user from a channel.
+    case kickban(NeedleTailChannel, NeedleTailNick, String) // KICKBAN command (channel, nick, reason)
+    /// Clears all modes from a channel.
+    case clearmode(NeedleTailChannel, String) // CLEARMODE command (channel, mode)
+    /// Adds an exception mask to a channel.
+    case except(NeedleTailChannel, String) // EXCEPT command (channel, mask)
+    /// Removes an exception mask from a channel.
+    case unexcept(NeedleTailChannel, String) // UNEXCEPT command (channel, mask)
+    /// Adds an invite-exception mask to a channel.
+    case inviteExcept(NeedleTailChannel, String) // INVITEEXCEPT command (channel, mask)
+    /// Removes an invite-exception mask from a channel.
+    case uninviteExcept(NeedleTailChannel, String) // UNINVITEEXCEPT command (channel, mask)
+    /// Quiets a user in a channel.
+    case quiet(NeedleTailChannel, String) // QUIET command (channel, mask)
+    /// Unquiets a user in a channel.
+    case unquiet(NeedleTailChannel, String) // UNQUIET command (channel, mask)
+    /// Gives voice to a user in a channel.
+    case voice(NeedleTailChannel, NeedleTailNick) // VOICE command
+    /// Removes voice from a user in a channel.
+    case devoice(NeedleTailChannel, NeedleTailNick) // DEVOICE command
+    /// Gives half-operator status to a user in a channel.
+    case halfop(NeedleTailChannel, NeedleTailNick) // HALFOP command
+    /// Removes half-operator status from a user in a channel.
+    case dehalfop(NeedleTailChannel, NeedleTailNick) // DEHALFOP command
+    /// Gives protect status to a user in a channel.
+    case protect(NeedleTailChannel, NeedleTailNick) // PROTECT command
+    /// Removes protect status from a user in a channel.
+    case deprotect(NeedleTailChannel, NeedleTailNick) // DEPROTECT command
+    /// Gives owner status to a user in a channel.
+    case owner(NeedleTailChannel, NeedleTailNick) // OWNER command
+    /// Removes owner status from a user in a channel.
+    case deowner(NeedleTailChannel, NeedleTailNick) // DEOWNER command
+    // MARK: - Administrative/Server Commands
+    /// Reloads server configuration files.
+    case rehash // REHASH command
+    /// Restarts the IRC server.
+    case restart // RESTART command
+    /// Shuts down the IRC server.
+    case die // DIE command
+    /// Disconnects a server from the network.
+    case squit(String, String) // SQUIT command (server, comment)
+    /// Connects to another server.
+    case connect(String, Int, String?) // CONNECT command (target server, port, remote server)
+    /// Traces the server connection path.
+    case trace(String?) // TRACE command (optional target)
+    /// Requests server statistics.
+    case stats(String?, String?) // STATS command (optional query, optional target)
+    /// Requests server administrator information.
+    case admin(String?) // ADMIN command (optional target)
+    /// Requests server information.
+    case info(String?) // INFO command (optional target)
+    /// Requests server version.
+    case version(String?) // VERSION command (optional target)
+    /// Requests server time.
+    case time(String?) // TIME command (optional target)
+    /// Requests user statistics.
+    case lusers(String?, String?) // LUSERS command (optional mask, optional target)
+    /// Requests the message of the day.
+    case motd(String?) // MOTD command (optional target)
+    /// Requests server rules.
+    case rules(String?) // RULES command (optional target)
+    /// Requests the server network map.
+    case map // MAP command
+    /// Requests a list of users.
+    case users(String?) // USERS command (optional target)
+    /// Sends a wallops message to all operators.
+    case wallops(String) // WALLOPS command
+    /// Sends a global operator message.
+    case globops(String) // GLOBOPS command
+    /// Sends a local operator message.
+    case locops(String) // LOCOPS command
+    /// Admin distribution list command (stub).
+    case adl // ADL command (stub)
+    /// Operator distribution list command (stub).
+    case odlist // ODLIST command (stub)
+    // MARK: - CTCP (Client-to-Client Protocol)
+    /// Sends a CTCP command to a user.
+    case ctcp(NeedleTailNick, String, String?) // CTCP command (target, command, optional argument)
+    /// Sends a CTCP reply to a user.
+    case ctcpreply(NeedleTailNick, String, String) // CTCP reply (target, command, argument)
+    
     // MARK: - Computed Properties
     
     /// Returns the string representation of the command.
@@ -100,7 +244,7 @@ public enum IRCCommand: Codable, Sendable {
         case .ping: return Constants.ping.rawValue
         case .pong: return Constants.pong.rawValue
         case .join: return Constants.join.rawValue
-        case .join0: return Constants.join0.rawValue
+        case .join0: return Constants.join.rawValue
         case .part: return Constants.part.rawValue
         case .list: return Constants.list.rawValue
         case .privMsg: return Constants.privMsg.rawValue
@@ -173,6 +317,65 @@ public enum IRCCommand: Codable, Sendable {
             let s = String(cmd.rawValue)
             if s.count >= 3 { return s }
             return String(repeating: "0", count: 3 - s.count) + s
+        // Add cases for new commands in commandAsString
+        case .away: return Constants.away.rawValue
+        case .oper: return Constants.oper.rawValue
+        case .knock: return Constants.knock.rawValue
+        case .silence: return Constants.silence.rawValue
+        case .invite: return Constants.invite.rawValue
+        case .topic: return Constants.topic.rawValue
+        case .names: return Constants.names.rawValue
+        case .ban: return Constants.ban.rawValue
+        case .unban: return Constants.unban.rawValue
+        case .kickban: return Constants.kickban.rawValue
+        case .clearmode: return Constants.clearmode.rawValue
+        case .except: return Constants.except.rawValue
+        case .unexcept: return Constants.unexcept.rawValue
+        case .inviteExcept: return Constants.inviteExcept.rawValue
+        case .uninviteExcept: return Constants.uninviteExcept.rawValue
+        case .quiet: return Constants.quiet.rawValue
+        case .unquiet: return Constants.unquiet.rawValue
+        case .voice: return Constants.voice.rawValue
+        case .devoice: return Constants.devoice.rawValue
+        case .halfop: return Constants.halfop.rawValue
+        case .dehalfop: return Constants.dehalfop.rawValue
+        case .protect: return Constants.protect.rawValue
+        case .deprotect: return Constants.deprotect.rawValue
+        case .owner: return Constants.owner.rawValue
+        case .deowner: return Constants.deowner.rawValue
+        case .rehash: return Constants.rehash.rawValue
+        case .restart: return Constants.restart.rawValue
+        case .die: return Constants.die.rawValue
+        case .squit: return Constants.sQuit.rawValue
+        case .connect: return Constants.connect.rawValue
+        case .trace: return Constants.trace.rawValue
+        case .stats: return Constants.stats.rawValue
+        case .admin: return Constants.admin.rawValue
+        case .info: return Constants.info.rawValue
+        case .version: return Constants.version.rawValue
+        case .time: return Constants.time.rawValue
+        case .lusers: return Constants.lusers.rawValue
+        case .motd: return Constants.motd.rawValue
+        case .rules: return Constants.rules.rawValue
+        case .map: return Constants.map.rawValue
+        case .users: return Constants.users.rawValue
+        case .wallops: return Constants.wallops.rawValue
+        case .globops: return Constants.globops.rawValue
+        case .locops: return Constants.locops.rawValue
+        case .adl: return Constants.adl.rawValue
+        case .odlist: return Constants.odlist.rawValue
+        case .ctcp: return Constants.ctcp.rawValue
+        case .ctcpreply: return Constants.ctcpreply.rawValue
+        }
+    }
+    
+    /// Returns whether this command is a numeric command (server response).
+    public var isNumeric: Bool {
+        switch self {
+        case .numeric, .otherNumeric:
+            return true
+        default:
+            return false
         }
     }
     
@@ -248,6 +451,54 @@ public enum IRCCommand: Codable, Sendable {
             var args = ["CAP", subCommand.rawValue]
             args.append(contentsOf: parameters)
             return args
+        case .away(let message): return message != nil ? [message!] : []
+        case .oper(let username, let password): return [username, password]
+        case .knock(let channel, let message): return [channel.stringValue, message ?? ""]
+        case .silence(let mask): return [mask]
+        case .invite(let nickname, let channel): return [nickname.stringValue, channel.stringValue]
+        case .topic(let channel, let topic): return [channel.stringValue, topic ?? ""]
+        case .names(let channel): return channel != nil ? [channel!.stringValue] : []
+        case .ban(let channel, let mask): return [channel.stringValue, mask]
+        case .unban(let channel, let mask): return [channel.stringValue, mask]
+        case .kickban(let channel, let nick, let reason): return [channel.stringValue, nick.stringValue, reason]
+        case .clearmode(let channel, let mode): return [channel.stringValue, mode]
+        case .except(let channel, let mask): return [channel.stringValue, mask]
+        case .unexcept(let channel, let mask): return [channel.stringValue, mask]
+        case .inviteExcept(let channel, let mask): return [channel.stringValue, mask]
+        case .uninviteExcept(let channel, let mask): return [channel.stringValue, mask]
+        case .quiet(let channel, let mask): return [channel.stringValue, mask]
+        case .unquiet(let channel, let mask): return [channel.stringValue, mask]
+        case .voice(let channel, let nick): return [channel.stringValue, nick.stringValue]
+        case .devoice(let channel, let nick): return [channel.stringValue, nick.stringValue]
+        case .halfop(let channel, let nick): return [channel.stringValue, nick.stringValue]
+        case .dehalfop(let channel, let nick): return [channel.stringValue, nick.stringValue]
+        case .protect(let channel, let nick): return [channel.stringValue, nick.stringValue]
+        case .deprotect(let channel, let nick): return [channel.stringValue, nick.stringValue]
+        case .owner(let channel, let nick): return [channel.stringValue, nick.stringValue]
+        case .deowner(let channel, let nick): return [channel.stringValue, nick.stringValue]
+        case .rehash: return []
+        case .restart: return []
+        case .die: return []
+        case .squit(let serverName, let comment): return [serverName, comment]
+        case .connect(let targetServer, let port, let remoteServer): return [targetServer, String(port), remoteServer ?? ""]
+        case .trace(let target): return target != nil ? [target!] : []
+        case .stats(let query, let target): return [query ?? "", target ?? ""]
+        case .admin(let target): return target != nil ? [target!] : []
+        case .info(let target): return target != nil ? [target!] : []
+        case .version(let target): return target != nil ? [target!] : []
+        case .time(let target): return target != nil ? [target!] : []
+        case .lusers(let mask, let target): return [mask ?? "", target ?? ""]
+        case .motd(let target): return target != nil ? [target!] : []
+        case .rules(let target): return target != nil ? [target!] : []
+        case .map: return []
+        case .users(let target): return target != nil ? [target!] : []
+        case .wallops(let message): return [message]
+        case .globops(let message): return [message]
+        case .locops(let message): return [message]
+        case .adl: return []
+        case .odlist: return []
+        case .ctcp(let target, let command, let argument): return [target.stringValue, command, argument ?? ""]
+        case .ctcpreply(let target, let command, let argument): return [target.stringValue, command, argument]
         }
     }
 

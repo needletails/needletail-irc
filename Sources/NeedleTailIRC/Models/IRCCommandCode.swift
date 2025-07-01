@@ -1,8 +1,16 @@
 //
 //  IRCCommandCode.swift
-//
+//  needletail-irc
 //
 //  Created by Cole M on 9/23/22.
+//
+//  Copyright (c) 2025 NeedleTails Organization.
+//  This project is licensed under the MIT License.
+//
+//  See the LICENSE file for more information.
+//
+//  This file is part of the NeedleTailIRC SDK, which provides
+//  IRC protocol implementation and messaging capabilities.
 //
 
 import Foundation
@@ -171,4 +179,31 @@ public enum IRCCommandCode: Int, Codable, Sendable {
     // MARK: - Freenode-Specific Errors
     
     case errorIllegalChannelName    = 479
+    
+    // MARK: - Additional Numeric Replies for 100% Conformance (RFC 2812, RFC 1459)
+    // Only add cases not already present above. Do not duplicate raw values.
+    case replyYourUniqueID = 42
+    case replyTraceLink = 200
+    case replyTraceConnecting = 201
+    case replyTraceHandshake = 202
+    case replyTraceUnknown = 203
+    case replyTraceOperator = 204
+    case replyTraceUser = 205
+    case replyTraceServer = 206
+    case replyTraceService = 207
+    case replyTraceNewType = 208
+    case replyTraceClass = 209
+    case replyStatsCLine = 213
+    case replyStatsNLine = 214
+    case replyStatsILine = 215
+    case replyStatsKLine = 216
+    case replyStatsQLine = 217
+    case replyStatsYLine = 218
+    case replyStatsLLine = 241
+    case replyStatsHLine = 244
+    case replyStatsGLine = 247
+    case replyStatsULine = 248
+    case replyStatsZLine = 223
+    case replyTraceLog = 261
+    case replyTraceEnd = 262
 }

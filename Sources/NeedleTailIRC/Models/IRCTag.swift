@@ -1,11 +1,17 @@
 //
 //  IRCTag.swift
-//
+//  needletail-irc
 //
 //  Created by Cole M on 12/11/21.
 //
-
-import Foundation
+//  Copyright (c) 2025 NeedleTails Organization.
+//  This project is licensed under the MIT License.
+//
+//  See the LICENSE file for more information.
+//
+//  This file is part of the NeedleTailIRC SDK, which provides
+//  IRC protocol implementation and messaging capabilities.
+//
 
 /// Represents a tag used in the IRC protocol, consisting of a key-value pair.
 /// This structure conforms to `Hashable`, `Codable`, and `Sendable`.

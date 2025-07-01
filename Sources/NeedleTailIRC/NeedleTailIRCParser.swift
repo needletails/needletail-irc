@@ -1,19 +1,67 @@
 //
 //  NeedleTailIRCParser.swift
-//
+//  needletail-irc
 //
 //  Created by Cole M on 9/28/22.
 //
+//  Copyright (c) 2025 NeedleTails Organization.
+//  This project is licensed under the MIT License.
+//
+//  See the LICENSE file for more information.
+//
+//  This file is part of the NeedleTailIRC SDK, which provides
+//  IRC protocol implementation and messaging capabilities.
+//
 
-import Foundation
-import NIOConcurrencyHelpers
 import NeedleTailLogger
 
+/// Errors that can occur during IRC message parsing.
 public enum MessageParsingErrors: Error, Sendable {
-    case invalidArguments(String), invalidCAPCommand(String), invalidTag
+    /// Invalid arguments provided for a command.
+    case invalidArguments(String)
+    /// Invalid CAP (capability) command format.
+    case invalidCAPCommand(String)
+    /// Invalid message tag format.
+    case invalidTag
 }
 
-/// A parser for IRC messages conforming to the IRC message syntax.
+/// A comprehensive parser for IRC messages that conforms to RFC 2812 and RFC 1459 standards.
+/// 
+/// This parser implements the IRC message format as specified in the IRC protocol:
+/// ['@' <tags> SPACE] [':' <source> SPACE] <command> <parameters> <crlf>
+/// 
+/// For numeric replies, the target is extracted as the first parameter according to the protocol.
+///
+/// The `NeedleTailIRCParser` provides functionality to parse raw IRC message strings into structured
+/// `IRCMessage` objects. It supports all standard IRC commands, IRCv3 message tags, and handles
+/// both numeric and string-based commands.
+///
+/// ## Usage
+///
+/// ```swift
+/// // Parse a simple IRC message
+/// let message = try NeedleTailIRCParser.parseMessage(":alice!alice@localhost PRIVMSG #general :Hello, world!")
+///
+/// // Parse a message with IRCv3 tags
+/// let taggedMessage = try NeedleTailIRCParser.parseMessage("@time=2023-01-01T12:00:00Z :alice!alice@localhost PRIVMSG #general :Hello!")
+/// ```
+///
+/// ## Message Format
+///
+/// The parser supports the standard IRC message format:
+/// ```
+/// [@tags] [:prefix] command [parameters] [:trailing]
+/// ```
+///
+/// - **Tags**: IRCv3 message tags (optional)
+/// - **Prefix**: Message origin (optional)
+/// - **Command**: IRC command or numeric code
+/// - **Parameters**: Command arguments
+/// - **Trailing**: Final parameter (can contain spaces)
+///
+/// ## Thread Safety
+///
+/// This parser is thread-safe and can be used concurrently from multiple threads.
 public struct NeedleTailIRCParser: Sendable {
     static let logger = NeedleTailLogger(.init(label: "[ com.needletails.irc.message.parser ]"))
     
@@ -24,7 +72,37 @@ public struct NeedleTailIRCParser: Sendable {
         case string(String)
     }
     
-    /// Parses an IRC message string into an `IRCMessage` object.
+    /// Parses a raw IRC message string into a structured `IRCMessage` object.
+    ///
+    /// This method handles the complete parsing of IRC messages, including:
+    /// - IRCv3 message tags
+    /// - Message prefixes (origin)
+    /// - Command parsing (both string and numeric)
+    /// - Parameter extraction
+    /// - Trailing parameter handling
+    ///
+    /// ## Examples
+    ///
+    /// ```swift
+    /// // Parse a simple message
+    /// let message = try NeedleTailIRCParser.parseMessage(":alice!alice@localhost PRIVMSG #general :Hello!")
+    ///
+    /// // Parse a message with tags
+    /// let taggedMessage = try NeedleTailIRCParser.parseMessage("@time=2023-01-01T12:00:00Z :alice PRIVMSG #general :Hello!")
+    ///
+    /// // Parse a numeric response
+    /// let numericMessage = try NeedleTailIRCParser.parseMessage(":server 001 alice :Welcome to the server!")
+    /// ```
+    ///
+    /// ## Message Format Support
+    ///
+    /// The parser supports all standard IRC message formats:
+    /// - Messages with and without tags
+    /// - Messages with and without prefixes
+    /// - String commands (PRIVMSG, JOIN, etc.)
+    /// - Numeric commands (001, 433, etc.)
+    /// - Messages with trailing parameters
+    ///
     /// - Parameter message: The raw IRC message string to parse.
     /// - Throws: `MessageParsingErrors` for invalid message formats.
     /// - Returns: An `IRCMessage` representing the parsed message.
@@ -162,7 +240,8 @@ public struct NeedleTailIRCParser: Sendable {
         case .string(let cmd):
             switch cmd {
             case Constants.nick.rawValue:
-                // For the NICK command, the entire argument string is treated as a single argument
+                // For the NICK command, according to IRC protocol: NICK <nickname>
+                // The entire argument string is the nickname
                 arguments.append(argumentString)
             case Constants.user.rawValue:
                 // For the USER command, split the arguments based on the colon
@@ -176,46 +255,74 @@ public struct NeedleTailIRCParser: Sendable {
                 if let realName = components.last {
                     arguments.append(realName)
                 }
+            case Constants.join.rawValue:
+                // Special handling for JOIN 0 (leave all channels)
+                let parts = argumentString.split(separator: " ").map { String($0) }.filter { !$0.isEmpty }
+                if parts.count == 1 && parts[0].trimmingCharacters(in: .whitespacesAndNewlines) == "0" {
+                    // Add "0" as argument for join0
+                    arguments.append("0")
+                } else {
+                    // Normal JOIN: parse channels and keys
+                    arguments.append(contentsOf: parts)
+                }
+            case Constants.ping.rawValue, Constants.pong.rawValue:
+                // PING and PONG: split by spaces, up to 2 parameters
+                let params = argumentString.split(separator: " ", maxSplits: 1).map { String($0) }
+                if !params.isEmpty {
+                    arguments.append(params[0])
+                }
+                if params.count > 1 {
+                    arguments.append(params[1])
+                }
             default:
                 // For other commands, handle arguments based on the presence of a colon
                 if argumentString.contains(Constants.colon.rawValue) {
                     var splitArgs = splitArguments(argumentString)
                     // Split the part before the colon into space-separated arguments
                     let initialArgs = splitArgs.0.components(separatedBy: Constants.space.rawValue)
-                    arguments.append(contentsOf: initialArgs.filter { !$0.isEmpty }) // Filter out empty strings
+                    arguments.append(contentsOf: initialArgs.filter { !$0.isEmpty }.map { $0.trimmingCharacters(in: .whitespaces) }) // Filter out empty strings and trim whitespace
                     // Append the part after the colon
                     if splitArgs.1.first == Constants.colon.rawValue.first {
                         splitArgs.1.removeFirst()
                     }
-                    arguments.append(splitArgs.1)
+                    arguments.append(splitArgs.1.trimmingCharacters(in: .whitespaces))
                 } else {
                     // If no colon is present, split the entire argument string by spaces
-                    arguments.append(contentsOf: argumentString.components(separatedBy: Constants.space.rawValue).filter { !$0.isEmpty })
+                    arguments.append(contentsOf: argumentString.components(separatedBy: Constants.space.rawValue).filter { !$0.isEmpty }.map { $0.trimmingCharacters(in: .whitespaces) })
                 }
                 if let firstArgument = arguments.first, !firstArgument.isEmpty {
                     // Check if the first character of the first argument matches the constant
                     if firstArgument.first == Constants.colon.rawValue.first {
                         var firstItem = arguments[0]
-                        
-                        // Check if the first item has at least one character
                         if firstItem.count > 0 {
-                            // Remove the first character
                             firstItem.remove(at: firstItem.startIndex)
-                            
-                            // Update the array with the modified string
                             arguments[0] = firstItem
                         }
-
                     }
                 }
             }
         case .int(_):
-            // For numeric commands, handle the target and arguments differently
-            let components = argumentString.components(separatedBy: Constants.colon.rawValue)
-            target = components.first?.trimmingCharacters(in: .whitespaces) // Trim whitespace from the target
-            if let lastMessage = components.last {
-                // Split the last message by commas and append to arguments
-                arguments.append(contentsOf: lastMessage.components(separatedBy: Constants.comma.rawValue).filter { !$0.isEmpty })
+            // For numeric commands, handle the target and arguments according to IRC protocol
+            // Numeric replies SHOULD contain the target as the first parameter
+            let trimmedArg = argumentString.trimmingCharacters(in: .whitespaces)
+            if trimmedArg.hasPrefix(Constants.colon.rawValue) {
+                // No target, just message
+                let message = String(trimmedArg.dropFirst())
+                arguments.append(contentsOf: message.components(separatedBy: Constants.comma.rawValue).filter { !$0.isEmpty }.map { $0.trimmingCharacters(in: .whitespaces) })
+            } else {
+                // Target is the first space-separated part
+                let spaceSeparated = trimmedArg.components(separatedBy: Constants.space.rawValue).filter { !$0.isEmpty }
+                if !spaceSeparated.isEmpty {
+                    target = spaceSeparated[0]
+                    // The rest is the argument string
+                    let rest = spaceSeparated.dropFirst().joined(separator: Constants.space.rawValue)
+                    if rest.hasPrefix(Constants.colon.rawValue) {
+                        let message = String(rest.dropFirst())
+                        arguments.append(contentsOf: message.components(separatedBy: Constants.comma.rawValue).filter { !$0.isEmpty }.map { $0.trimmingCharacters(in: .whitespaces) })
+                    } else if !rest.isEmpty {
+                        arguments.append(contentsOf: rest.components(separatedBy: Constants.space.rawValue).filter { !$0.isEmpty }.map { $0.trimmingCharacters(in: .whitespaces) })
+                    }
+                }
             }
         }
         return (arguments, target)

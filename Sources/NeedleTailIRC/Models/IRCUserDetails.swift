@@ -1,8 +1,16 @@
 //
 //  IRCUserDetails.swift
-//
+//  needletail-irc
 //
 //  Created by Cole M on 9/28/22.
+//
+//  Copyright (c) 2025 NeedleTails Organization.
+//  This project is licensed under the MIT License.
+//
+//  See the LICENSE file for more information.
+//
+//  This file is part of the NeedleTailIRC SDK, which provides
+//  IRC protocol implementation and messaging capabilities.
 //
 
 /// Represents detailed information about a user in the IRC (Internet Relay Chat) protocol.
@@ -28,7 +36,7 @@ public struct IRCUserDetails: Codable, Sendable, Equatable {
     /// Initializes a new instance with a username and optional user mode.
     /// - Parameters:
     ///   - username: The username of the IRC user.
-    ///   - userMode: The user mode flags for the user (optional).
+    ///   - userModeFlags: The user mode flags for the user (optional).
     ///   - realname: The real name of the user.
     public init(
         username: String,

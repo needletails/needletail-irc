@@ -4,7 +4,18 @@
 //
 //  Created by Cole M on 9/28/24.
 //
-import NIOCore
+//  Copyright (c) 2025 NeedleTails Organization.
+//  This project is licensed under the MIT License.
+//
+//  See the LICENSE file for more information.
+//
+//  This file is part of the NeedleTailIRC SDK, which provides
+//  IRC protocol implementation and messaging capabilities.
+//
+
+import struct NIOCore.NIOAsyncChannelOutboundWriter
+import struct NIOCore.NIOAsyncChannel
+import struct NIOCore.ByteBuffer
 
 public enum DCCState: String, Sendable, Codable {
     case none, requested, accepted, connecting, connected, disconnected

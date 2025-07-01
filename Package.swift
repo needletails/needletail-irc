@@ -16,13 +16,12 @@ let package = Package(
             targets: ["NeedleTailIRC"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-nio-transport-services.git", .upToNextMajor(from: "1.22.0")),
         .package(url: "https://github.com/apple/swift-nio.git", .upToNextMajor(from: "2.65.0")),
-        .package(url: "https://github.com/apple/swift-nio-extras.git", .upToNextMajor(from: "1.20.0")),
-        .package(url: "https://github.com/apple/swift-nio-ssl.git", .upToNextMajor(from: "2.25.0")),
         .package(url: "https://github.com/apple/swift-algorithms.git", .upToNextMajor(from: "1.2.0")),
-        .package(url: "git@github.com:needle-tail/needletail-logger.git", .upToNextMajor(from: "3.0.0")),
-        .package(url: "https://github.com/needletails/needletail-algorithms.git", .upToNextMajor(from: "2.0.0")),
+        .package(url: "https://github.com/apple/swift-async-algorithms.git", .upToNextMajor(from: "1.0.0")),
+        .package(url: "https://github.com/apple/swift-collections.git", .upToNextMajor(from: "1.1.0")),
+        .package(url: "https://github.com/needletails/needletail-logger.git", .upToNextMajor(from: "3.0.0")),
+        .package(url: "https://github.com/needletails/needletail-algorithms.git", .upToNextMajor(from: "2.0.2")),
         .package(url: "https://github.com/orlandos-nl/BSON.git", .upToNextMajor(from: "8.1.1")),
     ],
     targets: [
@@ -31,18 +30,16 @@ let package = Package(
         .target(
             name: "NeedleTailIRC",
             dependencies: [
-                .product(name: "NIOTransportServices", package: "swift-nio-transport-services"),
-                .product(name: "NIOExtras", package: "swift-nio-extras"),
-                .product(name: "NIOSSL", package: "swift-nio-ssl"),
-                .product(name: "NIOHTTP1", package: "swift-nio"),
-                .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
                 .product(name: "Algorithms", package: "swift-algorithms"),
+                .product(name: "AsyncAlgorithms", package: "swift-async-algorithms"),
+                .product(name: "DequeModule", package: "swift-collections"),
                 .product(name: "NeedleTailLogger", package: "needletail-logger"),
                 .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
                 .product(name: "BSON", package: "BSON")
-            ]),
+            ],
+        ),
         .testTarget(
             name: "NeedleTailIRCTests",
             dependencies: [
@@ -50,7 +47,7 @@ let package = Package(
                 .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
                 .product(name: "BSON", package: "BSON")
             ],
-            resources: [.process("Resources")]
+
         )
     ]
 )
