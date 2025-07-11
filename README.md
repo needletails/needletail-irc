@@ -242,7 +242,7 @@ dependencies: [
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+We welcome contributions! Please see our [Contributing Guide](https://github.com/needletails/needletail-irc/blob/main/CONTRIBUTING.md) for details.
 
 ## License
 
@@ -250,7 +250,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-- **Documentation**: [Documentation.docc](Documentation.docc)
+- **Documentation**: [Documentation.docc](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc)
 - **Issues**: [GitHub Issues](https://github.com/needletails/needletail-irc/issues)
 
 ## Acknowledgments
