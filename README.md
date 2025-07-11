@@ -188,19 +188,19 @@ do {
 
 ## Documentation
 
-Comprehensive documentation is available in the [Documentation.docc](Documentation.docc) directory:
+Comprehensive documentation is available in the [Documentation.docc](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc) directory:
 
-- [Getting Started](Documentation.docc/GettingStarted.md) - Installation and basic setup
-- [Basic Usage](Documentation.docc/BasicUsage.md) - Core concepts and patterns
-- [Message Format](Documentation.docc/MessageFormat.md) - IRC message structure
-- [Message Handling](Documentation.docc/MessageHandling.md) - Processing messages
-- [IRC Commands](Documentation.docc/IRCCommands.md) - Complete command reference
-- [Channels](Documentation.docc/Channels.md) - Channel management
-- [Users](Documentation.docc/Users.md) - User management and permissions
-- [Multipart Messages](Documentation.docc/MultipartMessages.md) - Large message handling
-- [Transport Layer](Documentation.docc/TransportLayer.md) - Connection management
-- [Error Handling](Documentation.docc/ErrorHandling.md) - Error types and strategies
-- [API Reference](Documentation.docc/APIReference.md) - Complete API documentation
+- [Getting Started](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/GettingStarted.md) - Installation and basic setup
+- [Basic Usage](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/BasicUsage.md) - Core concepts and patterns
+- [Message Format](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/MessageFormat.md) - IRC message structure
+- [Message Handling](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/MessageHandling.md) - Processing messages
+- [IRC Commands](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/IRCCommands.md) - Complete command reference
+- [Channels](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/Channels.md) - Channel management
+- [Users](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/Users.md) - User management and permissions
+- [Multipart Messages](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/MultipartMessages.md) - Large message handling
+- [Transport Layer](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/TransportLayer.md) - Connection management
+- [Error Handling](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/ErrorHandling.md) - Error types and strategies
+- [API Reference](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/APIReference.md) - Complete API documentation
 
 ## Requirements
 
