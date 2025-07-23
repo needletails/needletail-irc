@@ -30,7 +30,7 @@ public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
     ///   - executor: An optional executor of type `AnyExecutor` for managing task execution.
     ///   - consumer: An instance of `NeedleTailAsyncConsumer<ByteBuffer>` that handles the message consumption.
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes. Defaults to a logger with a specific label.
-    ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<ByteBuffer>` used to write the messages.
+    ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCMessage>` used to write the messages.
     ///   - origin: A `String` representing the origin of the messages. Defaults to an empty string.
     ///   - command: An instance of `IRCCommand` representing the command associated with the messages.
     ///   - tags: An optional array of `IRCTag` representing any tags associated with the messages.
@@ -39,9 +39,8 @@ public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
     func transportMessage(
         _ messageGenerator: IRCMessageGenerator,
         executor: any AnyExecutor,
-        consumer: NeedleTailAsyncConsumer<ByteBuffer>,
         logger: NeedleTailLogger,
-        writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
+        writer: NIOAsyncChannelOutboundWriter<IRCPayload>,
         origin: String,
         command: IRCCommand,
         tags: [IRCTag]?,
@@ -54,15 +53,14 @@ public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
     ///   - consumer: An instance of `NeedleTailAsyncConsumer<ByteBuffer>` that handles the message consumption.
     ///   - executor: An optional executor of type `AnyExecutor` for managing task execution.
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes.
-    ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<ByteBuffer>` used to write the message.
+    ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCMessage>` used to write the message.
     ///   - message: An instance of `IRCMessage` representing the message to be sent.
     /// - Throws: An error if sending or flushing the message fails.
-    func sendAndFlushMessage(
-        _ consumer: NeedleTailAsyncConsumer<ByteBuffer>,
+    func sendAndFlushMessage<OutboundOut>(
         executor: (any AnyExecutor)?,
         logger: NeedleTailLogger,
-        writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
-        message: IRCMessage
+        writer: NIOAsyncChannelOutboundWriter<OutboundOut>,
+        message: OutboundOut
     ) async throws
 }
 
@@ -75,7 +73,7 @@ extension NeedleTailWriterDelegate {
     ///   - executor: An optional executor of type `AnyExecutor` for managing task execution.
     ///   - consumer: An instance of `NeedleTailAsyncConsumer<ByteBuffer>` that handles the message consumption.
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes. Defaults to a logger with a specific label.
-    ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<ByteBuffer>` used to write the messages.
+    ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCPayload>` used to write the messages.
     ///   - origin: A `String` representing the origin of the messages. Defaults to an empty string.
     ///   - command: An instance of `IRCCommand` representing the command associated with the messages.
     ///   - tags: An optional array of `IRCTag` representing any tags associated with the messages.
@@ -84,9 +82,8 @@ extension NeedleTailWriterDelegate {
     public func transportMessage(
         _ messageGenerator: IRCMessageGenerator,
         executor: any AnyExecutor,
-        consumer: NeedleTailAsyncConsumer<ByteBuffer>,
         logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[ com.needletails.writer.delegate ]")),
-        writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
+        writer: NIOAsyncChannelOutboundWriter<IRCPayload>,
         origin: String = "",
         command: IRCCommand,
         tags: [IRCTag]? = nil,
@@ -102,11 +99,10 @@ extension NeedleTailWriterDelegate {
         
         for try await message in messageStream {
             try await self.sendAndFlushMessage(
-                consumer,
                 executor: executor,
                 logger: logger,
                 writer: writer,
-                message: message
+                message: .irc(message)
             )
         }
     }
@@ -119,15 +115,14 @@ extension NeedleTailWriterDelegate {
     ///   - consumer: An instance of `NeedleTailAsyncConsumer<ByteBuffer>` that handles the message consumption.
     ///   - executor: An optional executor of type `AnyExecutor` for managing task execution. If `nil`, the task will run without a specific executor.
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes. Defaults to a logger with a specific label.
-    ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<ByteBuffer>` used to write the message.
+    ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCMessage>` used to write the message.
     ///   - message: An instance of `IRCMessage` representing the message to be sent.
     /// - Throws: An error if sending or flushing the message fails.
-    public func sendAndFlushMessage(
-        _ consumer: NeedleTailAsyncConsumer<ByteBuffer>,
+    public func sendAndFlushMessage<OutboundOut>(
         executor: (any AnyExecutor)? = nil,
         logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[ com.needletails.writer.delegate ]")),
-        writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
-        message: IRCMessage
+        writer: NIOAsyncChannelOutboundWriter<OutboundOut>,
+        message: OutboundOut
     ) async throws {
         try await withThrowingDiscardingTaskGroup { group in
             if let executor {
@@ -150,27 +145,26 @@ extension NeedleTailWriterDelegate {
         }
     }
     
+    
     /// Writes a message to the provided writer.
     ///
     /// This method encodes the message and handles any errors that occur during the writing process.
     ///
     /// - Parameters:
-    ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<ByteBuffer>` used to write the message.
+    ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCMessage>` used to write the message.
     ///   - message: An instance of `IRCMessage` representing the message to be sent.
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes.
     /// - Throws: An error if writing the message fails.
-    private func writeMessage(
-        writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
-        message: IRCMessage,
+    private func writeMessage<OutboundOut>(
+        writer: NIOAsyncChannelOutboundWriter<OutboundOut>,
+        message: OutboundOut,
         logger: NeedleTailLogger
     ) async throws {
-        let messageString = await NeedleTailIRCEncoder.encode(value: message)
         do {
-            try await writer.write(ByteBuffer(string: messageString))
+            try await writer.write(message)
         } catch {
             logger.log(level: .error, message: "Send And Flush Error: \(error)")
             throw error
         }
     }
 }
-

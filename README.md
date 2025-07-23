@@ -1,3 +1,5 @@
+<img src="needletail_irc.svg" alt="NeedleTailIRC" width="200" />
+
 # NeedleTailIRC
 
 A comprehensive Swift SDK for implementing IRC (Internet Relay Chat) protocol functionality with modern Swift concurrency features.

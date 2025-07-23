@@ -20,6 +20,7 @@ import struct BSON.BSONDecoder
 import struct BSON.Document
 import NeedleTailAsyncSequence
 import NeedleTailLogger
+import NIOCore
 
 /// Represents authentication information for IRC connections.
 ///
@@ -115,6 +116,81 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
         self.message = message
         self.data = data
     }
+    
+    func encode(into buffer: inout ByteBuffer) throws {
+        buffer.writeString(groupId)
+        
+        let timeInterval = date.timeIntervalSince1970
+        let bitPattern = timeInterval.bitPattern // UInt64
+        buffer.writeInteger(bitPattern, endianness: .big)
+        
+        buffer.writeInteger(Int32(partNumber))
+        buffer.writeInteger(Int32(totalParts))
+        
+        // Encode optional message
+        if let message = message {
+            buffer.writeInteger(UInt8(1))
+            buffer.writeString(message)
+        } else {
+            buffer.writeInteger(UInt8(0))
+        }
+        
+        // Encode optional data
+        if let data = data {
+            buffer.writeInteger(UInt8(1))
+            buffer.writeInteger(UInt32(data.count))
+            buffer.writeBytes(data)
+        } else {
+            buffer.writeInteger(UInt8(0))
+        }
+    }
+    
+    static func decode(from buffer: inout ByteBuffer) throws -> MultipartPacket {
+        guard let groupId = buffer.readString(length: buffer.readableBytes) else {
+            throw NIODecodeError("Missing groupId")
+        }
+        
+        guard let bitPattern = buffer.readInteger(endianness: .big, as: UInt64.self) else {
+            throw NIODecodeError("Missing timestamp bits")
+        }
+        let timeInterval = TimeInterval(bitPattern: bitPattern)
+        let date = Date(timeIntervalSince1970: timeInterval)
+        
+        guard let partNumber = buffer.readInteger(as: Int32.self),
+              let totalParts = buffer.readInteger(as: Int32.self) else {
+            throw NIODecodeError("Missing part info")
+        }
+        
+        var message: String? = nil
+        if let hasMessage = buffer.readInteger(as: UInt8.self), hasMessage == 1 {
+            message = buffer.readString(length: buffer.readableBytes)
+        }
+        
+        var data: Data? = nil
+        if let hasData = buffer.readInteger(as: UInt8.self), hasData == 1,
+           let dataLen = buffer.readInteger(as: UInt32.self),
+           let bytes = buffer.readBytes(length: Int(dataLen)) {
+            data = Data(bytes)
+        }
+        
+        return MultipartPacket(
+            groupId: groupId,
+            date: date,
+            partNumber: Int(partNumber),
+            totalParts: Int(totalParts),
+            message: message,
+            data: data
+        )
+    }
+}
+
+struct NIODecodeError: Error, CustomStringConvertible {
+    let message: String
+    var description: String { message }
+    
+    init(_ message: String) {
+        self.message = message
+    }
 }
 
 /// A utility for breaking down large messages and data into smaller packets for IRC transmission.
@@ -191,7 +267,7 @@ public struct PacketDerivation: Sendable {
     ///
     /// ```swift
     /// let packetDeriver = PacketDerivation()
-///
+    ///
     /// // Process text
     /// let textStream = await packetDeriver.calculateAndDispense(
     ///     text: "Hello, this is a long message that needs splitting",
@@ -372,7 +448,7 @@ public actor PacketBuilder {
     ///
     /// ```swift
     /// let packetBuilder = PacketBuilder(executor: executor)
-///
+    ///
     /// // Process first packet
     /// let result1 = await packetBuilder.processPacket(packet1)
     /// // Returns .none (not complete yet)
@@ -630,20 +706,20 @@ public actor IRCMessageGenerator: Sendable {
     ///
     /// ```swift
     /// let messageGenerator = IRCMessageGenerator(executor: executor)
-///
+    ///
     /// // Simple message
     /// let simpleStream = await messageGenerator.createMessages(
     ///     origin: "alice",
     ///     command: .privMsg([.channel(channel)], "Hello!")
     /// )
-///
+    ///
     /// // Message with tags
     /// let taggedStream = await messageGenerator.createMessages(
     ///     origin: "alice",
     ///     command: .privMsg([.channel(channel)], "Hello!"),
     ///     tags: [IRCTag(key: "time", value: "2023-01-01T12:00:00Z")]
     /// )
-///
+    ///
     /// // Large message (automatically split)
     /// let largeMessage = String(repeating: "Hello, world! ", count: 100)
     /// let largeStream = await messageGenerator.createMessages(
@@ -780,7 +856,7 @@ public actor IRCMessageGenerator: Sendable {
     ///
     /// ```swift
     /// let messageGenerator = IRCMessageGenerator(executor: executor)
-///
+    ///
     /// // Reassemble a chunked message
     /// let reassembledMessage = try await messageGenerator.messageReassembler(ircMessage: chunkedMessage)
     /// if let completeMessage = reassembledMessage {

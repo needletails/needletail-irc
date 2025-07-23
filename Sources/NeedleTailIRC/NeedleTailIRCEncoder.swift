@@ -101,7 +101,7 @@ public struct NeedleTailIRCEncoder: Sendable {
     ///
     /// - Parameter value: The `IRCMessage` to be encoded.
     /// - Returns: A properly formatted IRC protocol string.
-    public static func encode(value: IRCMessage) async -> String {
+    public static func encode(value: IRCMessage) -> String {
         var components = [String]()
         let command = value.command.commandAsString
         
