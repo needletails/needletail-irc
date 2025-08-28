@@ -63,7 +63,7 @@ public enum MessageParsingErrors: Error, Sendable {
 ///
 /// This parser is thread-safe and can be used concurrently from multiple threads.
 public struct NeedleTailIRCParser: Sendable {
-    static let logger = NeedleTailLogger(.init(label: "[ com.needletails.irc.message.parser ]"))
+    static let logger = NeedleTailLogger("[ com.needletails.irc.message.parser ]")
     
     public init() {}
     

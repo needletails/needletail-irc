@@ -16,13 +16,13 @@ let package = Package(
             targets: ["NeedleTailIRC"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-nio.git", .upToNextMajor(from: "2.65.0")),
-        .package(url: "https://github.com/apple/swift-algorithms.git", .upToNextMajor(from: "1.2.0")),
-        .package(url: "https://github.com/apple/swift-async-algorithms.git", .upToNextMajor(from: "1.0.0")),
-        .package(url: "https://github.com/apple/swift-collections.git", .upToNextMajor(from: "1.1.0")),
-        .package(url: "https://github.com/needletails/needletail-logger.git", .upToNextMajor(from: "3.0.0")),
-        .package(url: "https://github.com/needletails/needletail-algorithms.git", .upToNextMajor(from: "2.0.2")),
-        .package(url: "https://github.com/orlandos-nl/BSON.git", .upToNextMajor(from: "8.1.1")),
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
+        .package(url: "https://github.com/apple/swift-algorithms.git", from: "1.2.0"),
+        .package(url: "https://github.com/apple/swift-async-algorithms.git", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
+        .package(url: "https://github.com/needletails/needletail-logger.git", from: "3.0.0"),
+        .package(url: "https://github.com/needletails/needletail-algorithms.git", from: "2.0.3"),
+        .package(url: "https://github.com/orlandos-nl/BSON.git", from: "8.1.1"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.

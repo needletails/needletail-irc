@@ -82,7 +82,7 @@ extension NeedleTailWriterDelegate {
     public func transportMessage(
         _ messageGenerator: IRCMessageGenerator,
         executor: any AnyExecutor,
-        logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[ com.needletails.writer.delegate ]")),
+        logger: NeedleTailLogger = NeedleTailLogger("[ com.needletails.writer.delegate ]"),
         writer: NIOAsyncChannelOutboundWriter<IRCPayload>,
         origin: String = "",
         command: IRCCommand,
@@ -120,7 +120,7 @@ extension NeedleTailWriterDelegate {
     /// - Throws: An error if sending or flushing the message fails.
     public func sendAndFlushMessage<OutboundOut>(
         executor: (any AnyExecutor)? = nil,
-        logger: NeedleTailLogger = NeedleTailLogger(.init(label: "[ com.needletails.writer.delegate ]")),
+        logger: NeedleTailLogger = NeedleTailLogger("[ com.needletails.writer.delegate ]"),
         writer: NIOAsyncChannelOutboundWriter<OutboundOut>,
         message: OutboundOut
     ) async throws {

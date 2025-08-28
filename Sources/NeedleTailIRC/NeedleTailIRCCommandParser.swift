@@ -422,7 +422,7 @@ public struct NeedleTailIRCCommandParser: Sendable {
                         remove.insert(mode)
                     }
                 } else {
-                    NeedleTailLogger(.init(label: "[ com.needletails.irc.command.parser ]")).log(level: .warning, message: "IRCParser: unexpected IRC mode: \(c) \(arg)")
+                    NeedleTailLogger("[ com.needletails.irc.command.parser ]").log(level: .warning, message: "IRCParser: unexpected IRC mode: \(c) \(arg)")
                 }
             }
         }
