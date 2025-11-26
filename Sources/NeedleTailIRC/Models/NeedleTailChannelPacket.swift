@@ -42,14 +42,11 @@ public struct NeedleTailChannelPacket: Codable, Sendable {
     /// A set of identifiers for the members of the channel.
     public let members: Set<String>
     
-    /// The permissions associated with the channel.
-    public let permissions: IRCChannelPermissions
-    
     /// A Boolean flag indicating whether the channel should be destroyed.
     public let destroyChannel: Bool
     
-    /// An optional identifier for a related blob.
-    public let blobId: String?
+    /// An array of bots enabled for this channel
+    public let enabledBots: [Bots]
     
     /// Initializes a new `NeedleTailChannelPacket` instance with the provided parameters.
     /// - Parameters:
@@ -59,23 +56,21 @@ public struct NeedleTailChannelPacket: Codable, Sendable {
     ///   - members: A set of identifiers for the members.
     ///   - permissions: The permissions associated with the channel.
     ///   - destroyChannel: A Boolean flag indicating if the channel should be destroyed (defaults to false).
-    ///   - blobId: An optional identifier for a related blob (defaults to nil).
+    ///   - enabledBots: An array of bots enabled for this channel
     public init(
         name: NeedleTailChannel,
         channelOperatorAdmin: String,
         channelOperators: Set<String>,
         members: Set<String>,
-        permissions: IRCChannelPermissions,
         destroyChannel: Bool = false,
-        blobId: String? = nil
+        enabledBots: [Bots] = []
     ) {
         self.name = name
         self.channelOperatorAdmin = channelOperatorAdmin
         self.channelOperators = channelOperators
         self.members = members
-        self.permissions = permissions
         self.destroyChannel = destroyChannel
-        self.blobId = blobId
+        self.enabledBots = enabledBots
     }
 }
 
@@ -96,22 +91,20 @@ public struct PartMessage: Codable, Sendable {
     /// A Boolean flag indicating whether the channel should be destroyed.
     public let destroyChannel: Bool
     
-    /// An optional identifier for a related blob.
-    public let blobId: String?
-    
     /// Initializes a new `PartMessage` instance with the provided parameters.
     /// - Parameters:
     ///   - message: The content of the part message.
     ///   - destroyChannel: A Boolean flag indicating if the channel should be destroyed.
-    ///   - blobId: An optional identifier for a related blob.
     public init(
         message: String,
-        destroyChannel: Bool,
-        blobId: String? = nil
+        destroyChannel: Bool = false
     ) {
         self.message = message
         self.destroyChannel = destroyChannel
-        self.blobId = blobId
     }
+}
+
+public enum Bots: String, Codable, Sendable {
+    case chanBot, modBot, metricsBot
 }
 

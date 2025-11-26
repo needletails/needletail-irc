@@ -113,9 +113,6 @@ public struct NeedleTailIRCParser: Sendable {
         var argumentString = ""
         var taglessMessage = ""
         
-        // Log the start of the parsing process
-//        self.logger.log(level: .trace, message: "Parsing Message....")
-        
         // 1. Separate Tags
         if message.contains(Constants.atString.rawValue) {
             guard let firstSpaceIndex = message.firstIndex(of: Character(Constants.space.rawValue)) else { throw MessageParsingErrors.invalidTag }
@@ -159,7 +156,6 @@ public struct NeedleTailIRCParser: Sendable {
         } else {
             builtCommand = try IRCCommand(command: command, arguments: arguments)
         }
-        
         // 8. Return the constructed IRCMessage
         return IRCMessage(origin: origin, target: target, command: builtCommand, tags: parsedTags)
     }

@@ -103,3 +103,9 @@ extension String {
         return NeedleTailChannel(self)
     }
 }
+
+extension Character {
+    public var isChannelNamePrefixed: Bool {
+        "#&+!".contains(self)
+    }
+}

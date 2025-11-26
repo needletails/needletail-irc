@@ -76,7 +76,8 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
         addMode: IRCChannelPermissions?,
         addParameters: [String]?,
         removeMode: IRCChannelPermissions?,
-        removeParameters: [String]?) async throws
+        removeParameters: [String]?,
+        associatedTags: [IRCTag]?) async throws
     
     /// Requests information about a user.
     /// - Parameters:
@@ -248,7 +249,7 @@ public extension IRCEventProtocol {
     func doModeGet(for nick: NeedleTailNick) async throws {}
     func doModeGet(for channel: NeedleTailChannel) async throws {}
     func doMode(nick: NeedleTailNick, addMode: IRCUserModeFlags?, removeMode: IRCUserModeFlags?) async throws {}
-    func doMode(channel: NeedleTailChannel, addMode: IRCChannelPermissions?, addParameters: [String]?, removeMode: IRCChannelPermissions?, removeParameters: [String]?) async throws {}
+    func doMode(channel: NeedleTailChannel, addMode: IRCChannelPermissions?, addParameters: [String]?, removeMode: IRCChannelPermissions?, removeParameters: [String]?, associatedTags: [IRCTag]?) async throws {}
     func doWhoIs(server: String?, usermasks: [String]) async throws {}
     func doWho(mask: String?, operatorsOnly: Bool) async throws {}
     func doJoin(channels: [NeedleTailChannel], keys: [String]?, associatedTags: [IRCTag]?) async throws {}

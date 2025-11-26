@@ -14,10 +14,10 @@
 //
 
 import Testing
-import BSON
 import NeedleTailAsyncSequence
 import Foundation
 import Dispatch
+import BinaryCodable
 @testable import NeedleTailIRC
 
 final class PacketDerivationTests {
@@ -39,7 +39,7 @@ final class PacketDerivationTests {
                     newPartNumber += 1
                     #expect(packet.partNumber == newPartNumber)
                     #expect(throws: Never.self, performing: {
-                        try BSONEncoder().encode(packet).makeByteBuffer()
+                        try BinaryEncoder().encode(packet)
                     })
                 }
             }

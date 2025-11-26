@@ -24,7 +24,7 @@ NeedleTailIRC is a production-ready Swift package that provides a complete imple
 - **User Management**: Complete user mode and permission handling
 - **Error Handling**: Robust error handling with detailed error types
 - **Logging Integration**: Built-in logging with NeedleTailLogger
-- **BSON Serialization**: Efficient binary serialization for metadata
+- **Binary Codable**: Efficient binary serialization for metadata
 - **Transport Layer**: Flexible transport protocol abstraction
 
 ## Quick Start
@@ -221,7 +221,7 @@ NeedleTailIRC automatically includes these dependencies:
 - `swift-collections` - Collection types (DequeModule)
 - `needletail-logger` - Logging framework
 - `needletail-algorithms` - Algorithm utilities
-- `BSON` - Binary JSON serialization
+- `binary-codable` - Binary serialization
 
 ## Installation
 

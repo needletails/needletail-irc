@@ -516,12 +516,20 @@ public struct NeedleTailIRCCommandParser: Sendable {
             throw CommandParserErrors.unexpectedArguments("Expected less than or equal to: 2 Found: \(arguments.count)")
         }
         
-        guard let first = arguments.first else {
-            throw CommandParserErrors.missingArgument
+        // Handle empty arguments (usermask: nil)
+        if arguments.isEmpty {
+            return .who(usermask: nil, onlyOperators: false)
         }
         
+        // Handle case where first argument is "o" (onlyOperators flag)
+        if arguments.count == 1 && arguments[0] == Constants.oString.rawValue {
+            return .who(usermask: nil, onlyOperators: true)
+        }
+        
+        // Handle case with usermask (and optional "o" flag)
+        let usermask = arguments[0]
         let onlyOperators = arguments.count == 2 && arguments[1] == Constants.oString.rawValue
-        return .who(usermask: first, onlyOperators: onlyOperators)
+        return .who(usermask: usermask, onlyOperators: onlyOperators)
     }
     
     private static func parseWhoIsCommand(_ arguments: [String]) throws -> IRCCommand {

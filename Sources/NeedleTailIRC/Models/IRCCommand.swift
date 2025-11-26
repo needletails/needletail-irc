@@ -422,7 +422,11 @@ public enum IRCCommand: Codable, Sendable {
         case .whois(let server, let usermasks):
             return [server ?? "", usermasks.joined(separator: Constants.comma.rawValue)]
         case .who(let usermask, let onlyOperators):
-            return usermask != nil ? [usermask!, onlyOperators ? Constants.oString.rawValue : ""] : []
+            if let usermask = usermask {
+                return [usermask, onlyOperators ? Constants.oString.rawValue : ""]
+            } else {
+                return onlyOperators ? [Constants.oString.rawValue] : []
+            }
         case .kick(let channels, let users, let comments):
             let channelList = channels.map { $0.stringValue }.joined(separator: Constants.comma.rawValue)
             let userList = users.map { $0.stringValue }.joined(separator: Constants.comma.rawValue)

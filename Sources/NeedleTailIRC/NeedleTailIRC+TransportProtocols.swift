@@ -102,8 +102,7 @@ extension NeedleTailWriterDelegate {
                 executor: executor,
                 logger: logger,
                 writer: writer,
-                message: .irc(message)
-            )
+                message: .irc(message))
         }
     }
     
