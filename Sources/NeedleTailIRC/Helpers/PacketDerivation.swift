@@ -15,9 +15,7 @@
 
 import Foundation
 import Algorithms
-import class BSON.BSONEncoder
-import struct BSON.BSONDecoder
-import struct BSON.Document
+import BinaryCodable
 import NeedleTailAsyncSequence
 import NeedleTailLogger
 import NIOCore
@@ -642,7 +640,7 @@ public actor IRCMessageGenerator: Sendable {
         
         if let authPacket {
             do {
-                let value = try BSONEncoder().encode(authPacket).makeData().base64EncodedString()
+                let value = try BinaryEncoder().encode(authPacket).base64EncodedString()
                 mutableTags.append(IRCTag(key: "irc-protected", value: value))
             } catch {
                 logger.log(level: .error, message: "Error Encoding Auth Packet, \(error)")
@@ -671,7 +669,7 @@ public actor IRCMessageGenerator: Sendable {
         modifiedPacket.message = ""
         
         do {
-            let packetMetadata = try BSONEncoder().encode(currentPacket).makeData().base64EncodedString()
+            let packetMetadata = try BinaryEncoder().encode(currentPacket).base64EncodedString()
             mutableTags.append(IRCTag(key: "packet-metadata", value: packetMetadata))
         } catch {
             logger.log(level: .error, message: "Failed to encode IRCTag for packet metadata: \(error)")
@@ -880,7 +878,7 @@ public actor IRCMessageGenerator: Sendable {
         
         guard let packetTag = ircMessage.tags?.first(where: { $0.key == "packet-metadata" }) else { return nil }
         guard let data = Data(base64Encoded: packetTag.value) else { return nil }
-        let packet = try BSONDecoder().decode(MultipartPacket.self, from: Document(data: data))
+        let packet = try BinaryDecoder().decode(MultipartPacket.self, from: data)
         
         switch ircMessage.command {
         case .privMsg(let recipients, _):

@@ -23,5 +23,6 @@ extension String {
             .replacingOccurrences(of: "]", with: "}")
             .replacingOccurrences(of: "\\", with: "|")
             .replacingOccurrences(of: "~", with: "^")
+            .trimmingCharacters(in: .whitespaces)
     }
 }

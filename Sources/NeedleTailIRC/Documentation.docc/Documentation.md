@@ -18,7 +18,7 @@ The SDK offers:
 - **User Management**: Complete user mode and permission handling
 - **Error Handling**: Robust error handling with detailed error types
 - **Logging Integration**: Built-in logging with NeedleTailLogger
-- **BSON Serialization**: Efficient binary serialization for metadata
+- **Binary Serialization**: Efficient binary serialization for metadata
 
 ## Quick Start
 

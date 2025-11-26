@@ -54,8 +54,8 @@ public enum NeedleTailError: String, Error, Sendable {
     case invalidResponse
     /// Invalid IRC channel name format.
     case invalidIRCChannelName
-    /// BSON response is nil or invalid.
-    case nilBSONResponse
+    /// Binary response is nil or invalid.
+    case nilBinaryResponse
     /// Authentication token is nil or missing.
     case nilToken
     /// URL is nil or invalid.

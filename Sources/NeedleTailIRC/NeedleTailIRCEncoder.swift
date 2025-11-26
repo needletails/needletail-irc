@@ -197,6 +197,8 @@ public struct NeedleTailIRCEncoder: Sendable {
         case .who(let usermask, let onlyOperators):
             if let mask = usermask {
                 components.append("\(mask)\(onlyOperators ? "\(Constants.space.rawValue)\(Constants.oString.rawValue)" : "")")
+            } else if onlyOperators {
+                components.append(Constants.oString.rawValue)
             }
         case .kick(let channels, let users, let comments):
             components.append(String(create(arguments: channels.lazy.map { $0.stringValue }, buildWithComma: true, joinWithSpace: true).dropFirst()))

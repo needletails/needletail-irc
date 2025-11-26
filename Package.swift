@@ -22,7 +22,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
         .package(url: "https://github.com/needletails/needletail-logger.git", from: "3.0.0"),
         .package(url: "https://github.com/needletails/needletail-algorithms.git", from: "2.0.3"),
-        .package(url: "https://github.com/orlandos-nl/BSON.git", from: "8.1.1"),
+        .package(url: "https://github.com/needletails/binary-codable.git", from: "1.0.1")
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -37,7 +37,7 @@ let package = Package(
                 .product(name: "DequeModule", package: "swift-collections"),
                 .product(name: "NeedleTailLogger", package: "needletail-logger"),
                 .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
-                .product(name: "BSON", package: "BSON")
+                .product(name: "BinaryCodable", package: "binary-codable")
             ],
         ),
         .testTarget(
@@ -45,7 +45,7 @@ let package = Package(
             dependencies: [
                 "NeedleTailIRC",
                 .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
-                .product(name: "BSON", package: "BSON")
+                .product(name: "BinaryCodable", package: "binary-codable")
             ],
 
         )

@@ -15,7 +15,7 @@
 
 import Testing
 import Foundation
-import BSON
+import BinaryCodable
 import NIOCore
 import NeedleTailLogger
 import NeedleTailAsyncSequence
@@ -53,6 +53,9 @@ final class NeedleTailIRCTests {
             .channelModeGetBanMask(channel),
             .whois(server: "server", usermasks: ["mask1", "mask2"]),
             .who(usermask: "mask", onlyOperators: true),
+            .who(usermask: "mask", onlyOperators: false),
+            .who(usermask: nil, onlyOperators: false),
+            .who(usermask: nil, onlyOperators: true),
             .kick([channel], [nick], ["reason"]),
             .kill(nick, "killreason"),
             .sQuit("server", "reason"),
@@ -65,6 +68,23 @@ final class NeedleTailIRCTests {
             .sdccSend(nick, "file.txt", 100, "address", 1234),
             .sdccResume(nick, "file.txt", 100, "address", 1234, 10),
             .numeric(.replyWelcome, ["arg1", "arg2"]),
+            .numeric(.replyTopic, ["#testing", "Stay encrypted @ NeedleTails"]),
+            .numeric(.replyTopic, ["#testing", ":Stay encrypted @ NeedleTails"]),
+            .numeric(.replyNoTopic, ["#testing", "No topic is set"]),
+            .numeric(.replyChannelModeIs, ["#testing", "+nt"]),
+            .numeric(.replyChannelModeIs, ["#testing", "+l", "50"]),
+            .numeric(.replyWhoReply, ["#testing", "username", "hostname", "servername", "nickname", "H", ":0 Real Name"]),
+            .numeric(.replyNameReply, ["=", "#testing", "user1 user2 user3"]),
+            .numeric(.replyList, ["#testing", "5", ":Channel topic"]),
+            .numeric(.replyBanList, ["#testing", "baduser!*@*", "setter", "1234567890"]),
+            .numeric(.replyWhoIsUser, ["nickname", "username", "hostname", "*", ":Real Name"]),
+            .numeric(.replyWhoIsChannels, ["nickname", "#channel1 #channel2"]),
+            .numeric(.replyEndOfWho, ["mask"]),
+            .numeric(.replyEndOfNames, ["#testing", ":End of /NAMES list"]),
+            .numeric(.replyISON, ["userOne", "userTwo", "userThree", "userFour"]),
+            .numeric(.replyMotDStart, ["- Message of the Day -"]),
+            .numeric(.replyMotD, ["I think therefore I am"]),
+            .numeric(.replyEndOfMotD, ["End of /MOTD command."]),
             .otherCommand("FOO", ["bar"]),
             .otherNumeric(999, ["foo"]),
             .cap(.ls, ["multi-prefix"]),
@@ -122,7 +142,7 @@ final class NeedleTailIRCTests {
             // Only set target for numeric commands according to IRC protocol
             let target = command.isNumeric ? "target" : nil
             let originalMessage = IRCMessage(origin: "origin", target: target, command: command, tags: tags)
-            let encoded = await NeedleTailIRCEncoder.encode(value: originalMessage)
+            let encoded = NeedleTailIRCEncoder.encode(value: originalMessage)
             
             // Skip parsing if encoding returned empty string (invalid command)
             if encoded.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -584,7 +604,7 @@ final class NeedleTailIRCTests {
     }
     
     @Test func testReadKeyBundle() async throws  {
-        let base64 = try! BSONEncoder().encode(Base64Struct(string:TestableConstants.longMessage.rawValue)).makeData().base64EncodedString()
+        let base64 = try! BinaryEncoder().encode(Base64Struct(string:TestableConstants.longMessage.rawValue)).base64EncodedString()
         let messages = await generator.createMessages(
             origin: TestableConstants.origin.rawValue,
             command: IRCCommand.otherCommand(Constants.readPublishedBlob.rawValue,
@@ -600,7 +620,7 @@ final class NeedleTailIRCTests {
     }
     
     @Test func testServerMessage() async throws  {
-        _ = try! BSONEncoder().encode(Base64Struct(string:TestableConstants.longMessage.rawValue)).makeData().base64EncodedString()
+        _ = try! BinaryEncoder().encode(Base64Struct(string:TestableConstants.longMessage.rawValue)).base64EncodedString()
         
         let messages = await generator.createMessages(
             origin: TestableConstants.origin.rawValue,
@@ -619,7 +639,7 @@ final class NeedleTailIRCTests {
     @Test func testParseMessages() async {
         for message in await createIRCMessages() {
             await #expect(throws: Never.self, performing: {
-                let messageToParse = await NeedleTailIRCEncoder.encode(value: message)
+                let messageToParse = NeedleTailIRCEncoder.encode(value: message)
                 _ = try NeedleTailIRCParser.parseMessage(messageToParse)
                 
             })
@@ -633,7 +653,7 @@ final class NeedleTailIRCTests {
             origin: "origin",
             command: .privMsg([.nick(NeedleTailNick(name: "test", deviceId: UUID())!)], longMessage)
         )
-        let encoded = await NeedleTailIRCEncoder.encode(value: msg)
+        let encoded = NeedleTailIRCEncoder.encode(value: msg)
         let parsed = try NeedleTailIRCParser.parseMessage(encoded)
         #expect(parsed.command.commandAsString == "PRIVMSG")
         
@@ -643,7 +663,7 @@ final class NeedleTailIRCTests {
             origin: "origin",
             command: .privMsg([.nick(NeedleTailNick(name: "test", deviceId: UUID())!)], specialChars)
         )
-        let encoded2 = await NeedleTailIRCEncoder.encode(value: msg2)
+        let encoded2 = NeedleTailIRCEncoder.encode(value: msg2)
         let parsed2 = try NeedleTailIRCParser.parseMessage(encoded2)
         #expect(parsed2.command.commandAsString == "PRIVMSG")
         
@@ -653,7 +673,7 @@ final class NeedleTailIRCTests {
             target: nil,
             command: .ping(server: "server", server2: nil)
         )
-        let encoded3 = await NeedleTailIRCEncoder.encode(value: msg3)
+        let encoded3 = NeedleTailIRCEncoder.encode(value: msg3)
         let parsed3 = try NeedleTailIRCParser.parseMessage(encoded3)
         #expect(parsed3.command.commandAsString == "PING")
     }
@@ -665,7 +685,7 @@ final class NeedleTailIRCTests {
             command: .nick(NeedleTailNick(name: "test", deviceId: UUID())!),
             tags: [IRCTag(key: "key", value: "value")]
         )
-        let encoded = await NeedleTailIRCEncoder.encode(value: msg)
+        let encoded = NeedleTailIRCEncoder.encode(value: msg)
         let parsed = try NeedleTailIRCParser.parseMessage(encoded)
         #expect(parsed.tags?.count == 1)
         #expect(parsed.tags?.first?.key == "key")
@@ -680,7 +700,7 @@ final class NeedleTailIRCTests {
                 IRCTag(key: "key2", value: "value2")
             ]
         )
-        let encoded2 = await NeedleTailIRCEncoder.encode(value: msg2)
+        let encoded2 = NeedleTailIRCEncoder.encode(value: msg2)
         let parsed2 = try NeedleTailIRCParser.parseMessage(encoded2)
         #expect(parsed2.tags?.count == 2)
     }
@@ -693,7 +713,7 @@ final class NeedleTailIRCTests {
             origin: "origin",
             command: .dccChat(nick, "192.168.1.1", 1234)
         )
-        let encodedChat = await NeedleTailIRCEncoder.encode(value: dccChat)
+        let encodedChat = NeedleTailIRCEncoder.encode(value: dccChat)
         let parsedChat = try NeedleTailIRCParser.parseMessage(encodedChat)
         #expect(parsedChat.command.commandAsString == "DCCCHAT")
         
@@ -702,7 +722,7 @@ final class NeedleTailIRCTests {
             origin: "origin",
             command: .dccSend(nick, "file.txt", 1024, "192.168.1.1", 1234)
         )
-        let encodedSend = await NeedleTailIRCEncoder.encode(value: dccSend)
+        let encodedSend = NeedleTailIRCEncoder.encode(value: dccSend)
         let parsedSend = try NeedleTailIRCParser.parseMessage(encodedSend)
         #expect(parsedSend.command.commandAsString == "DCCSEND")
         
@@ -711,7 +731,7 @@ final class NeedleTailIRCTests {
             origin: "origin",
             command: .dccResume(nick, "file.txt", 1024, "192.168.1.1", 1234, 512)
         )
-        let encodedResume = await NeedleTailIRCEncoder.encode(value: dccResume)
+        let encodedResume = NeedleTailIRCEncoder.encode(value: dccResume)
         let parsedResume = try NeedleTailIRCParser.parseMessage(encodedResume)
         #expect(parsedResume.command.commandAsString == "DCCRESUME")
         
@@ -720,7 +740,7 @@ final class NeedleTailIRCTests {
             origin: "origin",
             command: .sdccChat(nick, "192.168.1.1", 1234)
         )
-        let encodedSChat = await NeedleTailIRCEncoder.encode(value: sdccChat)
+        let encodedSChat = NeedleTailIRCEncoder.encode(value: sdccChat)
         let parsedSChat = try NeedleTailIRCParser.parseMessage(encodedSChat)
         #expect(parsedSChat.command.commandAsString == "SDCCCHAT")
     }
@@ -733,7 +753,7 @@ final class NeedleTailIRCTests {
             origin: "origin",
             command: .ctcp(nick, "VERSION", nil)
         )
-        let encoded = await NeedleTailIRCEncoder.encode(value: ctcp)
+        let encoded = NeedleTailIRCEncoder.encode(value: ctcp)
         let parsed = try NeedleTailIRCParser.parseMessage(encoded)
         #expect(parsed.command.commandAsString == "CTCP")
         
@@ -742,7 +762,7 @@ final class NeedleTailIRCTests {
             origin: "origin",
             command: .ctcp(nick, "PING", "123456")
         )
-        let encodedWithArg = await NeedleTailIRCEncoder.encode(value: ctcpWithArg)
+        let encodedWithArg = NeedleTailIRCEncoder.encode(value: ctcpWithArg)
         let parsedWithArg = try NeedleTailIRCParser.parseMessage(encodedWithArg)
         #expect(parsedWithArg.command.commandAsString == "CTCP")
         
@@ -751,7 +771,7 @@ final class NeedleTailIRCTests {
             origin: "origin",
             command: .ctcpreply(nick, "VERSION", "NeedleTailIRC 1.0")
         )
-        let encodedReply = await NeedleTailIRCEncoder.encode(value: ctcpreply)
+        let encodedReply = NeedleTailIRCEncoder.encode(value: ctcpreply)
         let parsedReply = try NeedleTailIRCParser.parseMessage(encodedReply)
         #expect(parsedReply.command.commandAsString == "CTCPREPLY")
     }
@@ -785,7 +805,7 @@ final class NeedleTailIRCTests {
         
         for command in commands {
             let msg = IRCMessage(origin: "origin", command: command)
-            let encoded = await NeedleTailIRCEncoder.encode(value: msg)
+            let encoded = NeedleTailIRCEncoder.encode(value: msg)
             let parsed = try NeedleTailIRCParser.parseMessage(encoded)
             #expect(parsed.command.commandAsString == command.commandAsString)
         }
@@ -812,7 +832,7 @@ final class NeedleTailIRCTests {
         
         for command in userCommands {
             let msg = IRCMessage(origin: "origin", command: command)
-            let encoded = await NeedleTailIRCEncoder.encode(value: msg)
+            let encoded = NeedleTailIRCEncoder.encode(value: msg)
             let parsed = try NeedleTailIRCParser.parseMessage(encoded)
             #expect(parsed.command.commandAsString == command.commandAsString)
         }
@@ -833,7 +853,7 @@ final class NeedleTailIRCTests {
         
         for command in moderationCommands {
             let msg = IRCMessage(origin: "origin", command: command)
-            let encoded = await NeedleTailIRCEncoder.encode(value: msg)
+            let encoded = NeedleTailIRCEncoder.encode(value: msg)
             let parsed = try NeedleTailIRCParser.parseMessage(encoded)
             #expect(parsed.command.commandAsString == command.commandAsString)
         }
@@ -852,7 +872,7 @@ final class NeedleTailIRCTests {
         
         for command in permissionCommands {
             let msg = IRCMessage(origin: "origin", command: command)
-            let encoded = await NeedleTailIRCEncoder.encode(value: msg)
+            let encoded = NeedleTailIRCEncoder.encode(value: msg)
             let parsed = try NeedleTailIRCParser.parseMessage(encoded)
             #expect(parsed.command.commandAsString == command.commandAsString)
         }
@@ -862,7 +882,7 @@ final class NeedleTailIRCTests {
         let channel = NeedleTailChannel("#testchannel")!
         let command = IRCCommand.join(channels: [channel], keys: ["key"])
         let msg = IRCMessage(origin: "origin", command: command, tags: nil)
-        let encoded = await NeedleTailIRCEncoder.encode(value: msg)
+        let encoded = NeedleTailIRCEncoder.encode(value: msg)
         print("Encoded JOIN: '\(encoded)'")
         
         let parsed = try NeedleTailIRCParser.parseMessage(encoded)
@@ -872,8 +892,177 @@ final class NeedleTailIRCTests {
     @Test func testJoinWithEmptyChannelsDoesNotEncode() async throws {
         let command = IRCCommand.join(channels: [], keys: nil)
         let msg = IRCMessage(origin: "origin", command: command)
-        let encoded = await NeedleTailIRCEncoder.encode(value: msg)
+        let encoded =  NeedleTailIRCEncoder.encode(value: msg)
         #expect(encoded.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "JOIN with empty channels should not encode any command")
+    }
+    
+    @Test func testNumericReplies() async throws {
+        // Test REPLYTOPIC (332) - the specific case from the error
+        let topicMessage = IRCMessage(
+            origin: "server.example.com",
+            target: "user",
+            command: .numeric(.replyTopic, ["#testing", "Stay encrypted @ NeedleTails"]),
+            tags: []
+        )
+        let encoded = NeedleTailIRCEncoder.encode(value: topicMessage)
+        let parsed = try NeedleTailIRCParser.parseMessage(encoded)
+        #expect(parsed.command.commandAsString == "332")
+        if case .numeric(let code, let args) = parsed.command {
+            #expect(code == .replyTopic)
+            #expect(args.count >= 2)
+            #expect(args[0] == "#testing")
+        }
+        
+        // Test REPLYTOPIC with colon-prefixed topic
+        let topicMessage2 = IRCMessage(
+            origin: "server.example.com",
+            target: "user",
+            command: .numeric(.replyTopic, ["#testing", ":Stay encrypted @ NeedleTails"]),
+            tags: []
+        )
+        let encoded2 = NeedleTailIRCEncoder.encode(value: topicMessage2)
+        let parsed2 = try NeedleTailIRCParser.parseMessage(encoded2)
+        #expect(parsed2.command.commandAsString == "332")
+        
+        // Test REPLYCHANNELMODEIS (324) - channel mode with just "+"
+        let modeMessage = IRCMessage(
+            origin: "server.example.com",
+            target: "user",
+            command: .numeric(.replyChannelModeIs, ["#testing", "+", ""]),
+            tags: []
+        )
+        let encodedMode = NeedleTailIRCEncoder.encode(value: modeMessage)
+        let parsedMode = try NeedleTailIRCParser.parseMessage(encodedMode)
+        #expect(parsedMode.command.commandAsString == "324")
+        if case .numeric(let code, let args) = parsedMode.command {
+            #expect(code == .replyChannelModeIs)
+            #expect(args.count >= 2)
+            #expect(args[0] == "#testing")
+        }
+        
+        // Test REPLYCHANNELMODEIS with mode parameters
+        let modeMessage2 = IRCMessage(
+            origin: "server.example.com",
+            target: "user",
+            command: .numeric(.replyChannelModeIs, ["#testing", "+l", "50"]),
+            tags: []
+        )
+        let encodedMode2 = NeedleTailIRCEncoder.encode(value: modeMessage2)
+        let parsedMode2 = try NeedleTailIRCParser.parseMessage(encodedMode2)
+        #expect(parsedMode2.command.commandAsString == "324")
+        
+        // Test REPLYNOTOPIC (331)
+        let noTopicMessage = IRCMessage(
+            origin: "server.example.com",
+            target: "user",
+            command: .numeric(.replyNoTopic, ["#testing", "No topic is set"]),
+            tags: []
+        )
+        let encodedNoTopic = NeedleTailIRCEncoder.encode(value: noTopicMessage)
+        let parsedNoTopic = try NeedleTailIRCParser.parseMessage(encodedNoTopic)
+        #expect(parsedNoTopic.command.commandAsString == "331")
+        
+        // Test REPLYWHOREPLY (352) - multiple arguments
+        let whoReply = IRCMessage(
+            origin: "server.example.com",
+            target: "user",
+            command: .numeric(.replyWhoReply, ["#testing", "username", "hostname", "servername", "nickname", "H", ":0 Real Name"]),
+            tags: []
+        )
+        let encodedWho = NeedleTailIRCEncoder.encode(value: whoReply)
+        let parsedWho = try NeedleTailIRCParser.parseMessage(encodedWho)
+        #expect(parsedWho.command.commandAsString == "352")
+        
+        // Test REPLYNAMEREPLY (353)
+        let namesReply = IRCMessage(
+            origin: "server.example.com",
+            target: "user",
+            command: .numeric(.replyNameReply, ["=", "#testing", "user1 user2 user3"]),
+            tags: []
+        )
+        let encodedNames = NeedleTailIRCEncoder.encode(value: namesReply)
+        let parsedNames = try NeedleTailIRCParser.parseMessage(encodedNames)
+        #expect(parsedNames.command.commandAsString == "353")
+    }
+    
+    @Test func testModeCommandParsing() async throws {
+        // Test MODE command with just channel and "+"
+        let modeCmd = IRCMessage(
+            origin: "user",
+            command: .channelMode(NeedleTailChannel("#testing")!, addMode: nil, addParameters: nil, removeMode: nil, removeParameters: nil),
+            tags: []
+        )
+        let encoded = NeedleTailIRCEncoder.encode(value: modeCmd)
+        let parsed = try NeedleTailIRCParser.parseMessage(encoded)
+        #expect(parsed.command.commandAsString == "MODE")
+        
+        // Test MODE command parsing from raw string
+        let rawModeString = ":user MODE #testing +"
+        let parsedRaw = try NeedleTailIRCParser.parseMessage(rawModeString)
+        #expect(parsedRaw.command.commandAsString == "MODE")
+        
+        // Test MODE command with add mode
+        let modeCmd2 = IRCMessage(
+            origin: "user",
+            command: .channelMode(NeedleTailChannel("#testing")!, addMode: .inviteOnly, addParameters: nil, removeMode: nil, removeParameters: nil),
+            tags: []
+        )
+        let encoded2 = NeedleTailIRCEncoder.encode(value: modeCmd2)
+        let parsed2 = try NeedleTailIRCParser.parseMessage(encoded2)
+        #expect(parsed2.command.commandAsString == "MODE")
+        
+        // Test MODE command with parameters
+        let modeCmd3 = IRCMessage(
+            origin: "user",
+            command: .channelMode(NeedleTailChannel("#testing")!, addMode: .userLimit, addParameters: ["50"], removeMode: nil, removeParameters: nil),
+            tags: []
+        )
+        let encoded3 = NeedleTailIRCEncoder.encode(value: modeCmd3)
+        let parsed3 = try NeedleTailIRCParser.parseMessage(encoded3)
+        #expect(parsed3.command.commandAsString == "MODE")
+    }
+    
+    @Test func testChannelPrivMsgMultipartReassemble() async throws {
+        let logger = NeedleTailLogger()
+        let channel = NeedleTailChannel("#testchannel")!
+        // Ensure exactly 20 packets with default chunk size (512)
+        let parts = 20
+        let chunkSize = 512
+        let longMessage = String(repeating: "x", count: parts * chunkSize)
+        
+        // Simulate sending a long PRIVMSG to a channel (forces multipart)
+        let messages = await generator.createMessages(
+            origin: TestableConstants.origin.rawValue,
+            command: .privMsg([.channel(channel)], longMessage),
+            logger: logger
+        )
+        
+        var reassembled: IRCMessage?
+        var emittedCount = 0
+        
+        for await message in messages {
+            emittedCount += 1
+            // Reassembler should return nil until the last part arrives
+            if let rebuilt = try await generator.messageReassembler(ircMessage: message) {
+                reassembled = rebuilt
+            }
+        }
+        
+        // We expect exactly 20 chunks emitted for a 10,240-char payload at 512 per chunk
+        #expect(emittedCount == parts, "Expected exactly \(parts) emitted messages, got \(emittedCount)")
+        #expect(reassembled != nil, "Expected a reassembled message on final chunk")
+        
+        // Validate reconstructed message
+        if let rebuilt = reassembled {
+            switch rebuilt.command {
+            case .privMsg(let recipients, let message):
+                #expect(recipients.count == 1, "Expected a single channel recipient")
+                #expect(recipients.first?.stringValue == IRCMessageRecipient.channel(channel).stringValue, "Recipient channel should match")
+                #expect(message == longMessage, "Reassembled PRIVMSG should match original long message")
+            default:
+                #expect(Bool(false), "Expected a PRIVMSG after reassembly")
+            }
+        }
     }
 }
 enum ClientType: Codable {
@@ -904,9 +1093,9 @@ func createIRCMessages() async -> [IRCMessage] {
     
     let reachableServers: [ReachableServers] = []
     let serverPassword = "321"
-    let value = try! BSONEncoder().encode(ClientType.server).makeData().base64EncodedString()
+    let value = try! BinaryEncoder().encode(ClientType.server).base64EncodedString()
     let passTag = IRCTag(key: TagKey.passTag.rawValue, value: value)
-    let servers = try! BSONEncoder().encode(reachableServers).makeData().base64EncodedString()
+    let servers = try! BinaryEncoder().encode(reachableServers).base64EncodedString()
     let tag = IRCTag(key: TagKey.reachableServers.rawValue, value: servers)
     
     messages.append(
@@ -1183,6 +1372,18 @@ func createIRCMessages() async -> [IRCMessage] {
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
+            command: .who(usermask: nil, onlyOperators: false),
+            tags: [])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            command: .who(usermask: nil, onlyOperators: true),
+            tags: [])
+    )
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
             command: .kick([.init(TestableConstants.channelOne.rawValue)!], [.init(name: TestableConstants.target.rawValue, deviceId: UUID())!], ["GO AWAY"]),
             tags: [])
     )
@@ -1363,6 +1564,110 @@ func createIRCMessages() async -> [IRCMessage] {
             origin: TestableConstants.origin.rawValue,
             target: TestableConstants.target.rawValue,
             command: .otherNumeric(999, ["uknown", "message"]),
+            tags: [])
+    )
+    // Test REPLYTOPIC (332) - with channel and topic
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyTopic, ["#testing", "Stay encrypted @ NeedleTails"]),
+            tags: [])
+    )
+    // Test REPLYTOPIC (332) - with colon-prefixed topic
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyTopic, ["#testing", ":Stay encrypted @ NeedleTails"]),
+            tags: [])
+    )
+    // Test REPLYNOTOPIC (331) - channel with no topic
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyNoTopic, ["#testing", "No topic is set"]),
+            tags: [])
+    )
+    // Test REPLYCHANNELMODEIS (324) - channel mode reply
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyChannelModeIs, ["#testing", "+nt"]),
+            tags: [])
+    )
+    // Test REPLYCHANNELMODEIS (324) - channel mode with parameters
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyChannelModeIs, ["#testing", "+l", "50"]),
+            tags: [])
+    )
+    // Test REPLYWHOREPLY (352) - WHO reply
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyWhoReply, ["#testing", "username", "hostname", "servername", "nickname", "H", ":0 Real Name"]),
+            tags: [])
+    )
+    // Test REPLYNAMEREPLY (353) - NAMES reply
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyNameReply, ["=", "#testing", "user1 user2 user3"]),
+            tags: [])
+    )
+    // Test REPLYLIST (322) - LIST reply
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyList, ["#testing", "5", ":Channel topic"]),
+            tags: [])
+    )
+    // Test REPLYBANLIST (367) - BAN list reply
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyBanList, ["#testing", "baduser!*@*", "setter", "1234567890"]),
+            tags: [])
+    )
+    // Test REPLYWHOISUSER (311) - WHOIS user reply
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyWhoIsUser, ["nickname", "username", "hostname", "*", ":Real Name"]),
+            tags: [])
+    )
+    // Test REPLYWHOISCHANNELS (319) - WHOIS channels reply
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyWhoIsChannels, ["nickname", "#channel1 #channel2"]),
+            tags: [])
+    )
+    // Test numeric reply with single argument
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyEndOfWho, ["mask"]),
+            tags: [])
+    )
+    // Test numeric reply with single argument
+    messages.append(
+        IRCMessage(
+            origin: TestableConstants.origin.rawValue,
+            target: TestableConstants.target.rawValue,
+            command: .numeric(.replyEndOfNames, ["#testing", ":End of /NAMES list"]),
             tags: [])
     )
     messages.append(

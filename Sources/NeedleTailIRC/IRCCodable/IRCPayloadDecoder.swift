@@ -55,7 +55,6 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
             let view = buffer.readableBytesView
             
             if let newlineIndex = view.firstIndex(of: UInt8(ascii: "\n")) {
-                let readerIndex = buffer.readerIndex
                 let offset = view.distance(from: view.startIndex, to: newlineIndex)
                 let crIndex = newlineIndex > view.startIndex ? view.index(before: newlineIndex) : nil
                 let hasCR = crIndex != nil && view[crIndex!] == UInt8(ascii: "\r")
@@ -69,7 +68,7 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
                 // Drop the \r?\n
                 buffer.moveReaderIndex(forwardBy: hasCR ? 2 : 1)
                 
-                guard var line = lineBuffer.getString(at: 0, length: lineBuffer.readableBytes) else {
+                guard let line = lineBuffer.getString(at: 0, length: lineBuffer.readableBytes) else {
                     return .needMoreData
                 }
                 do {
