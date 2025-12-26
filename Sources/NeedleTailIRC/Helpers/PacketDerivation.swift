@@ -323,6 +323,7 @@ public struct PacketDerivation: Sendable {
         let packetDate = Date()
         
         if let text {
+            // Commit 8b7e95f… behavior: chunk by count using Algorithms' String chunks.
             let chunks = text.chunks(ofCount: chunkCount)
             let totalParts = chunks.count
             var packets = [MultipartPacket]()
@@ -485,7 +486,7 @@ public actor PacketBuilder {
     public func processPacket(_ packet: MultipartPacket) -> ProcessedResult {
         var packet = packet
         if var message = packet.message, message.first == ":" {
-            message = String(message.dropFirst())
+                    message = String(message.dropFirst())
             packet.message = message
         }
         cleanupExpiredGroups(now: Date())
@@ -685,7 +686,7 @@ public actor IRCMessageGenerator: Sendable {
     public nonisolated var unownedExecutor: UnownedSerialExecutor {
         executor.asUnownedSerialExecutor()
     }
-
+    
     // MARK: - IRC wire-size budgeting
     //
     // IRC message size limits are enforced in BYTES on the wire (including CRLF), not in Character count.
@@ -722,15 +723,35 @@ public actor IRCMessageGenerator: Sendable {
         return mutableTags
     }
 
+    private func buildAuthAndBaseTags(
+        baseTags: [IRCTag]?,
+        authPacket: AuthPacket?,
+        logger: NeedleTailLogger
+    ) -> [IRCTag] {
+        var mutableTags = [IRCTag]()
+        if let authPacket {
+            do {
+                let value = try BinaryEncoder().encode(authPacket).base64EncodedString()
+                mutableTags.append(IRCTag(key: "irc-protected", value: value))
+            } catch {
+                logger.log(level: .error, message: "Error Encoding Auth Packet, \(error)")
+            }
+        }
+        if let baseTags {
+            mutableTags.append(contentsOf: baseTags)
+        }
+        return mutableTags
+    }
+
     private func modifiedCommandForPacket(original command: IRCCommand, packetMessage: String) -> IRCCommand {
         switch command {
+        // Commit 8b7e95f… behavior: wrapper command carries no payload; payload is inside packet-metadata.
         case .privMsg(let recipients, _):
             return .privMsg(recipients, "")
         case .notice(let recipients, _):
             return .notice(recipients, "")
         case .quit:
-            // Keep QUIT payload empty; content is carried in packet metadata and restored on reassembly.
-            return .quit(nil)
+            return .quit(packetMessage)
         case .otherCommand(let otherCommand, _):
             return .otherCommand(otherCommand, [])
         case .otherNumeric(let otherNumeric, _):
@@ -779,6 +800,8 @@ public actor IRCMessageGenerator: Sendable {
     }
 
     /// Splits `text` into `MultipartPacket`s sized so that each encoded IRC line fits within `maxLineBytes`.
+    ///
+    /// - Important: Payload remains inside the base64 `packet-metadata` tag (your required format).
     private func packetizeTextForIRCLimit(
         text: String,
         origin: String,
@@ -788,54 +811,81 @@ public actor IRCMessageGenerator: Sendable {
         logger: NeedleTailLogger,
         maxLineBytes: Int
     ) -> [MultipartPacket] {
-        let maxBytes = max(32, maxLineBytes) // avoid pathological tiny limits
+        let maxBytes = max(64, maxLineBytes) // avoid pathological tiny limits
         let groupId = UUID().uuidString
         let packetDate = Date()
 
-        // Build a baseline estimate using an empty packet (helps us choose a safe starting chunk size).
+        // Baseline overhead with an empty payload packet.
         let baselinePacket = MultipartPacket(groupId: groupId, date: packetDate, partNumber: 1, totalParts: 1, message: "", data: nil)
         let baselineTags = buildPacketTags(baseTags: tags, authPacket: authPacket, currentPacket: baselinePacket, logger: logger)
         let baselineCmd = modifiedCommandForPacket(original: command, packetMessage: "")
         let baselineLineBytes = encodedLineByteCount(origin: origin, command: baselineCmd, tags: baselineTags)
 
-        // Available bytes for additional base64 payload; keep a safety margin.
-        let available = max(1, (maxBytes - baselineLineBytes) - 16)
-        // Base64 expands by ~4/3, so invert that to get a safe starting point.
+        if baselineLineBytes >= maxBytes {
+            logger.log(level: .error, message: "Baseline IRC wrapper exceeds max bytes; cannot send multipart in-tag payload.", metadata: [
+                "baselineBytes": "\(baselineLineBytes)",
+                "maxBytes": "\(maxBytes)"
+            ])
+            return []
+        }
+
+        // Heuristic: base64 expands ~4/3, so compute a safe starting guess.
+        let available = max(1, (maxBytes - baselineLineBytes) - 8)
         let targetChunkBytes = max(1, (available * 3) / 4)
 
-        var packets = [MultipartPacket]()
+        var packets: [MultipartPacket] = []
         var cursor = text.startIndex
         var part = 1
 
         while cursor < text.endIndex {
-            var attemptBytes = targetChunkBytes
-            var chosenChunk: Substring = ""
-            var nextIndex: String.Index = cursor
+            // Binary search the largest chunk that fits.
+            var low = 1
+            var high = max(1, targetChunkBytes)
+            var bestChunk: Substring = ""
+            var bestNext: String.Index = cursor
 
-            // Shrink-to-fit loop: ensure the final encoded IRC line for this packet fits the budget.
-            while true {
-                let (chunk, next) = nextChunk(text: text, start: cursor, maxBytes: max(1, attemptBytes))
+            // Ensure high doesn't jump beyond remaining text.
+            let (initialChunk, initialNext) = nextChunk(text: text, start: cursor, maxBytes: high)
+            if initialNext == cursor {
+                // Should not happen, but ensure progress.
+                let (c, n) = nextChunk(text: text, start: cursor, maxBytes: 1)
+                bestChunk = c
+                bestNext = n
+            } else {
+                // Use the initial attempt to seed high accurately.
+                // (high is in bytes; nextChunk already clamps to remaining chars)
+                _ = initialChunk
+                _ = initialNext
+            }
+
+            while low <= high {
+                let mid = (low + high) / 2
+                let (chunk, next) = nextChunk(text: text, start: cursor, maxBytes: mid)
                 let packet = MultipartPacket(groupId: groupId, date: packetDate, partNumber: part, totalParts: 0, message: String(chunk), data: nil)
                 let t = buildPacketTags(baseTags: tags, authPacket: authPacket, currentPacket: packet, logger: logger)
                 let cmd = modifiedCommandForPacket(original: command, packetMessage: String(chunk))
                 let bytes = encodedLineByteCount(origin: origin, command: cmd, tags: t)
 
                 if bytes <= maxBytes {
-                    chosenChunk = chunk
-                    nextIndex = next
-                    break
+                    bestChunk = chunk
+                    bestNext = next
+                    low = mid + 1
+                } else {
+                    high = mid - 1
                 }
+            }
 
-                // If a single Character still can't fit, we must still progress (it will exceed IRC limit).
-                // In practice this is extraordinarily rare; we pick the smallest possible chunk.
-                if next == text.index(after: cursor) || attemptBytes <= 1 {
-                    chosenChunk = chunk
-                    nextIndex = next
-                    break
-                }
-
-                // Reduce by 20% and retry.
-                attemptBytes = max(1, Int(Double(attemptBytes) * 0.8))
+            if bestNext == cursor {
+                // Even a single Character couldn't be made to fit under the maxBytes given overhead.
+                // We must still progress, but this will likely fail the outbound encoder if strict.
+                let (chunk, next) = nextChunk(text: text, start: cursor, maxBytes: 1)
+                bestChunk = chunk
+                bestNext = next
+                logger.log(level: .warning, message: "Unable to fit even minimal chunk within max bytes; overhead too large.", metadata: [
+                    "part": "\(part)",
+                    "maxBytes": "\(maxBytes)",
+                    "baselineBytes": "\(baselineLineBytes)"
+                ])
             }
 
             packets.append(
@@ -844,15 +894,14 @@ public actor IRCMessageGenerator: Sendable {
                     date: packetDate,
                     partNumber: part,
                     totalParts: 1,
-                    message: String(chosenChunk),
+                    message: String(bestChunk),
                     data: nil
                 )
             )
             part += 1
-            cursor = nextIndex
+            cursor = bestNext
         }
 
-        // Finalize totalParts without mutating `totalParts` (it's a `let`).
         let total = packets.count
         return packets.enumerated().map { idx, p in
             MultipartPacket(
@@ -865,6 +914,7 @@ public actor IRCMessageGenerator: Sendable {
             )
         }
     }
+
     
     
     
@@ -911,27 +961,10 @@ public actor IRCMessageGenerator: Sendable {
             mutableTags.append(contentsOf: tags)
         }
         
-        var modifiedCommand = command
-        guard currentPacket.message != nil else { return }
-        switch command {
-        case .privMsg(let recipients, _), .notice(let recipients, _):
-            if case .notice = command {
-                modifiedCommand = .notice(recipients, "")
-            } else {
-                modifiedCommand = .privMsg(recipients, "")
-            }
-        case .quit:
-            modifiedCommand = .quit(nil)
-        case .otherCommand(let otherCommand, _):
-            modifiedCommand = .otherCommand(otherCommand, [])
-        case .otherNumeric(let otherNumeric, _):
-            modifiedCommand = .otherNumeric(otherNumeric, [])
-        default:
-            break
-        }
-        
-        var modifiedPacket = currentPacket
-        modifiedPacket.message = ""
+        // Commit 8b7e95f… behavior: encode the full packet (including payload) into the packet-metadata tag,
+        // and use a wrapper command that carries no payload (except QUIT).
+        guard let packetMessage = currentPacket.message else { return }
+        let modifiedCommand = modifiedCommandForPacket(original: command, packetMessage: packetMessage)
         
         do {
             let packetMetadata = try BinaryEncoder().encode(currentPacket).base64EncodedString()
@@ -946,7 +979,7 @@ public actor IRCMessageGenerator: Sendable {
             tags: mutableTags)
         //Yields a message but the message mutable tags are empty.
         continuation.yield(message)
-        if modifiedPacket.partNumber == modifiedPacket.totalParts {
+        if currentPacket.partNumber == currentPacket.totalParts {
             continuation.finish()
         }
     }
@@ -1012,7 +1045,8 @@ public actor IRCMessageGenerator: Sendable {
         command: IRCCommand,
         tags: [IRCTag]? = nil,
         authPacket: AuthPacket? = nil,
-        logger: NeedleTailLogger
+        logger: NeedleTailLogger,
+        maxIRCLineBytesIncludingCRLF: Int = IRCPayloadWireSize.defaultMaxIRCLineBytes
     ) async -> AsyncStream<IRCMessage> {
         var streamContinuation: AsyncStream<IRCMessage>.Continuation?
         let stream = AsyncStream<IRCMessage>(bufferingPolicy: .unbounded) { continuation in
@@ -1057,6 +1091,17 @@ public actor IRCMessageGenerator: Sendable {
             if message.isEmpty {
                 await handleEmptyMessage(for: command)
             } else {
+                // Fast-path: if the full message fits without multipart wrapping, don't add `packet-metadata` at all.
+                // This avoids needless overhead for commands like PASS and prevents "baseline exceeds max" failures.
+                let singleTags = buildAuthAndBaseTags(baseTags: tags, authPacket: authPacket, logger: logger)
+                let single = IRCMessage(origin: origin, command: command, tags: singleTags.isEmpty ? nil : singleTags)
+                let singleBytes = NeedleTailIRCEncoder.encode(value: single).utf8.count + 2
+                if singleBytes <= chunkCount {
+                    streamContinuation?.yield(single)
+                    streamContinuation?.finish()
+                    return
+                }
+
                 let packetsArray = packetizeTextForIRCLimit(
                     text: message,
                     origin: origin,
@@ -1066,8 +1111,14 @@ public actor IRCMessageGenerator: Sendable {
                     logger: logger,
                     maxLineBytes: chunkCount
                 )
+                if packetsArray.isEmpty {
+                    // Baseline overhead too large; we cannot packetize in-tag payload under this max.
+                    // Surface as an error so the caller can adjust (increase max bytes or reduce overhead).
+                    streamContinuation?.finish()
+                    return
+                }
                 let packets = AsyncStream<MultipartPacket>(bufferingPolicy: .unbounded) { c in
-                    for packet in packetsArray { c.yield(packet) }
+                    for p in packetsArray { c.yield(p) }
                     c.finish()
                 }
                 await processPackets(packets: packets, command: command)
@@ -1076,25 +1127,23 @@ public actor IRCMessageGenerator: Sendable {
         
         switch command {
         case .privMsg(_, let message), .notice(_, let message):
-            await handleMessage(for: command, message: message)
+            await handleMessage(for: command, message: message, chunkCount: maxIRCLineBytesIncludingCRLF)
             
         case .quit(let message):
             if let message = message {
-                await handleMessage(for: command, message: message)
+                await handleMessage(for: command, message: message, chunkCount: maxIRCLineBytesIncludingCRLF)
             } else {
                 await handleEmptyMessage(for: command)
             }
             
         case .otherCommand(let otherCommand, let messageArray):
-            //5mb chunk size
-            let chunkSize = 5 * 1024 * 1024
             let message = messageArray.joined(separator: Constants.comma.rawValue)
             await handleMessage(for: .otherCommand(otherCommand, [message]),
                                 message: message,
-                                chunkCount: (otherCommand == Constants.multipartMediaUpload.rawValue || otherCommand == Constants.multipartMediaDownload.rawValue) ? chunkSize : 512)
+                                chunkCount: maxIRCLineBytesIncludingCRLF)
         case .otherNumeric(let otherNumeric, let messageArray):
             let message = messageArray.joined(separator: Constants.comma.rawValue)
-            await handleMessage(for: .otherNumeric(otherNumeric, [message]), message: message)
+            await handleMessage(for: .otherNumeric(otherNumeric, [message]), message: message, chunkCount: maxIRCLineBytesIncludingCRLF)
             
         default:
             await handleEmptyMessage(for: command)

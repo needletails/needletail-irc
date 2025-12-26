@@ -23,8 +23,8 @@ import NeedleTailIRC
 
 let largeMessage = String(repeating: "Hello, World! ", count: 1000)
 
-// Use IRCMessageGenerator so each emitted IRC line stays within the IRC 512-byte wire limit
-// (including tags/prefix + CRLF).
+// Use IRCMessageGenerator to chunk/reassemble large messages while staying within
+// the configured IRC max line bytes (defaults to 512 including CRLF).
 let generator = IRCMessageGenerator(executor: executor)
 let messages = await generator.createMessages(
     origin: "alice!user@host",

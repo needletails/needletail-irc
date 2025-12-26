@@ -25,9 +25,7 @@ public enum DirectMessage: Codable, Sendable {
            switch self {
            case .serviceName(let name):
                buffer.writeInteger(UInt8(0))
-               let bytes = Array(name.utf8)
-               buffer.writeInteger(UInt16(bytes.count), endianness: .big)
-               buffer.writeBytes(bytes)
+               buffer.writeString(name)
 
            case .message(let packet):
                buffer.writeInteger(UInt8(1))
@@ -54,9 +52,7 @@ public enum DirectMessage: Codable, Sendable {
 
             switch type {
             case 0:
-                guard let len = buffer.readInteger(endianness: .big, as: UInt16.self),
-                      let bytes = buffer.readBytes(length: Int(len)),
-                      let name = String(bytes: bytes, encoding: .utf8) else {
+                guard let name = buffer.readString(length: buffer.readableBytes) else {
                     throw NIODecodeError("Missing serviceName string")
                 }
                 return .serviceName(name)

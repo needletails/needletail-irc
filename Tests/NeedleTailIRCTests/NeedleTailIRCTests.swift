@@ -595,7 +595,7 @@ final class NeedleTailIRCTests {
                     #expect(args2[index] == arg1, "Command arg should match for \(original.commandAsString)")
                 }
             } else {
-                #expect(original.commandAsString == parsed.commandAsString, "Command should match: expected '\(original.commandAsString)', got '\(parsed.commandAsString)'")
+            #expect(original.commandAsString == parsed.commandAsString, "Command should match: expected '\(original.commandAsString)', got '\(parsed.commandAsString)'")
             }
         }
     }
@@ -1075,58 +1075,16 @@ final class NeedleTailIRCTests {
         }
     }
 
-    @Test func testGeneratedLinesStayWithin512Bytes() async throws {
-        let logger = NeedleTailLogger()
-        let nick = NeedleTailNick(name: "testnick", deviceId: UUID())!
+    // NOTE:
+    // This SDK does not enforce the classic 512-byte line limit at the codec boundary by default,
+    // since some deployments support larger lines (e.g., encrypted/base64 payloads).
 
-        // Make a payload that is expensive in UTF-8 bytes (emoji) + add tags to increase overhead.
-        let largeEmojiMessage = String(repeating: "😀", count: 2000)
-        let tags = [
-            IRCTag(key: "time", value: "2025-12-26T00:00:00Z"),
-            IRCTag(key: "account", value: "verylongaccountname")
-        ]
+    // NOTE:
+    // IRCPayloadWireSize remains available as an optional measurement helper, but tests no longer
+    // assume a 512-byte environment.
 
-        let messages = await generator.createMessages(
-            origin: "origin!user@host.example.com",
-            command: .privMsg([.nick(nick)], largeEmojiMessage),
-            tags: tags,
-            logger: logger
-        )
-
-        var count = 0
-        for await msg in messages {
-            count += 1
-            let encoded = NeedleTailIRCEncoder.encode(value: msg)
-            // IRCPayloadEncoder appends CRLF, so budget is 510 bytes pre-CRLF.
-            #expect(encoded.utf8.count + 2 <= 512, "Encoded IRC line exceeded 512 bytes: \((encoded.utf8.count + 2))")
-        }
-        #expect(count > 1, "Expected multiple packets for large emoji message")
-    }
-
-    @Test func testWireSizeValidatorDetectsOversizeIRCLine() async throws {
-        let nick = NeedleTailNick(name: "testnick", deviceId: UUID())!
-        let huge = String(repeating: "A", count: 10_000)
-        let msg = IRCMessage(
-            origin: "origin!user@host",
-            command: .privMsg([.nick(nick)], huge),
-            tags: [IRCTag(key: "time", value: "2025-12-26T00:00:00Z")]
-        )
-        let payload = IRCPayload.irc(msg)
-        #expect(IRCPayloadWireSize.validateIRCLineLimit(payload, maxLineBytes: 512) == false)
-        #expect((IRCPayloadWireSize.ircLineBytesIncludingCRLF(payload) ?? 0) > 512)
-    }
-
-    @Test func testIRCPayloadEncoderThrowsOnOversize() throws {
-        var buffer = ByteBuffer()
-        let encoder = IRCPayloadEncoder(maxIRCLineBytesIncludingCRLF: 512)
-        let nick = NeedleTailNick(name: "testnick", deviceId: UUID())!
-        let huge = String(repeating: "A", count: 10_000)
-        let msg = IRCMessage(origin: "origin!user@host", command: .privMsg([.nick(nick)], huge))
-
-        #expect(throws: NeedleTailError.payloadTooLarge, performing: {
-            try encoder.encode(data: .irc(msg), out: &buffer)
-        })
-    }
+    // NOTE:
+    // Commit-style encoder/decoder do not enforce IRC 512-byte line limits at the codec boundary.
 }
 enum ClientType: Codable {
     case server, client

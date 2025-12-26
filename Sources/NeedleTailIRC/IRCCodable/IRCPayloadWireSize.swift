@@ -13,11 +13,13 @@ import Foundation
 /// Utilities for measuring and validating IRC payload sizes on the wire.
 ///
 /// - Important: IRC message limits are enforced in bytes on the wire (including CRLF).
-///   `IRCPayloadEncoder` appends CRLF (`\r\n`) to IRC lines, so when validating a line budget
-///   you must include +2 bytes.
+///   `IRCPayloadEncoder` appends CRLF (`\r\n`) to IRC lines, so validation must include +2 bytes.
 public enum IRCPayloadWireSize: Sendable {
-    /// IRC's historical line length limit including CRLF.
-    public static let defaultMaxIRCLineBytes: Int = 512
+    /// Default max IRC line bytes used for budgeting in this SDK (including CRLF).
+    ///
+    /// - Note: Classic IRC is commonly 512 bytes including CRLF, but this SDK supports
+    ///   deployments that negotiate/allow larger lines (e.g. encrypted/base64 payloads).
+    public static let defaultMaxIRCLineBytes: Int = 16 * 1024
 
     /// Measures the encoded IRC line size in bytes **including CRLF**.
     ///
@@ -25,7 +27,6 @@ public enum IRCPayloadWireSize: Sendable {
     public static func ircLineBytesIncludingCRLF(_ payload: IRCPayload) -> Int? {
         switch payload {
         case .irc(let message):
-            // IRCPayloadEncoder appends CRLF.
             return NeedleTailIRCEncoder.encode(value: message).utf8.count + 2
         case .dcc:
             return nil

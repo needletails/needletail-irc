@@ -8,15 +8,15 @@ NeedleTailIRC provides specific error types for different failure scenarios. Und
 
 ## Key Errors You Should Handle
 
-- **`NeedleTailError.payloadTooLarge`**: Raised when an outbound IRC line would exceed the IRC wire-size limit (512 bytes including CRLF) or when inbound buffering exceeds configured safety limits.
+- **`NeedleTailError.payloadTooLarge`**: Raised when inbound buffering exceeds configured safety limits (e.g. runaway buffer without newline).
 - **`MessageParsingErrors`**: Raised when parsing a single IRC line fails (invalid tags/arguments/etc).
 
 ## Outbound (encoding) limits
 
 ```swift
 // IRCPayloadEncoder is the mandatory outbound encoding boundary.
-// It refuses to encode oversize IRC lines and throws:
-//   NeedleTailError.payloadTooLarge
+// This SDK does not enforce a hard IRC line length limit at the encoder boundary by default,
+// because some deployments support/require larger-than-512 lines.
 ```
 
 ## Inbound (decoding) limits
@@ -101,8 +101,6 @@ do {
 ```swift
 do {
     // Ensure large payloads are chunked using IRCMessageGenerator before sending.
-    // If you attempt to send an oversize IRC line through IRCPayloadEncoder:
-    //   -> NeedleTailError.payloadTooLarge
 } catch {
     print("Other encoding error: \(error)")
 }

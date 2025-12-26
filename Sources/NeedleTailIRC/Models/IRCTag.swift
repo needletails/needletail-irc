@@ -40,15 +40,10 @@ public struct IRCTag: Hashable, Codable, Sendable {
         return key
     }
     
-    /// Computes a hash value for the tag.
-    ///
-    /// - Important: Both `key` and `value` are included so tags with the same key but different values
-    ///   are treated as distinct.
-    ///
-    /// - Parameter hasher: The hasher to use for combining the tag's hash.
+    /// Computes a hash value for the tag based on its key.
+    /// - Parameter hasher: The hasher to use for combining the key's hash.
     public func hash(into hasher: inout Hasher) {
         hasher.combine(key)
-        hasher.combine(value)
     }
     
     /// Compares two `IRCTag` instances for equality.
@@ -57,7 +52,7 @@ public struct IRCTag: Hashable, Codable, Sendable {
     ///   - rhs: The right-hand side tag.
     /// - Returns: A Boolean value indicating whether the two tags are equal.
     public static func ==(lhs: IRCTag, rhs: IRCTag) -> Bool {
-        return lhs.key == rhs.key && lhs.value == rhs.value
+        return lhs.key == rhs.key
     }
     
     /// Validates the given string for compliance with IRC tag standards.
@@ -68,16 +63,14 @@ public struct IRCTag: Hashable, Codable, Sendable {
         return string.count < 4096
     }
 
-    // MARK: - IRCv3 tag escaping
+    // MARK: - IRCv3 tag escaping/unescaping (values)
     //
-    // IRCv3 message tags define escape sequences for values:
+    // IRCv3 message tag value escapes:
     //  - \: => ;
     //  - \s => space
     //  - \r => CR
     //  - \n => LF
     //  - \\ => \
-    //
-    // We escape when encoding and unescape when parsing.
     public static func ircv3EscapeTagValue(_ value: String) -> String {
         // Order matters: escape backslash first.
         var out = value.replacingOccurrences(of: "\\", with: "\\\\")
@@ -98,10 +91,7 @@ public struct IRCTag: Hashable, Codable, Sendable {
             let c = value[i]
             if c == "\\" {
                 let next = value.index(after: i)
-                guard next < value.endIndex else {
-                    // Trailing backslash: drop it (treat as literal nothing)
-                    break
-                }
+                guard next < value.endIndex else { break }
                 let esc = value[next]
                 switch esc {
                 case ":":
@@ -115,7 +105,7 @@ public struct IRCTag: Hashable, Codable, Sendable {
                 case "\\":
                     result.append("\\")
                 default:
-                    // Unknown escape => drop the backslash, keep char
+                    // Unknown escape => drop backslash, keep char.
                     result.append(esc)
                 }
                 i = value.index(after: next)
@@ -127,13 +117,21 @@ public struct IRCTag: Hashable, Codable, Sendable {
         return result
     }
 
-    /// Validates basic tag key/value constraints.
-    public static func validate(key: String, value: String, maxKeyBytes: Int = 256, maxValueBytes: Int = 2048) -> Bool {
-        // Key must not contain separators or whitespace.
+    // MARK: - Safety caps (configurable defaults)
+    public static let defaultMaxTagCount: Int = 256
+    public static let defaultMaxTagKeyBytes: Int = 256
+    public static let defaultMaxTagValueBytes: Int = 64 * 1024
+    public static let defaultMaxTagSectionBytes: Int = 128 * 1024
+
+    public static func validate(
+        key: String,
+        value: String,
+        maxKeyBytes: Int = defaultMaxTagKeyBytes,
+        maxValueBytes: Int = defaultMaxTagValueBytes
+    ) -> Bool {
         guard !key.isEmpty else { return false }
         guard key.utf8.count <= maxKeyBytes, value.utf8.count <= maxValueBytes else { return false }
         if key.contains(" ") || key.contains(";") || key.contains("=") { return false }
-        // Disallow ASCII control characters in key.
         if key.utf8.contains(where: { $0 < 0x20 || $0 == 0x7F }) { return false }
         return true
     }

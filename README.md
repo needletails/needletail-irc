@@ -73,8 +73,9 @@ for await data in transport.receiveStream {
 
 // Send messages
 //
-// Important: IRC has a 512-byte wire limit per line (including tags/prefix + CRLF).
-// For large payloads, generate chunked messages using IRCMessageGenerator.
+// Important: IRC servers may enforce a 512-byte line limit.
+// IRCMessageGenerator can chunk/reassemble large payloads; in commit-style multipart the chunk
+// is carried inside a base64 `packet-metadata` tag, so wrapper lines are not guaranteed <= 512.
 let generator = IRCMessageGenerator(executor: executor)
 let stream = await generator.createMessages(
     origin: "alice!user@host",
@@ -82,8 +83,8 @@ let stream = await generator.createMessages(
     logger: NeedleTailLogger()
 )
 for await message in stream {
-    let encoded = await NeedleTailIRCEncoder.encode(value: message)
-    try await transport.send(encoded.data(using: .utf8)!)
+let encoded = await NeedleTailIRCEncoder.encode(value: message)
+try await transport.send(encoded.data(using: .utf8)!)
 }
 ```
 
