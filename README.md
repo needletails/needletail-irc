@@ -72,9 +72,19 @@ for await data in transport.receiveStream {
 }
 
 // Send messages
-let message = IRCMessage(command: .join(channels: [NeedleTailChannel("#general")!], keys: nil))
-let encoded = await NeedleTailIRCEncoder.encode(value: message)
-try await transport.send(encoded.data(using: .utf8)!)
+//
+// Important: IRC has a 512-byte wire limit per line (including tags/prefix + CRLF).
+// For large payloads, generate chunked messages using IRCMessageGenerator.
+let generator = IRCMessageGenerator(executor: executor)
+let stream = await generator.createMessages(
+    origin: "alice!user@host",
+    command: .join(channels: [NeedleTailChannel("#general")!], keys: nil),
+    logger: NeedleTailLogger()
+)
+for await message in stream {
+    let encoded = await NeedleTailIRCEncoder.encode(value: message)
+    try await transport.send(encoded.data(using: .utf8)!)
+}
 ```
 
 ## Standard IRC Ports
@@ -210,7 +220,7 @@ Comprehensive documentation is available in the [Documentation.docc](https://git
 - **Platforms**: 
   - iOS 18.0+
   - macOS 15.0+
-- **Xcode**: 15.0+ (for iOS/macOS development)
+- **Xcode**: 15.0+ (for Apple Platform development)
 
 ## Dependencies
 

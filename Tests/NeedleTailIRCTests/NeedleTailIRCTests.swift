@@ -585,21 +585,18 @@ final class NeedleTailIRCTests {
                 }
                 return
             }
-        // Handle case variations between known commands (e.g., squit vs sQuit)
-        case let (known1, known2):
-            if known1.commandAsString.uppercased() == known2.commandAsString.uppercased() {
-                let args1 = known1.arguments
-                let args2 = known2.arguments
-                #expect(args1.count == args2.count, "Command args count should match for \(known1.commandAsString)")
-                for (index, arg1) in args1.enumerated() {
-                    #expect(args2[index] == arg1, "Command arg should match for \(known1.commandAsString)")
-                }
-                return
-            }
-            
         default:
-            // For any unhandled cases, just ensure the command types match
-            #expect(original.commandAsString == parsed.commandAsString, "Command should match: expected '\(original.commandAsString)', got '\(parsed.commandAsString)'")
+            // Fallback: if the command name matches (case-insensitive), ensure arguments round-trip.
+            if original.commandAsString.uppercased() == parsed.commandAsString.uppercased() {
+                let args1 = original.arguments
+                let args2 = parsed.arguments
+                #expect(args1.count == args2.count, "Command args count should match for \(original.commandAsString)")
+                for (index, arg1) in args1.enumerated() where index < args2.count {
+                    #expect(args2[index] == arg1, "Command arg should match for \(original.commandAsString)")
+                }
+            } else {
+                #expect(original.commandAsString == parsed.commandAsString, "Command should match: expected '\(original.commandAsString)', got '\(parsed.commandAsString)'")
+            }
         }
     }
     
@@ -638,7 +635,7 @@ final class NeedleTailIRCTests {
     
     @Test func testParseMessages() async {
         for message in await createIRCMessages() {
-            await #expect(throws: Never.self, performing: {
+            #expect(throws: Never.self, performing: {
                 let messageToParse = NeedleTailIRCEncoder.encode(value: message)
                 _ = try NeedleTailIRCParser.parseMessage(messageToParse)
                 
@@ -703,6 +700,22 @@ final class NeedleTailIRCTests {
         let encoded2 = NeedleTailIRCEncoder.encode(value: msg2)
         let parsed2 = try NeedleTailIRCParser.parseMessage(encoded2)
         #expect(parsed2.tags?.count == 2)
+    }
+
+    @Test func testTagEscapingRoundTrip() async throws {
+        let msg = IRCMessage(
+            origin: "origin",
+            command: .nick(NeedleTailNick(name: "test", deviceId: UUID())!),
+            tags: [
+                IRCTag(key: "k1", value: "a;b c\\d"),
+                IRCTag(key: "k2", value: "line1\nline2\rline3")
+            ]
+        )
+        let encoded = NeedleTailIRCEncoder.encode(value: msg)
+        let parsed = try NeedleTailIRCParser.parseMessage(encoded)
+        #expect(parsed.tags?.count == 2)
+        #expect(parsed.tags?[0].value == "a;b c\\d")
+        #expect(parsed.tags?[1].value == "line1\nline2\rline3")
     }
     
     @Test func testDCCCommands() async throws {
@@ -1025,10 +1038,8 @@ final class NeedleTailIRCTests {
     @Test func testChannelPrivMsgMultipartReassemble() async throws {
         let logger = NeedleTailLogger()
         let channel = NeedleTailChannel("#testchannel")!
-        // Ensure exactly 20 packets with default chunk size (512)
-        let parts = 20
-        let chunkSize = 512
-        let longMessage = String(repeating: "x", count: parts * chunkSize)
+        // Use a long payload that forces multipart; exact packet count depends on wire-size budgeting.
+        let longMessage = String(repeating: "x", count: 50_000)
         
         // Simulate sending a long PRIVMSG to a channel (forces multipart)
         let messages = await generator.createMessages(
@@ -1048,8 +1059,7 @@ final class NeedleTailIRCTests {
             }
         }
         
-        // We expect exactly 20 chunks emitted for a 10,240-char payload at 512 per chunk
-        #expect(emittedCount == parts, "Expected exactly \(parts) emitted messages, got \(emittedCount)")
+        #expect(emittedCount > 1, "Expected multipart chunking to emit multiple messages, got \(emittedCount)")
         #expect(reassembled != nil, "Expected a reassembled message on final chunk")
         
         // Validate reconstructed message
@@ -1063,6 +1073,59 @@ final class NeedleTailIRCTests {
                 #expect(Bool(false), "Expected a PRIVMSG after reassembly")
             }
         }
+    }
+
+    @Test func testGeneratedLinesStayWithin512Bytes() async throws {
+        let logger = NeedleTailLogger()
+        let nick = NeedleTailNick(name: "testnick", deviceId: UUID())!
+
+        // Make a payload that is expensive in UTF-8 bytes (emoji) + add tags to increase overhead.
+        let largeEmojiMessage = String(repeating: "😀", count: 2000)
+        let tags = [
+            IRCTag(key: "time", value: "2025-12-26T00:00:00Z"),
+            IRCTag(key: "account", value: "verylongaccountname")
+        ]
+
+        let messages = await generator.createMessages(
+            origin: "origin!user@host.example.com",
+            command: .privMsg([.nick(nick)], largeEmojiMessage),
+            tags: tags,
+            logger: logger
+        )
+
+        var count = 0
+        for await msg in messages {
+            count += 1
+            let encoded = NeedleTailIRCEncoder.encode(value: msg)
+            // IRCPayloadEncoder appends CRLF, so budget is 510 bytes pre-CRLF.
+            #expect(encoded.utf8.count + 2 <= 512, "Encoded IRC line exceeded 512 bytes: \((encoded.utf8.count + 2))")
+        }
+        #expect(count > 1, "Expected multiple packets for large emoji message")
+    }
+
+    @Test func testWireSizeValidatorDetectsOversizeIRCLine() async throws {
+        let nick = NeedleTailNick(name: "testnick", deviceId: UUID())!
+        let huge = String(repeating: "A", count: 10_000)
+        let msg = IRCMessage(
+            origin: "origin!user@host",
+            command: .privMsg([.nick(nick)], huge),
+            tags: [IRCTag(key: "time", value: "2025-12-26T00:00:00Z")]
+        )
+        let payload = IRCPayload.irc(msg)
+        #expect(IRCPayloadWireSize.validateIRCLineLimit(payload, maxLineBytes: 512) == false)
+        #expect((IRCPayloadWireSize.ircLineBytesIncludingCRLF(payload) ?? 0) > 512)
+    }
+
+    @Test func testIRCPayloadEncoderThrowsOnOversize() throws {
+        var buffer = ByteBuffer()
+        let encoder = IRCPayloadEncoder(maxIRCLineBytesIncludingCRLF: 512)
+        let nick = NeedleTailNick(name: "testnick", deviceId: UUID())!
+        let huge = String(repeating: "A", count: 10_000)
+        let msg = IRCMessage(origin: "origin!user@host", command: .privMsg([.nick(nick)], huge))
+
+        #expect(throws: NeedleTailError.payloadTooLarge, performing: {
+            try encoder.encode(data: .irc(msg), out: &buffer)
+        })
     }
 }
 enum ClientType: Codable {

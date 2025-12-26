@@ -40,10 +40,15 @@ public struct IRCTag: Hashable, Codable, Sendable {
         return key
     }
     
-    /// Computes a hash value for the tag based on its key.
-    /// - Parameter hasher: The hasher to use for combining the key's hash.
+    /// Computes a hash value for the tag.
+    ///
+    /// - Important: Both `key` and `value` are included so tags with the same key but different values
+    ///   are treated as distinct.
+    ///
+    /// - Parameter hasher: The hasher to use for combining the tag's hash.
     public func hash(into hasher: inout Hasher) {
         hasher.combine(key)
+        hasher.combine(value)
     }
     
     /// Compares two `IRCTag` instances for equality.
@@ -52,7 +57,7 @@ public struct IRCTag: Hashable, Codable, Sendable {
     ///   - rhs: The right-hand side tag.
     /// - Returns: A Boolean value indicating whether the two tags are equal.
     public static func ==(lhs: IRCTag, rhs: IRCTag) -> Bool {
-        return lhs.key == rhs.key
+        return lhs.key == rhs.key && lhs.value == rhs.value
     }
     
     /// Validates the given string for compliance with IRC tag standards.
@@ -61,6 +66,76 @@ public struct IRCTag: Hashable, Codable, Sendable {
     /// - Returns: A Boolean value indicating whether the string is valid.
     public static func validate(string: String) -> Bool {
         return string.count < 4096
+    }
+
+    // MARK: - IRCv3 tag escaping
+    //
+    // IRCv3 message tags define escape sequences for values:
+    //  - \: => ;
+    //  - \s => space
+    //  - \r => CR
+    //  - \n => LF
+    //  - \\ => \
+    //
+    // We escape when encoding and unescape when parsing.
+    public static func ircv3EscapeTagValue(_ value: String) -> String {
+        // Order matters: escape backslash first.
+        var out = value.replacingOccurrences(of: "\\", with: "\\\\")
+        out = out.replacingOccurrences(of: ";", with: "\\:")
+        out = out.replacingOccurrences(of: " ", with: "\\s")
+        out = out.replacingOccurrences(of: "\r", with: "\\r")
+        out = out.replacingOccurrences(of: "\n", with: "\\n")
+        return out
+    }
+
+    public static func ircv3UnescapeTagValue(_ value: String) -> String {
+        // Single-pass parser to avoid double-unescaping.
+        var result = ""
+        result.reserveCapacity(value.count)
+
+        var i = value.startIndex
+        while i < value.endIndex {
+            let c = value[i]
+            if c == "\\" {
+                let next = value.index(after: i)
+                guard next < value.endIndex else {
+                    // Trailing backslash: drop it (treat as literal nothing)
+                    break
+                }
+                let esc = value[next]
+                switch esc {
+                case ":":
+                    result.append(";")
+                case "s":
+                    result.append(" ")
+                case "r":
+                    result.append("\r")
+                case "n":
+                    result.append("\n")
+                case "\\":
+                    result.append("\\")
+                default:
+                    // Unknown escape => drop the backslash, keep char
+                    result.append(esc)
+                }
+                i = value.index(after: next)
+            } else {
+                result.append(c)
+                i = value.index(after: i)
+            }
+        }
+        return result
+    }
+
+    /// Validates basic tag key/value constraints.
+    public static func validate(key: String, value: String, maxKeyBytes: Int = 256, maxValueBytes: Int = 2048) -> Bool {
+        // Key must not contain separators or whitespace.
+        guard !key.isEmpty else { return false }
+        guard key.utf8.count <= maxKeyBytes, value.utf8.count <= maxValueBytes else { return false }
+        if key.contains(" ") || key.contains(";") || key.contains("=") { return false }
+        // Disallow ASCII control characters in key.
+        if key.utf8.contains(where: { $0 < 0x20 || $0 == 0x7F }) { return false }
+        return true
     }
 }
 

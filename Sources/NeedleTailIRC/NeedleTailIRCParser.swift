@@ -64,6 +64,8 @@ public enum MessageParsingErrors: Error, Sendable {
 /// This parser is thread-safe and can be used concurrently from multiple threads.
 public struct NeedleTailIRCParser: Sendable {
     static let logger = NeedleTailLogger("[ com.needletails.irc.message.parser ]")
+    static let maxTagSectionBytes: Int = 4096
+    static let maxTagCount: Int = 128
     
     public init() {}
     
@@ -108,20 +110,17 @@ public struct NeedleTailIRCParser: Sendable {
     /// - Returns: An `IRCMessage` representing the parsed message.
     public static func parseMessage(_ message: String) throws -> IRCMessage {
         var origin: String?
-        var tags: [String] = []
+        var tagString: String?
         var command = ""
         var argumentString = ""
         var taglessMessage = ""
         
         // 1. Separate Tags
-        if message.contains(Constants.atString.rawValue) {
+        if message.hasPrefix(Constants.atString.rawValue) {
             guard let firstSpaceIndex = message.firstIndex(of: Character(Constants.space.rawValue)) else { throw MessageParsingErrors.invalidTag }
-            let tagString = String(message[..<firstSpaceIndex])
+            tagString = String(message[..<firstSpaceIndex])
             // 2. Set Tagless Message
             taglessMessage = String(message[message.index(after: firstSpaceIndex)...])
-            
-            let seperateTags = tagString.split(separator: Constants.semiColonSpace.rawValue).map { $0.trimmingCharacters(in: .whitespaces) }
-            tags.append(contentsOf: seperateTags)
         } else {
             // 2. Set Tagless Message
             taglessMessage = message
@@ -144,7 +143,7 @@ public struct NeedleTailIRCParser: Sendable {
         }
         
         // 5. Parse Tags
-        let parsedTags = !tags.isEmpty ? try parseTags(tags: tags[0]) : nil
+        let parsedTags = tagString != nil ? try parseTags(tags: tagString ?? "") : nil
         
         // 6. Parse Arguments
         let (arguments, target) = try parseArgument(command: command, argumentString: argumentString)
@@ -189,17 +188,34 @@ public struct NeedleTailIRCParser: Sendable {
     /// - Returns: An array of `IRCTag` if successful, otherwise `nil`.
     static func parseTags(tags: String = "") throws -> [IRCTag]? {
         guard tags.hasPrefix(Constants.atString.rawValue) else { return nil }
+        // Enforce tag section size (bytes, excluding the leading '@')
+        if tags.utf8.count > (maxTagSectionBytes + 1) {
+            throw MessageParsingErrors.invalidArguments("Tag section too large.")
+        }
         
         var tagArray: [IRCTag] = []
-        let seperatedTags = tags.components(separatedBy: Constants.semiColon.rawValue + Constants.atString.rawValue)
+        let raw = String(tags.dropFirst())
+        let seperatedTags = raw.components(separatedBy: Constants.semiColon.rawValue)
         
         for tag in seperatedTags {
-            let cleanedTag = tag.replacingOccurrences(of: Constants.atString.rawValue, with: "")
+            let cleanedTag = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleanedTag.isEmpty else { continue }
+            
+            // IRCv3 tags allow "key" or "key=value". We treat missing values as empty-string.
             let kvpArray = cleanedTag.split(separator: Character(Constants.equalsString.rawValue), maxSplits: 1)
-            guard let key = kvpArray.first, let value = kvpArray.last else {
+            guard let key = kvpArray.first else {
                 throw MessageParsingErrors.invalidArguments("Invalid tag format.")
             }
-            tagArray.append(IRCTag(key: String(key), value: String(value)))
+            let rawValue = kvpArray.count > 1 ? String(kvpArray[1]) : ""
+            let value = IRCTag.ircv3UnescapeTagValue(rawValue)
+            let k = String(key)
+            guard IRCTag.validate(key: k, value: value) else {
+                throw MessageParsingErrors.invalidArguments("Invalid tag key/value.")
+            }
+            tagArray.append(IRCTag(key: k, value: value))
+            if tagArray.count > maxTagCount {
+                throw MessageParsingErrors.invalidArguments("Too many tags.")
+            }
         }
         return tagArray
     }
@@ -329,7 +345,9 @@ public struct NeedleTailIRCParser: Sendable {
     /// - Throws: `MessageParsingErrors` for invalid command formats.
     /// - Returns: An `IRCCommandKey` representing the command type.
     static func parseCommand(command: String) throws -> IRCCommandKey {
-        precondition(!command.isEmpty)
+        guard !command.isEmpty else {
+            throw MessageParsingErrors.invalidArguments("Invalid command format.")
+        }
         
         if let firstChar = command.first, firstChar.isLetter {
             return .string(command)

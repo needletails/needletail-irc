@@ -21,9 +21,14 @@ public final class IRCPayloadEncoder: MessageToByteEncoder, @unchecked Sendable 
     public typealias OutboundIn = IRCPayload
 
     private let logger: NeedleTailLogger
+    private let maxIRCLineBytesIncludingCRLF: Int
 
-    public init(logger: NeedleTailLogger = NeedleTailLogger()) {
+    public init(
+        logger: NeedleTailLogger = NeedleTailLogger(),
+        maxIRCLineBytesIncludingCRLF: Int = IRCPayloadWireSize.defaultMaxIRCLineBytes
+    ) {
         self.logger = logger
+        self.maxIRCLineBytesIncludingCRLF = maxIRCLineBytesIncludingCRLF
     }
 
     public func encode(data: IRCPayload, out: inout ByteBuffer) throws {
@@ -35,6 +40,17 @@ public final class IRCPayloadEncoder: MessageToByteEncoder, @unchecked Sendable 
             guard !messageString.isEmpty else {
                 logger.log(level: .warning, message: "Attempted to encode empty IRC message. Skipping.")
                 return
+            }
+
+            // Legit reason to enforce here: this is the mandatory outbound encoding boundary.
+            // IRC line limits are enforced in bytes on the wire (including CRLF).
+            let bytesIncludingCRLF = messageString.utf8.count + 2
+            guard bytesIncludingCRLF <= maxIRCLineBytesIncludingCRLF else {
+                logger.log(level: .error, message: "Refusing to encode oversize IRC line", metadata: [
+                    "bytesIncludingCRLF": "\(bytesIncludingCRLF)",
+                    "maxBytes": "\(maxIRCLineBytesIncludingCRLF)"
+                ])
+                throw NeedleTailError.payloadTooLarge
             }
 
             out.writeString(messageString + "\r\n")

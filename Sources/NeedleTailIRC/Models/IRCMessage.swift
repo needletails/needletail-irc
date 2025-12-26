@@ -130,6 +130,7 @@ public struct IRCMessage: Codable, Sendable {
     public init(from decoder: Decoder) async throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         origin = try container.decodeIfPresent(String.self, forKey: .origin)
+        target = try container.decodeIfPresent(String.self, forKey: .target)
         command = try container.decode(IRCCommand.self, forKey: .command)
         tags = try container.decodeIfPresent([IRCTag].self, forKey: .tags)
     }

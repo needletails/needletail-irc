@@ -116,7 +116,10 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
     }
     
     func encode(into buffer: inout ByteBuffer) throws {
-        buffer.writeString(groupId)
+        // Prefix strings with length so decoding is unambiguous.
+        let groupIdBytes = Array(groupId.utf8)
+        buffer.writeInteger(UInt16(groupIdBytes.count), endianness: .big)
+        buffer.writeBytes(groupIdBytes)
         
         let timeInterval = date.timeIntervalSince1970
         let bitPattern = timeInterval.bitPattern // UInt64
@@ -128,7 +131,9 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
         // Encode optional message
         if let message = message {
             buffer.writeInteger(UInt8(1))
-            buffer.writeString(message)
+            let messageBytes = Array(message.utf8)
+            buffer.writeInteger(UInt32(messageBytes.count), endianness: .big)
+            buffer.writeBytes(messageBytes)
         } else {
             buffer.writeInteger(UInt8(0))
         }
@@ -144,7 +149,9 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
     }
     
     static func decode(from buffer: inout ByteBuffer) throws -> MultipartPacket {
-        guard let groupId = buffer.readString(length: buffer.readableBytes) else {
+        guard let groupIdLen = buffer.readInteger(endianness: .big, as: UInt16.self),
+              let groupIdBytes = buffer.readBytes(length: Int(groupIdLen)),
+              let groupId = String(bytes: groupIdBytes, encoding: .utf8) else {
             throw NIODecodeError("Missing groupId")
         }
         
@@ -161,7 +168,12 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
         
         var message: String? = nil
         if let hasMessage = buffer.readInteger(as: UInt8.self), hasMessage == 1 {
-            message = buffer.readString(length: buffer.readableBytes)
+            guard let messageLen = buffer.readInteger(endianness: .big, as: UInt32.self),
+                  let messageBytes = buffer.readBytes(length: Int(messageLen)),
+                  let msg = String(bytes: messageBytes, encoding: .utf8) else {
+                throw NIODecodeError("Invalid message payload")
+            }
+            message = msg
         }
         
         var data: Data? = nil
@@ -404,9 +416,21 @@ public struct PacketDerivation: Sendable {
 public actor PacketBuilder {
     
     private let executor: any AnyExecutor
-    private var packets = [[MultipartPacket]]()
+    private var packetsByGroupId: [String: [MultipartPacket]] = [:]
+    private var groupFirstSeen: [String: Date] = [:]
+    private var groupBytes: [String: Int] = [:]
+    private var totalBufferedBytes: Int = 0
     private var builtData: Data?
     private var joinedMessage: String?
+
+    /// Max number of concurrent multipart groups to track.
+    public var maxConcurrentGroups: Int = 256
+    /// Max buffered bytes (message UTF-8 + data bytes) per group before dropping it.
+    public var maxBytesPerGroup: Int = 2 * 1024 * 1024
+    /// Max buffered bytes across all groups before dropping oldest groups.
+    public var maxTotalBufferedBytes: Int = 16 * 1024 * 1024
+    /// Timeout after which an incomplete group is dropped.
+    public var timeout: TimeInterval = 30.0
     
     /// Initializes a new packet builder with the specified executor.
     /// - Parameter executor: The executor to use for task management.
@@ -459,27 +483,83 @@ public actor PacketBuilder {
     /// - Parameter packet: The multipart packet to process.
     /// - Returns: A `ProcessedResult` indicating the processing outcome.
     public func processPacket(_ packet: MultipartPacket) -> ProcessedResult {
-        // Find the index of the group that contains the packet
-        if let groupIndex = packets.firstIndex(where: { $0.first?.groupId == packet.groupId }) {
-            // Append the packet to the existing group
-            
-            if var message = packet.message {
-                if message.first == ":" {
-                    message = String(message.dropFirst())
-                }
-            }
-            packets[groupIndex].append(packet)
-            return finishProcess(groupIndex: groupIndex)
-        } else {
-            if var message = packet.message {
-                if message.first == ":" {
-                    message = String(message.dropFirst())
-                }
-            }
-            // Create a new group with the packet
-            packets.append([packet])
-            return finishProcess(groupIndex: packets.count - 1)
+        var packet = packet
+        if var message = packet.message, message.first == ":" {
+            message = String(message.dropFirst())
+            packet.message = message
         }
+        cleanupExpiredGroups(now: Date())
+
+        let groupId = packet.groupId
+        let packetSize = estimatePacketSize(packet)
+
+        // Ensure group exists
+        if packetsByGroupId[groupId] == nil {
+            // Evict oldest groups if we're at capacity.
+            if packetsByGroupId.count >= maxConcurrentGroups {
+                evictOldestGroups(toFitAdditionalBytes: packetSize)
+            }
+            packetsByGroupId[groupId] = []
+            groupFirstSeen[groupId] = Date()
+            groupBytes[groupId] = 0
+        }
+
+        // Enforce group and global byte budgets.
+        let existingGroupBytes = groupBytes[groupId] ?? 0
+        if existingGroupBytes + packetSize > maxBytesPerGroup {
+            dropGroup(groupId)
+            return .none
+        }
+        if totalBufferedBytes + packetSize > maxTotalBufferedBytes {
+            evictOldestGroups(toFitAdditionalBytes: packetSize)
+            if totalBufferedBytes + packetSize > maxTotalBufferedBytes {
+                // Still cannot fit; drop this group.
+                dropGroup(groupId)
+                return .none
+            }
+        }
+
+        packetsByGroupId[groupId, default: []].append(packet)
+        groupBytes[groupId] = existingGroupBytes + packetSize
+        totalBufferedBytes += packetSize
+
+        return finishProcess(groupId: groupId)
+    }
+
+    private func estimatePacketSize(_ packet: MultipartPacket) -> Int {
+        let msgBytes = packet.message?.utf8.count ?? 0
+        let dataBytes = packet.data?.count ?? 0
+        return msgBytes + dataBytes
+    }
+
+    private func cleanupExpiredGroups(now: Date) {
+        guard timeout > 0 else { return }
+        let expired = groupFirstSeen.compactMap { (gid, first) -> String? in
+            now.timeIntervalSince(first) > timeout ? gid : nil
+        }
+        for gid in expired {
+            dropGroup(gid)
+        }
+    }
+
+    private func evictOldestGroups(toFitAdditionalBytes additional: Int) {
+        // Evict oldest groups until we have room or no groups remain.
+        while totalBufferedBytes + additional > maxTotalBufferedBytes, let oldest = oldestGroupId() {
+            dropGroup(oldest)
+        }
+    }
+
+    private func oldestGroupId() -> String? {
+        groupFirstSeen.min(by: { $0.value < $1.value })?.key
+    }
+
+    private func dropGroup(_ groupId: String) {
+        if let bytes = groupBytes[groupId] {
+            totalBufferedBytes = max(0, totalBufferedBytes - bytes)
+        }
+        packetsByGroupId[groupId] = nil
+        groupFirstSeen[groupId] = nil
+        groupBytes[groupId] = nil
     }
     
     /// Finishes processing a packet group and reassembles the complete message or data.
@@ -497,10 +577,12 @@ public actor PacketBuilder {
     ///
     /// - Parameter groupIndex: The index of the packet group to process.
     /// - Returns: A `ProcessedResult` with the assembled content or .none if incomplete.
-    private func finishProcess(groupIndex: Int) -> ProcessedResult {
-        let groupPackets = packets[groupIndex]
+    private func finishProcess(groupId: String) -> ProcessedResult {
+        guard let groupPackets = packetsByGroupId[groupId], let first = groupPackets.first else {
+            return .none
+        }
         // Check if we have all parts
-        if groupPackets.count == groupPackets.first?.totalParts {
+        if groupPackets.count == first.totalParts {
             let sortedParts = groupPackets.sorted { $0.partNumber < $1.partNumber }
             
             for packet in sortedParts {
@@ -534,11 +616,11 @@ public actor PacketBuilder {
             // Return either the joined message or the built data
             if let joinedMessage, !joinedMessage.isEmpty {
                 // Remove the completed group
-                packets.remove(at: groupIndex)
+                dropGroup(groupId)
                 return .message(joinedMessage)
             } else if let builtData, !builtData.isEmpty {
                 // Remove the completed group
-                packets.remove(at: groupIndex)
+                dropGroup(groupId)
                 return .data(builtData)
             }
             return .none
@@ -603,6 +685,186 @@ public actor IRCMessageGenerator: Sendable {
     public nonisolated var unownedExecutor: UnownedSerialExecutor {
         executor.asUnownedSerialExecutor()
     }
+
+    // MARK: - IRC wire-size budgeting
+    //
+    // IRC message size limits are enforced in BYTES on the wire (including CRLF), not in Character count.
+    // This helper computes packet sizes such that the encoded IRC line for each packet fits within
+    // `maxLineBytes` (default 512).
+    private func buildPacketTags(
+        baseTags: [IRCTag]?,
+        authPacket: AuthPacket?,
+        currentPacket: MultipartPacket,
+        logger: NeedleTailLogger
+    ) -> [IRCTag] {
+        var mutableTags = [IRCTag]()
+
+        if let authPacket {
+            do {
+                let value = try BinaryEncoder().encode(authPacket).base64EncodedString()
+                mutableTags.append(IRCTag(key: "irc-protected", value: value))
+            } catch {
+                logger.log(level: .error, message: "Error Encoding Auth Packet, \(error)")
+            }
+        }
+
+        if let baseTags {
+            mutableTags.append(contentsOf: baseTags)
+        }
+
+        do {
+            let packetMetadata = try BinaryEncoder().encode(currentPacket).base64EncodedString()
+            mutableTags.append(IRCTag(key: "packet-metadata", value: packetMetadata))
+        } catch {
+            logger.log(level: .error, message: "Failed to encode IRCTag for packet metadata: \(error)")
+        }
+
+        return mutableTags
+    }
+
+    private func modifiedCommandForPacket(original command: IRCCommand, packetMessage: String) -> IRCCommand {
+        switch command {
+        case .privMsg(let recipients, _):
+            return .privMsg(recipients, "")
+        case .notice(let recipients, _):
+            return .notice(recipients, "")
+        case .quit:
+            // Keep QUIT payload empty; content is carried in packet metadata and restored on reassembly.
+            return .quit(nil)
+        case .otherCommand(let otherCommand, _):
+            return .otherCommand(otherCommand, [])
+        case .otherNumeric(let otherNumeric, _):
+            return .otherNumeric(otherNumeric, [])
+        default:
+            return command
+        }
+    }
+
+    private func encodedLineByteCount(
+        origin: String,
+        command: IRCCommand,
+        tags: [IRCTag]
+    ) -> Int {
+        let msg = IRCMessage(origin: origin, command: command, tags: tags)
+        // IRCPayloadEncoder appends CRLF.
+        return NeedleTailIRCEncoder.encode(value: msg).utf8.count + 2
+    }
+
+    /// Returns a prefix of `text[start...]` that is <= `maxBytes` in UTF-8 bytes, without splitting Characters.
+    private func nextChunk(
+        text: String,
+        start: String.Index,
+        maxBytes: Int
+    ) -> (chunk: Substring, next: String.Index) {
+        precondition(maxBytes > 0)
+        var end = start
+        var used = 0
+
+        while end < text.endIndex {
+            let next = text.index(after: end)
+            let bytesForChar = text[end..<next].utf8.count
+            if used + bytesForChar > maxBytes {
+                break
+            }
+            used += bytesForChar
+            end = next
+        }
+
+        // Ensure forward progress even for an extremely large single Character.
+        if end == start, start < text.endIndex {
+            end = text.index(after: start)
+        }
+
+        return (text[start..<end], end)
+    }
+
+    /// Splits `text` into `MultipartPacket`s sized so that each encoded IRC line fits within `maxLineBytes`.
+    private func packetizeTextForIRCLimit(
+        text: String,
+        origin: String,
+        command: IRCCommand,
+        tags: [IRCTag]?,
+        authPacket: AuthPacket?,
+        logger: NeedleTailLogger,
+        maxLineBytes: Int
+    ) -> [MultipartPacket] {
+        let maxBytes = max(32, maxLineBytes) // avoid pathological tiny limits
+        let groupId = UUID().uuidString
+        let packetDate = Date()
+
+        // Build a baseline estimate using an empty packet (helps us choose a safe starting chunk size).
+        let baselinePacket = MultipartPacket(groupId: groupId, date: packetDate, partNumber: 1, totalParts: 1, message: "", data: nil)
+        let baselineTags = buildPacketTags(baseTags: tags, authPacket: authPacket, currentPacket: baselinePacket, logger: logger)
+        let baselineCmd = modifiedCommandForPacket(original: command, packetMessage: "")
+        let baselineLineBytes = encodedLineByteCount(origin: origin, command: baselineCmd, tags: baselineTags)
+
+        // Available bytes for additional base64 payload; keep a safety margin.
+        let available = max(1, (maxBytes - baselineLineBytes) - 16)
+        // Base64 expands by ~4/3, so invert that to get a safe starting point.
+        let targetChunkBytes = max(1, (available * 3) / 4)
+
+        var packets = [MultipartPacket]()
+        var cursor = text.startIndex
+        var part = 1
+
+        while cursor < text.endIndex {
+            var attemptBytes = targetChunkBytes
+            var chosenChunk: Substring = ""
+            var nextIndex: String.Index = cursor
+
+            // Shrink-to-fit loop: ensure the final encoded IRC line for this packet fits the budget.
+            while true {
+                let (chunk, next) = nextChunk(text: text, start: cursor, maxBytes: max(1, attemptBytes))
+                let packet = MultipartPacket(groupId: groupId, date: packetDate, partNumber: part, totalParts: 0, message: String(chunk), data: nil)
+                let t = buildPacketTags(baseTags: tags, authPacket: authPacket, currentPacket: packet, logger: logger)
+                let cmd = modifiedCommandForPacket(original: command, packetMessage: String(chunk))
+                let bytes = encodedLineByteCount(origin: origin, command: cmd, tags: t)
+
+                if bytes <= maxBytes {
+                    chosenChunk = chunk
+                    nextIndex = next
+                    break
+                }
+
+                // If a single Character still can't fit, we must still progress (it will exceed IRC limit).
+                // In practice this is extraordinarily rare; we pick the smallest possible chunk.
+                if next == text.index(after: cursor) || attemptBytes <= 1 {
+                    chosenChunk = chunk
+                    nextIndex = next
+                    break
+                }
+
+                // Reduce by 20% and retry.
+                attemptBytes = max(1, Int(Double(attemptBytes) * 0.8))
+            }
+
+            packets.append(
+                MultipartPacket(
+                    groupId: groupId,
+                    date: packetDate,
+                    partNumber: part,
+                    totalParts: 1,
+                    message: String(chosenChunk),
+                    data: nil
+                )
+            )
+            part += 1
+            cursor = nextIndex
+        }
+
+        // Finalize totalParts without mutating `totalParts` (it's a `let`).
+        let total = packets.count
+        return packets.enumerated().map { idx, p in
+            MultipartPacket(
+                groupId: p.groupId,
+                date: p.date,
+                partNumber: idx + 1,
+                totalParts: total,
+                message: p.message,
+                data: p.data
+            )
+        }
+    }
     
     
     
@@ -637,7 +899,6 @@ public actor IRCMessageGenerator: Sendable {
         continuation: AsyncStream<IRCMessage>.Continuation
     ) async {
         var mutableTags = [IRCTag]()
-        
         if let authPacket {
             do {
                 let value = try BinaryEncoder().encode(authPacket).base64EncodedString()
@@ -651,12 +912,16 @@ public actor IRCMessageGenerator: Sendable {
         }
         
         var modifiedCommand = command
-        guard let packetMessage = currentPacket.message else { return }
+        guard currentPacket.message != nil else { return }
         switch command {
         case .privMsg(let recipients, _), .notice(let recipients, _):
-            modifiedCommand = .privMsg(recipients, "")
-        case .quit(_):
-            modifiedCommand = .quit(packetMessage)
+            if case .notice = command {
+                modifiedCommand = .notice(recipients, "")
+            } else {
+                modifiedCommand = .privMsg(recipients, "")
+            }
+        case .quit:
+            modifiedCommand = .quit(nil)
         case .otherCommand(let otherCommand, _):
             modifiedCommand = .otherCommand(otherCommand, [])
         case .otherNumeric(let otherNumeric, _):
@@ -749,7 +1014,6 @@ public actor IRCMessageGenerator: Sendable {
         authPacket: AuthPacket? = nil,
         logger: NeedleTailLogger
     ) async -> AsyncStream<IRCMessage> {
-        let packetDeriver = PacketDerivation()
         var streamContinuation: AsyncStream<IRCMessage>.Continuation?
         let stream = AsyncStream<IRCMessage>(bufferingPolicy: .unbounded) { continuation in
             streamContinuation = continuation
@@ -793,7 +1057,19 @@ public actor IRCMessageGenerator: Sendable {
             if message.isEmpty {
                 await handleEmptyMessage(for: command)
             } else {
-                let packets = await packetDeriver.calculateAndDispense(text: message, chunkCount: chunkCount)
+                let packetsArray = packetizeTextForIRCLimit(
+                    text: message,
+                    origin: origin,
+                    command: command,
+                    tags: tags,
+                    authPacket: authPacket,
+                    logger: logger,
+                    maxLineBytes: chunkCount
+                )
+                let packets = AsyncStream<MultipartPacket>(bufferingPolicy: .unbounded) { c in
+                    for packet in packetsArray { c.yield(packet) }
+                    c.finish()
+                }
                 await processPackets(packets: packets, command: command)
             }
         }
