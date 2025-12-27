@@ -30,7 +30,7 @@ public final class IRCPayloadEncoder: MessageToByteEncoder, @unchecked Sendable 
         switch data {
         case .irc(let iRCMessage):
             let messageString = NeedleTailIRCEncoder.encode(value: iRCMessage)
-
+            
             // Ensure message is not empty
             guard !messageString.isEmpty else {
                 logger.log(level: .warning, message: "Attempted to encode empty IRC message. Skipping.")

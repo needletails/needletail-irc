@@ -21,17 +21,9 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
     public typealias InboundOut = IRCPayload
     
     private let logger: NeedleTailLogger
-    private let maxBufferedIRCBytesWithoutNewline: Int
-    private let closeOnInboundViolation: Bool
     
-    public init(
-        logger: NeedleTailLogger = NeedleTailLogger(),
-        maxBufferedIRCBytesWithoutNewline: Int = 64 * 1024,
-        closeOnInboundViolation: Bool = true
-    ) {
+    public init(logger: NeedleTailLogger = NeedleTailLogger()) {
         self.logger = logger
-        self.maxBufferedIRCBytesWithoutNewline = maxBufferedIRCBytesWithoutNewline
-        self.closeOnInboundViolation = closeOnInboundViolation
     }
     
     public func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
@@ -91,20 +83,6 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
                 
                 return .continue
             } else {
-                // No newline yet; prevent unbounded buffering (DoS protection).
-                if buffer.readableBytes > maxBufferedIRCBytesWithoutNewline {
-                    logger.log(level: .error, message: "Inbound IRC buffer exceeded limit without newline", metadata: [
-                        "bufferedBytes": "\(buffer.readableBytes)",
-                        "maxBufferedBytes": "\(maxBufferedIRCBytesWithoutNewline)"
-                    ])
-                    // Drop buffered data and close (default).
-                    buffer.moveReaderIndex(to: buffer.writerIndex)
-                    context.fireErrorCaught(NeedleTailError.payloadTooLarge)
-                    if closeOnInboundViolation {
-                        context.close(promise: nil)
-                    }
-                    return .continue
-                }
                 return .needMoreData
             }
         }
