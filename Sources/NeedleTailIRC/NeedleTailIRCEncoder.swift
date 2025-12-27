@@ -107,7 +107,7 @@ public struct NeedleTailIRCEncoder: Sendable {
         
         // Encode message tags, if any
         if let tags = value.tags, !tags.isEmpty {
-            let tagString = tags.map { "\(Constants.atString.rawValue)\($0.key)\(Constants.equalsString.rawValue)\($0.value)" }
+            let tagString = tags.map { "\(Constants.atString.rawValue)\($0.key)\(Constants.equalsString.rawValue)\(IRCTag.ircv3EscapeTagValue($0.value))" }
                 .joined(separator: Constants.semiColon.rawValue)
             components.append(tagString + Constants.space.rawValue)
         }

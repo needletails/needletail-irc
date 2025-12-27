@@ -6,53 +6,25 @@ Understand error types provided by the NeedleTailIRC API.
 
 NeedleTailIRC provides specific error types for different failure scenarios. Understanding these errors is important for working with the API.
 
-## Error Types
+## Key Errors You Should Handle
 
-### Core Error Types
+- **`NeedleTailError.payloadTooLarge`**: Raised when inbound buffering exceeds configured safety limits (e.g. runaway buffer without newline).
+- **`MessageParsingErrors`**: Raised when parsing a single IRC line fails (invalid tags/arguments/etc).
+
+## Outbound (encoding) limits
 
 ```swift
-// Main error enum
-enum NeedleTailError: Error {
-    case couldNotConnectToServer
-    case transportNotIntitialized
-    case invalidIRCChannelName
-    case nilNickName
-    case invalidMessageFormat
-    case encodingFailed
-    case decodingFailed
-    case timeout
-    case networkError(String)
-    case protocolError(String)
-    case validationError(String)
-}
+// IRCPayloadEncoder is the mandatory outbound encoding boundary.
+// This SDK does not enforce a hard IRC line length limit at the encoder boundary by default,
+// because some deployments support/require larger-than-512 lines.
 ```
 
-### Message Parsing Errors
+## Inbound (decoding) limits
 
 ```swift
-// Message parsing specific errors
-enum MessageParsingErrors: Error {
-    case invalidArguments(String)
-    case invalidTag
-    case invalidPrefix
-    case invalidCommand
-    case invalidParameters
-    case malformedMessage
-}
-```
-
-### Transport Errors
-
-```swift
-// Transport layer errors
-enum TransportError: Error {
-    case connectionFailed(String)
-    case connectionTimeout
-    case sslHandshakeFailed
-    case invalidCertificate
-    case networkUnavailable
-    case protocolError(String)
-}
+// IRCPayloadDecoder enforces safety limits:
+// - Oversize IRC lines are treated as protocol violations (error + close by default).
+// - If the buffer grows beyond the configured max without a newline, it errors + closes.
 ```
 
 ## Basic Error Handling
@@ -124,14 +96,11 @@ do {
 }
 ```
 
-### Encoding Errors
+### Encoding / wire-size errors
 
 ```swift
 do {
-    let encodedMessage = await NeedleTailIRCEncoder.encode(value: message)
-    // Use encoded message
-} catch NeedleTailError.encodingFailed {
-    print("Failed to encode message")
+    // Ensure large payloads are chunked using IRCMessageGenerator before sending.
 } catch {
     print("Other encoding error: \(error)")
 }

@@ -311,7 +311,7 @@ public struct PacketDerivation: Sendable {
         let packetDate = Date()
         
         if let text {
-            let chunks = text.chunks(ofCount: chunkCount)
+            let chunks = text.utf8.chunks(ofCount: chunkCount)
             let totalParts = chunks.count
             var packets = [MultipartPacket]()
             packets.reserveCapacity(totalParts)
@@ -321,7 +321,7 @@ public struct PacketDerivation: Sendable {
                     date: packetDate,
                     partNumber: index + 1, // Use index for part number
                     totalParts: totalParts,
-                    message: String(chunk)
+                    message: String(decoding: chunk, as: UTF8.self)
                 )
                 packets.append(packet)
             }
@@ -404,9 +404,29 @@ public struct PacketDerivation: Sendable {
 public actor PacketBuilder {
     
     private let executor: any AnyExecutor
-    private var packets = [[MultipartPacket]]()
+    // Grouped by groupId for efficient lookup and for applying abuse protections.
+    private var packetsByGroupId: [String: [MultipartPacket]] = [:]
+    private var groupFirstSeen: [String: Date] = [:]
+    private var groupBytes: [String: Int] = [:]
+    private var totalBufferedBytes: Int = 0
     private var builtData: Data?
     private var joinedMessage: String?
+
+    /// Max number of concurrent multipart groups to track.
+    /// Production default: 64 groups per connection prevents memory exhaustion from incomplete reassembly.
+    public var maxConcurrentGroups: Int = 64
+    /// Max buffered bytes (message UTF-8 + data bytes) per group before dropping it.
+    /// Production default: 2MB per group prevents single large message from consuming excessive memory.
+    public var maxBytesPerGroup: Int = 2 * 1024 * 1024
+    /// Max buffered bytes across all groups before dropping oldest groups.
+    /// Production default: 8MB total prevents aggregate memory exhaustion across all concurrent reassemblies.
+    public var maxTotalBufferedBytes: Int = 8 * 1024 * 1024
+    /// Timeout after which an incomplete group is dropped.
+    /// Production default: 30 seconds prevents stale incomplete groups from consuming memory indefinitely.
+    public var timeout: TimeInterval = 30.0
+    /// Sanity cap on total parts claimed by a group.
+    /// Production default: 4,096 parts (with 512-byte chunks ≈ 2MB max, consistent with maxBytesPerGroup).
+    public var maxTotalPartsPerGroup: Int = 4_096
     
     /// Initializes a new packet builder with the specified executor.
     /// - Parameter executor: The executor to use for task management.
@@ -459,27 +479,100 @@ public actor PacketBuilder {
     /// - Parameter packet: The multipart packet to process.
     /// - Returns: A `ProcessedResult` indicating the processing outcome.
     public func processPacket(_ packet: MultipartPacket) -> ProcessedResult {
-        // Find the index of the group that contains the packet
-        if let groupIndex = packets.firstIndex(where: { $0.first?.groupId == packet.groupId }) {
-            // Append the packet to the existing group
-            
-            if var message = packet.message {
-                if message.first == ":" {
-                    message = String(message.dropFirst())
-                }
-            }
-            packets[groupIndex].append(packet)
-            return finishProcess(groupIndex: groupIndex)
-        } else {
-            if var message = packet.message {
-                if message.first == ":" {
-                    message = String(message.dropFirst())
-                }
-            }
-            // Create a new group with the packet
-            packets.append([packet])
-            return finishProcess(groupIndex: packets.count - 1)
+        var packet = packet
+        if var message = packet.message, message.first == ":" {
+            message = String(message.dropFirst())
+            packet.message = message
         }
+
+        cleanupExpiredGroups(now: Date())
+
+        // Basic sanity checks to prevent abuse.
+        guard packet.totalParts > 0,
+              packet.totalParts <= maxTotalPartsPerGroup,
+              packet.partNumber > 0,
+              packet.partNumber <= packet.totalParts else {
+            return .none
+        }
+
+        let groupId = packet.groupId
+        let packetSize = estimatePacketSize(packet)
+
+        // Ensure group exists.
+        if packetsByGroupId[groupId] == nil {
+            if packetsByGroupId.count >= maxConcurrentGroups {
+                evictOldestGroups(toFitAdditionalBytes: packetSize)
+                if packetsByGroupId.count >= maxConcurrentGroups {
+                    // Still at capacity; drop the new group.
+                    return .none
+                }
+            }
+            packetsByGroupId[groupId] = []
+            groupFirstSeen[groupId] = Date()
+            groupBytes[groupId] = 0
+        }
+
+        // Deduplicate by partNumber within the group.
+        if let existing = packetsByGroupId[groupId], existing.contains(where: { $0.partNumber == packet.partNumber }) {
+            return finishProcess(groupId: groupId)
+        }
+
+        // Enforce per-group and global byte budgets.
+        let existingGroupBytes = groupBytes[groupId] ?? 0
+        if existingGroupBytes + packetSize > maxBytesPerGroup {
+            dropGroup(groupId)
+            return .none
+        }
+        if totalBufferedBytes + packetSize > maxTotalBufferedBytes {
+            evictOldestGroups(toFitAdditionalBytes: packetSize)
+            if totalBufferedBytes + packetSize > maxTotalBufferedBytes {
+                // Still cannot fit; drop this group.
+                dropGroup(groupId)
+                return .none
+            }
+        }
+
+        packetsByGroupId[groupId, default: []].append(packet)
+        groupBytes[groupId] = existingGroupBytes + packetSize
+        totalBufferedBytes += packetSize
+
+        return finishProcess(groupId: groupId)
+    }
+
+    private func estimatePacketSize(_ packet: MultipartPacket) -> Int {
+        let msgBytes = packet.message?.utf8.count ?? 0
+        let dataBytes = packet.data?.count ?? 0
+        return msgBytes + dataBytes
+    }
+
+    private func cleanupExpiredGroups(now: Date) {
+        guard timeout > 0 else { return }
+        let expired = groupFirstSeen.compactMap { (gid, first) -> String? in
+            now.timeIntervalSince(first) > timeout ? gid : nil
+        }
+        for gid in expired {
+            dropGroup(gid)
+        }
+    }
+
+    private func evictOldestGroups(toFitAdditionalBytes additional: Int) {
+        // Evict oldest groups until we have room or no groups remain.
+        while totalBufferedBytes + additional > maxTotalBufferedBytes, let oldest = oldestGroupId() {
+            dropGroup(oldest)
+        }
+    }
+
+    private func oldestGroupId() -> String? {
+        groupFirstSeen.min(by: { $0.value < $1.value })?.key
+    }
+
+    private func dropGroup(_ groupId: String) {
+        if let bytes = groupBytes[groupId] {
+            totalBufferedBytes = max(0, totalBufferedBytes - bytes)
+        }
+        packetsByGroupId[groupId] = nil
+        groupFirstSeen[groupId] = nil
+        groupBytes[groupId] = nil
     }
     
     /// Finishes processing a packet group and reassembles the complete message or data.
@@ -497,28 +590,30 @@ public actor PacketBuilder {
     ///
     /// - Parameter groupIndex: The index of the packet group to process.
     /// - Returns: A `ProcessedResult` with the assembled content or .none if incomplete.
-    private func finishProcess(groupIndex: Int) -> ProcessedResult {
-        let groupPackets = packets[groupIndex]
+    private func finishProcess(groupId: String) -> ProcessedResult {
+        guard let groupPackets = packetsByGroupId[groupId], let first = groupPackets.first else {
+            return .none
+        }
         // Check if we have all parts
-        if groupPackets.count == groupPackets.first?.totalParts {
+        if groupPackets.count == first.totalParts {
             let sortedParts = groupPackets.sorted { $0.partNumber < $1.partNumber }
-            
+
             for packet in sortedParts {
                 if let message = packet.message {
                     if joinedMessage == nil {
                         joinedMessage = ""
                     }
-                    
+
                     if let currentJoinedMessage = joinedMessage {
                         joinedMessage = currentJoinedMessage + message
                     }
-                    
+
                 } else if let data = packet.data {
                     // Initialize builtData if it's nil
                     if builtData == nil {
                         builtData = Data()
                     }
-                    
+
                     // Safely append the data to builtData
                     if var currentBuiltData = builtData {
                         currentBuiltData.append(data)
@@ -526,7 +621,7 @@ public actor PacketBuilder {
                     }
                 }
             }
-            
+
             defer {
                 joinedMessage = nil
                 builtData = nil
@@ -534,13 +629,14 @@ public actor PacketBuilder {
             // Return either the joined message or the built data
             if let joinedMessage, !joinedMessage.isEmpty {
                 // Remove the completed group
-                packets.remove(at: groupIndex)
+                dropGroup(groupId)
                 return .message(joinedMessage)
             } else if let builtData, !builtData.isEmpty {
                 // Remove the completed group
-                packets.remove(at: groupIndex)
+                dropGroup(groupId)
                 return .data(builtData)
             }
+            dropGroup(groupId)
             return .none
         }
         return .none
@@ -679,7 +775,7 @@ public actor IRCMessageGenerator: Sendable {
             origin: origin,
             command: modifiedCommand,
             tags: mutableTags)
-        //Yields a message but the message mutable tags are empty.
+        
         continuation.yield(message)
         if modifiedPacket.partNumber == modifiedPacket.totalParts {
             continuation.finish()
@@ -776,7 +872,6 @@ public actor IRCMessageGenerator: Sendable {
         ) async {
             guard let continuation = streamContinuation else { return }
             for await packet in packets {
-                //Packets from the stream are properly fed here, but when we create messages the next stream that the CreateMessages method calls contains the next continuation items but the items are empty. Yields a message but the message mutable tags are empty.
                 await createIRCMessage(
                     for: command,
                     origin: origin,

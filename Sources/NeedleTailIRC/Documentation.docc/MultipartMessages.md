@@ -21,25 +21,20 @@ IRC protocol has a maximum message length of 512 bytes, which can be limiting wh
 ```swift
 import NeedleTailIRC
 
-let packetDerivation = PacketDerivation()
 let largeMessage = String(repeating: "Hello, World! ", count: 1000)
 
-// Automatically chunks the message into smaller packets
-let stream = await packetDerivation.calculateAndDispense(
-    text: largeMessage, 
-    bufferingPolicy: .unbounded
+// Use IRCMessageGenerator to chunk/reassemble large messages while staying within
+// the configured IRC max line bytes (defaults to 512 including CRLF).
+let generator = IRCMessageGenerator(executor: executor)
+let messages = await generator.createMessages(
+    origin: "alice!user@host",
+    command: .privMsg([.channel(NeedleTailChannel("#general")!)], largeMessage),
+    logger: NeedleTailLogger()
 )
 
-// Send each packet over IRC
-for await packet in stream {
-    let ircMessage = IRCMessage(
-        command: .privMsg(
-            [.channel(NeedleTailChannel("#general")!)], 
-            packet.message ?? ""
-        )
-    )
-    // Send the IRC message
-    await sendMessage(ircMessage)
+for await message in messages {
+    // Send via your NIO pipeline using IRCPayloadEncoder
+    // writer.write(.irc(message))
 }
 ```
 
@@ -48,26 +43,14 @@ for await packet in stream {
 ```swift
 import NeedleTailIRC
 
-let packetBuilder = PacketBuilder(executor: executor)
+let generator = IRCMessageGenerator(executor: executor)
 
 // Process incoming IRC messages
 for message in incomingMessages {
-    if let multipartPacket = MultipartPacket.from(message) {
-        let result = await packetBuilder.processPacket(multipartPacket)
-        
-        switch result {
-        case .message(let completeMessage):
-            // Complete message reassembled
-            print("Received complete message: \(completeMessage)")
-            
-        case .data(let completeData):
-            // Complete binary data reassembled
-            print("Received complete data: \(completeData.count) bytes")
-            
-        case .none:
-            // Packet processed but message not yet complete
-            break
-        }
+    // `messageReassembler` returns nil until the final chunk arrives.
+    if let rebuilt = try await generator.messageReassembler(ircMessage: message) {
+        // Process the complete message
+        print("Reassembled: \(rebuilt)")
     }
 }
 ```

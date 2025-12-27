@@ -62,6 +62,79 @@ public struct IRCTag: Hashable, Codable, Sendable {
     public static func validate(string: String) -> Bool {
         return string.count < 4096
     }
+
+    // MARK: - IRCv3 tag escaping/unescaping (values)
+    //
+    // IRCv3 message tag value escapes:
+    //  - \: => ;
+    //  - \s => space
+    //  - \r => CR
+    //  - \n => LF
+    //  - \\ => \
+    public static func ircv3EscapeTagValue(_ value: String) -> String {
+        // Order matters: escape backslash first.
+        var out = value.replacingOccurrences(of: "\\", with: "\\\\")
+        out = out.replacingOccurrences(of: ";", with: "\\:")
+        out = out.replacingOccurrences(of: " ", with: "\\s")
+        out = out.replacingOccurrences(of: "\r", with: "\\r")
+        out = out.replacingOccurrences(of: "\n", with: "\\n")
+        return out
+    }
+
+    public static func ircv3UnescapeTagValue(_ value: String) -> String {
+        // Single-pass parser to avoid double-unescaping.
+        var result = ""
+        result.reserveCapacity(value.count)
+
+        var i = value.startIndex
+        while i < value.endIndex {
+            let c = value[i]
+            if c == "\\" {
+                let next = value.index(after: i)
+                guard next < value.endIndex else { break }
+                let esc = value[next]
+                switch esc {
+                case ":":
+                    result.append(";")
+                case "s":
+                    result.append(" ")
+                case "r":
+                    result.append("\r")
+                case "n":
+                    result.append("\n")
+                case "\\":
+                    result.append("\\")
+                default:
+                    // Unknown escape => drop backslash, keep char.
+                    result.append(esc)
+                }
+                i = value.index(after: next)
+            } else {
+                result.append(c)
+                i = value.index(after: i)
+            }
+        }
+        return result
+    }
+
+    // MARK: - Safety caps (configurable defaults)
+    public static let defaultMaxTagCount: Int = 256
+    public static let defaultMaxTagKeyBytes: Int = 256
+    public static let defaultMaxTagValueBytes: Int = 64 * 1024
+    public static let defaultMaxTagSectionBytes: Int = 128 * 1024
+
+    public static func validate(
+        key: String,
+        value: String,
+        maxKeyBytes: Int = defaultMaxTagKeyBytes,
+        maxValueBytes: Int = defaultMaxTagValueBytes
+    ) -> Bool {
+        guard !key.isEmpty else { return false }
+        guard key.utf8.count <= maxKeyBytes, value.utf8.count <= maxValueBytes else { return false }
+        if key.contains(" ") || key.contains(";") || key.contains("=") { return false }
+        if key.utf8.contains(where: { $0 < 0x20 || $0 == 0x7F }) { return false }
+        return true
+    }
 }
 
 
