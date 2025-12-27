@@ -409,8 +409,6 @@ public actor PacketBuilder {
     private var groupFirstSeen: [String: Date] = [:]
     private var groupBytes: [String: Int] = [:]
     private var totalBufferedBytes: Int = 0
-    private var builtData: Data?
-    private var joinedMessage: String?
 
     /// Max number of concurrent multipart groups to track.
     /// Production default: 64 groups per connection prevents memory exhaustion from incomplete reassembly.
@@ -595,49 +593,24 @@ public actor PacketBuilder {
             return .none
         }
         // Check if we have all parts
-        if groupPackets.count == first.totalParts {
-            let sortedParts = groupPackets.sorted { $0.partNumber < $1.partNumber }
-
-            for packet in sortedParts {
-                if let message = packet.message {
-                    if joinedMessage == nil {
-                        joinedMessage = ""
-                    }
-
-                    if let currentJoinedMessage = joinedMessage {
-                        joinedMessage = currentJoinedMessage + message
-                    }
-
-                } else if let data = packet.data {
-                    // Initialize builtData if it's nil
-                    if builtData == nil {
-                        builtData = Data()
-                    }
-
-                    // Safely append the data to builtData
-                    if var currentBuiltData = builtData {
-                        currentBuiltData.append(data)
-                        builtData = currentBuiltData // Update the instance variable
-                    }
-                }
-            }
-
-            defer {
-                joinedMessage = nil
-                builtData = nil
-            }
-            // Return either the joined message or the built data
-            if let joinedMessage, !joinedMessage.isEmpty {
-                // Remove the completed group
-                dropGroup(groupId)
-                return .message(joinedMessage)
-            } else if let builtData, !builtData.isEmpty {
-                // Remove the completed group
-                dropGroup(groupId)
-                return .data(builtData)
-            }
-            dropGroup(groupId)
+        guard groupPackets.count == first.totalParts else {
             return .none
+        }
+        
+        let sortedParts = groupPackets.sorted { $0.partNumber < $1.partNumber }
+        
+        // Reassemble message or data using functional approach
+        let joinedMessage = sortedParts.compactMap { $0.message }.joined()
+        let builtData = sortedParts.compactMap { $0.data }.reduce(Data()) { $0 + $1 }
+        
+        // Remove the completed group before returning
+        dropGroup(groupId)
+        
+        // Return the reassembled content
+        if !joinedMessage.isEmpty {
+            return .message(joinedMessage)
+        } else if !builtData.isEmpty {
+            return .data(builtData)
         }
         return .none
     }

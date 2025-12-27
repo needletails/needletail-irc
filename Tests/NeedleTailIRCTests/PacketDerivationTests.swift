@@ -244,4 +244,113 @@ final class PacketDerivationTests {
         // Note: The second group was already completed in step 3, so we can't process _packet2 again
         // The test is complete at this point
     }
+    
+    /// Tests that concurrent multipart reassembly works correctly without data corruption.
+    /// This test verifies the fix for the bug where instance variables caused groups to interfere.
+    @Test func testConcurrentMultipartReassembly() async {
+        let executor = TestableExecutor(queue: DispatchQueue.global())
+        let packetBuilder = PacketBuilder(executor: executor)
+        
+        // Create three different groups with different messages
+        let group1Id = "group1"
+        let group2Id = "group2"
+        let group3Id = "group3"
+        
+        // Create packets for each group (3 parts each)
+        let group1Packets = [
+            MultipartPacket(groupId: group1Id, date: Date(), partNumber: 1, totalParts: 3, message: "Group1"),
+            MultipartPacket(groupId: group1Id, date: Date(), partNumber: 2, totalParts: 3, message: "Message"),
+            MultipartPacket(groupId: group1Id, date: Date(), partNumber: 3, totalParts: 3, message: "Part3")
+        ]
+        
+        let group2Packets = [
+            MultipartPacket(groupId: group2Id, date: Date(), partNumber: 1, totalParts: 3, message: "Group2"),
+            MultipartPacket(groupId: group2Id, date: Date(), partNumber: 2, totalParts: 3, message: "Message"),
+            MultipartPacket(groupId: group2Id, date: Date(), partNumber: 3, totalParts: 3, message: "Part3")
+        ]
+        
+        let group3Packets = [
+            MultipartPacket(groupId: group3Id, date: Date(), partNumber: 1, totalParts: 3, message: "Group3"),
+            MultipartPacket(groupId: group3Id, date: Date(), partNumber: 2, totalParts: 3, message: "Message"),
+            MultipartPacket(groupId: group3Id, date: Date(), partNumber: 3, totalParts: 3, message: "Part3")
+        ]
+        
+        // Process packets in interleaved order to simulate concurrent arrival
+        // This would have caused data corruption with the old bug
+        var results: [String: String] = [:]
+        
+        // Process all first parts
+        for packet in [group1Packets[0], group2Packets[0], group3Packets[0]] {
+            let result = await packetBuilder.processPacket(packet)
+            if case .message(let msg) = result {
+                results[packet.groupId] = msg
+            }
+        }
+        
+        // Process all second parts
+        for packet in [group1Packets[1], group2Packets[1], group3Packets[1]] {
+            let result = await packetBuilder.processPacket(packet)
+            if case .message(let msg) = result {
+                results[packet.groupId] = msg
+            }
+        }
+        
+        // Process all third parts - these should complete the groups
+        for packet in [group1Packets[2], group2Packets[2], group3Packets[2]] {
+            let result = await packetBuilder.processPacket(packet)
+            if case .message(let msg) = result {
+                results[packet.groupId] = msg
+            }
+        }
+        
+        // Verify each group reassembled correctly without interference
+        #expect(results[group1Id] == "Group1MessagePart3", "Group1 should reassemble correctly, got: \(results[group1Id] ?? "nil")")
+        #expect(results[group2Id] == "Group2MessagePart3", "Group2 should reassemble correctly, got: \(results[group2Id] ?? "nil")")
+        #expect(results[group3Id] == "Group3MessagePart3", "Group3 should reassemble correctly, got: \(results[group3Id] ?? "nil")")
+    }
+    
+    /// Tests that binary data reassembly works correctly with concurrent groups.
+    @Test func testConcurrentBinaryDataReassembly() async {
+        let executor = TestableExecutor(queue: DispatchQueue.global())
+        let packetBuilder = PacketBuilder(executor: executor)
+        
+        // Create two groups with binary data
+        let group1Id = "dataGroup1"
+        let group2Id = "dataGroup2"
+        
+        let group1Data = Data([1, 2, 3, 4, 5])
+        let group2Data = Data([10, 20, 30, 40, 50])
+        
+        // Split into 2 parts each
+        let group1Packets = [
+            MultipartPacket(groupId: group1Id, date: Date(), partNumber: 1, totalParts: 2, data: Data([1, 2, 3])),
+            MultipartPacket(groupId: group1Id, date: Date(), partNumber: 2, totalParts: 2, data: Data([4, 5]))
+        ]
+        
+        let group2Packets = [
+            MultipartPacket(groupId: group2Id, date: Date(), partNumber: 1, totalParts: 2, data: Data([10, 20, 30])),
+            MultipartPacket(groupId: group2Id, date: Date(), partNumber: 2, totalParts: 2, data: Data([40, 50]))
+        ]
+        
+        var results: [String: Data] = [:]
+        
+        // Process in interleaved order
+        for packet in [group1Packets[0], group2Packets[0]] {
+            let result = await packetBuilder.processPacket(packet)
+            if case .data(let data) = result {
+                results[packet.groupId] = data
+            }
+        }
+        
+        for packet in [group1Packets[1], group2Packets[1]] {
+            let result = await packetBuilder.processPacket(packet)
+            if case .data(let data) = result {
+                results[packet.groupId] = data
+            }
+        }
+        
+        // Verify each group reassembled correctly
+        #expect(results[group1Id] == group1Data, "Group1 data should match")
+        #expect(results[group2Id] == group2Data, "Group2 data should match")
+    }
 }
