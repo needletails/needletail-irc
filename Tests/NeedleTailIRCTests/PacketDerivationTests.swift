@@ -353,4 +353,56 @@ final class PacketDerivationTests {
         #expect(results[group1Id] == group1Data, "Group1 data should match")
         #expect(results[group2Id] == group2Data, "Group2 data should match")
     }
+    
+    /// Tests that single-part messages with empty content are properly handled.
+    /// This is important for commands like PONG that may have empty messages.
+    @Test func testSinglePartEmptyMessage() async {
+        let executor = TestableExecutor(queue: DispatchQueue.global())
+        let packetBuilder = PacketBuilder(executor: executor)
+        
+        // Create a single-part packet with empty message (like PONG)
+        let packet = MultipartPacket(
+            groupId: "emptyGroup",
+            date: Date(),
+            partNumber: 1,
+            totalParts: 1,
+            message: ""
+        )
+        
+        let result = await packetBuilder.processPacket(packet)
+        switch result {
+        case .message(let message):
+            // Should return empty message to indicate completion
+            #expect(message == "", "Empty single-part message should return empty string")
+        case .none:
+            #expect(Bool(false), "Single-part message should return .message even if empty")
+        case .data(_):
+            #expect(Bool(false), "Expected .message but got .data")
+        }
+    }
+    
+    /// Tests that single-part messages with content are properly handled.
+    @Test func testSinglePartWithContent() async {
+        let executor = TestableExecutor(queue: DispatchQueue.global())
+        let packetBuilder = PacketBuilder(executor: executor)
+        
+        // Create a single-part packet with content
+        let packet = MultipartPacket(
+            groupId: "contentGroup",
+            date: Date(),
+            partNumber: 1,
+            totalParts: 1,
+            message: "test message"
+        )
+        
+        let result = await packetBuilder.processPacket(packet)
+        switch result {
+        case .message(let message):
+            #expect(message == "test message", "Single-part message should return content")
+        case .none:
+            #expect(Bool(false), "Single-part message with content should not return .none")
+        case .data(_):
+            #expect(Bool(false), "Expected .message but got .data")
+        }
+    }
 }
