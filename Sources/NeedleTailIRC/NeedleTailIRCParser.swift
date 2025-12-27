@@ -191,18 +191,21 @@ public struct NeedleTailIRCParser: Sendable {
     /// - Returns: An array of `IRCTag` if successful, otherwise `nil`.
     static func parseTags(tags: String = "") throws -> [IRCTag]? {
         guard tags.hasPrefix(Constants.atString.rawValue) else { return nil }
-        // Tag section size cap (bytes).
-        if tags.utf8.count > maxTagSectionBytes {
-            throw MessageParsingErrors.invalidArguments("Tag section too large.")
-        }
         
         var tagArray: [IRCTag] = []
         let raw = String(tags.dropFirst())
         let seperatedTags = raw.components(separatedBy: Constants.semiColon.rawValue)
         
         for tag in seperatedTags {
-            let cleanedTag = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+            var cleanedTag = tag.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleanedTag.isEmpty else { continue }
+            
+            // Backward compatibility:
+            // Older versions of this SDK encoded tags as "@k1=v1;@k2=v2" (an extra '@' per tag).
+            // Accept and normalize that format by stripping a leading '@' on each tag segment.
+            if cleanedTag.hasPrefix(Constants.atString.rawValue) {
+                cleanedTag = String(cleanedTag.dropFirst())
+            }
             let kvpArray = cleanedTag.split(separator: Character(Constants.equalsString.rawValue), maxSplits: 1)
             guard let key = kvpArray.first else {
                 throw MessageParsingErrors.invalidArguments("Invalid tag format.")
@@ -210,13 +213,12 @@ public struct NeedleTailIRCParser: Sendable {
             let rawValue = kvpArray.count > 1 ? String(kvpArray[1]) : ""
             let value = IRCTag.ircv3UnescapeTagValue(rawValue)
             let k = String(key)
-            guard IRCTag.validate(key: k, value: value) else {
+            // Do not artificially cap tag values here; this SDK intentionally supports
+            // larger-than-512 IRC lines in some deployments (e.g., base64/encrypted payloads).
+            guard IRCTag.validate(key: k, value: value, maxValueBytes: .max) else {
                 throw MessageParsingErrors.invalidArguments("Invalid tag key/value.")
             }
             tagArray.append(IRCTag(key: k, value: value))
-            if tagArray.count > maxTagCount {
-                throw MessageParsingErrors.invalidArguments("Too many tags.")
-            }
         }
         return tagArray
     }

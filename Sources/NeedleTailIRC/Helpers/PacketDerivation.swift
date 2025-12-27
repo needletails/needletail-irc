@@ -985,7 +985,9 @@ public actor IRCMessageGenerator: Sendable {
     public func messageReassembler(ircMessage: IRCMessage) async throws -> IRCMessage? {
         var ircMessage = ircMessage
         
-        guard let packetTag = ircMessage.tags?.first(where: { $0.key == "packet-metadata" }) else { return nil }
+        // Be tolerant of legacy encoding where some tags could be parsed with a leading '@'
+        // (e.g., "@packet-metadata") due to old tag serialization.
+        guard let packetTag = ircMessage.tags?.first(where: { $0.key == "packet-metadata" || $0.key == "@packet-metadata" }) else { return nil }
         guard let data = Data(base64Encoded: packetTag.value) else { return nil }
         let packet = try BinaryDecoder().decode(MultipartPacket.self, from: data)
         

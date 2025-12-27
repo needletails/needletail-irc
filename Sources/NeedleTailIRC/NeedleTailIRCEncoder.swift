@@ -107,8 +107,14 @@ public struct NeedleTailIRCEncoder: Sendable {
         
         // Encode message tags, if any
         if let tags = value.tags, !tags.isEmpty {
-            let tagString = tags.map { "\(Constants.atString.rawValue)\($0.key)\(Constants.equalsString.rawValue)\(IRCTag.ircv3EscapeTagValue($0.value))" }
-                .joined(separator: Constants.semiColon.rawValue)
+            // IRCv3 tags are encoded with a single leading '@' and ';' separators:
+            //   @k1=v1;k2=v2 <command> ...
+            // Historically this SDK emitted '@' before every tag; the parser now tolerates both,
+            // but we encode the standard format going forward.
+            let tagString = Constants.atString.rawValue
+                + tags
+                    .map { "\($0.key)\(Constants.equalsString.rawValue)\(IRCTag.ircv3EscapeTagValue($0.value))" }
+                    .joined(separator: Constants.semiColon.rawValue)
             components.append(tagString + Constants.space.rawValue)
         }
         

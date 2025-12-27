@@ -717,6 +717,50 @@ final class NeedleTailIRCTests {
         #expect(parsed.tags?[0].value == "a;b c\\d")
         #expect(parsed.tags?[1].value == "line1\nline2\rline3")
     }
+
+    @Test func testMultipartReassemblyWithAdditionalTags() async throws {
+        let logger = NeedleTailLogger()
+        let executor = TestableExecutor(queue: DispatchQueue.global())
+        let generator = IRCMessageGenerator(executor: executor)
+        let channel = NeedleTailChannel("#testchannel")!
+
+        // Force multipart and ensure packet-metadata isn't the first tag.
+        let longMessage = String(repeating: "x", count: 50_000)
+        let extraTags = [
+            IRCTag(key: "time", value: "2023-01-01T12:00:00Z"),
+            IRCTag(key: "client", value: "needletail")
+        ]
+
+        let outbound = await generator.createMessages(
+            origin: "origin",
+            command: .privMsg([.channel(channel)], longMessage),
+            tags: extraTags,
+            authPacket: nil,
+            logger: logger
+        )
+
+        var reassembled: IRCMessage? = nil
+        var emitted = 0
+
+        for await msg in outbound {
+            emitted += 1
+            let encoded = NeedleTailIRCEncoder.encode(value: msg)
+            let parsed = try NeedleTailIRCParser.parseMessage(encoded)
+            // This is the critical path that previously failed when packet-metadata wasn't first.
+            if let rebuilt = try await generator.messageReassembler(ircMessage: parsed) {
+                reassembled = rebuilt
+            }
+        }
+
+        #expect(emitted > 1, "Expected multipart chunking to emit multiple messages, got \(emitted)")
+        #expect(reassembled != nil, "Expected a reassembled message on final chunk")
+
+        if case .privMsg(_, let text) = reassembled?.command {
+            #expect(text == longMessage, "Reassembled PRIVMSG text should match original")
+        } else {
+            #expect(Bool(false), "Expected PRIVMSG after reassembly")
+        }
+    }
     
     @Test func testDCCCommands() async throws {
         let nick = NeedleTailNick(name: "testnick", deviceId: UUID())!
