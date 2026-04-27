@@ -1079,6 +1079,35 @@ final class NeedleTailIRCTests {
         #expect(parsed3.command.commandAsString == "MODE")
     }
     
+    @Test func testOtherCommandEmptyArgsReassembly() async throws {
+        let logger = NeedleTailLogger()
+
+        // Send an otherCommand with empty args (the scenario that was broken)
+        let messages = await generator.createMessages(
+            origin: TestableConstants.origin.rawValue,
+            command: .otherCommand(Constants.offlineMessages.rawValue, []),
+            logger: logger
+        )
+
+        var reassembled: IRCMessage?
+        for await message in messages {
+            // Round-trip through encode → parse → reassemble
+            let encoded = NeedleTailIRCEncoder.encode(value: message)
+            let parsed = try NeedleTailIRCParser.parseMessage(encoded)
+            if let rebuilt = try await generator.messageReassembler(ircMessage: parsed) {
+                reassembled = rebuilt
+            }
+        }
+
+        #expect(reassembled != nil, "Expected a reassembled message")
+        guard case .otherCommand(let cmd, let args) = reassembled?.command else {
+            #expect(Bool(false), "Expected otherCommand after reassembly")
+            return
+        }
+        #expect(cmd == Constants.offlineMessages.rawValue, "Command name should be preserved")
+        #expect(args.isEmpty, "Empty args should remain empty after round-trip, got \(args)")
+    }
+
     @Test func testChannelPrivMsgMultipartReassemble() async throws {
         let logger = NeedleTailLogger()
         let channel = NeedleTailChannel("#testchannel")!
@@ -1581,12 +1610,6 @@ func createIRCMessages() async -> [IRCMessage] {
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
             command: .otherCommand(Constants.destoryUser.rawValue, [TestableConstants.longMessage.rawValue]),
-            tags: [])
-    )
-    messages.append(
-        IRCMessage(
-            origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.listBucket.rawValue, [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(

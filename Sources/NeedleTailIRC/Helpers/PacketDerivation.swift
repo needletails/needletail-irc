@@ -763,8 +763,10 @@ public actor IRCMessageGenerator: Sendable {
         // Allow empty messages for commands that don't require content (like PONG)
         let packetMessage = currentPacket.message ?? ""
         switch command {
-        case .privMsg(let recipients, _), .notice(let recipients, _):
+        case .privMsg(let recipients, _):
             modifiedCommand = .privMsg(recipients, "")
+        case .notice(let recipients, _):
+            modifiedCommand = .notice(recipients, "")
         case .quit(_):
             modifiedCommand = .quit(packetMessage)
         case .otherCommand(let otherCommand, _):
@@ -1032,7 +1034,7 @@ public actor IRCMessageGenerator: Sendable {
                     let rebuiltArray = processedMessage.components(separatedBy: Constants.comma.rawValue)
                     ircMessage.command = .otherCommand(command, rebuiltArray)
                 } else {
-                    ircMessage.command = .otherCommand(command, [""])
+                    ircMessage.command = .otherCommand(command, [])
                 }
             default:
                 return nil
@@ -1044,7 +1046,7 @@ public actor IRCMessageGenerator: Sendable {
                     let rebuiltArray = processedMessage.components(separatedBy: Constants.comma.rawValue)
                     ircMessage.command = .otherNumeric(command, rebuiltArray)
                 } else {
-                    ircMessage.command = .otherNumeric(command, [""])
+                    ircMessage.command = .otherNumeric(command, [])
                 }
             default:
                 return nil

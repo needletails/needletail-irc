@@ -162,8 +162,19 @@ extension NeedleTailWriterDelegate {
         do {
             try await writer.write(message)
         } catch {
-            logger.log(level: .error, message: "Send And Flush Error: \(error)")
+            // During intentional transport rotation (for example after device-link sync),
+            // late writes can race with `finish()` and surface as already-finished.
+            // Keep that as trace-level noise while preserving true send failures as errors.
+            if isAlreadyFinishedWriteError(error) {
+                logger.log(level: .trace, message: "Send And Flush skipped on finished writer: \(error)")
+            } else {
+                logger.log(level: .error, message: "Send And Flush Error: \(error)")
+            }
             throw error
         }
+    }
+
+    private func isAlreadyFinishedWriteError(_ error: Error) -> Bool {
+        String(describing: error).contains("NIOAsyncWriterError.alreadyFinished")
     }
 }

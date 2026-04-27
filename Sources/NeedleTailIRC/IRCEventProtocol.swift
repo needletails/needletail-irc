@@ -223,10 +223,6 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     /// - Parameter packet: An array containing the multipart message data.
     func doMultipartMessageUpload(packet: [String]) async
     
-    /// Lists a bucket of data.
-    /// - Parameter packet: An array containing the bucket data.
-    func doListBucket(packet: [String]) async throws
-    
     /// Updates the badge count for notifications.
     /// - Parameter count: The new badge count.
     func badgeCountUpdate(count: Int) async throws
@@ -278,7 +274,6 @@ public extension IRCEventProtocol {
     func doKill(nick: NeedleTailNick, comment: String) async throws {}
     func doMultipartMessageDownload(packet: [String]) async {}
     func doMultipartMessageUpload(packet: [String]) async {}
-    func doListBucket(packet: [String]) async throws {}
     func badgeCountUpdate(count: Int) async throws {}
     func doIsTyping(packet: [String]) async throws {}
     func doDestroyUser(packet: [String]) async throws {}

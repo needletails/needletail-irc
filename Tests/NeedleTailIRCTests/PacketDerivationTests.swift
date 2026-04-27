@@ -18,6 +18,7 @@ import NeedleTailAsyncSequence
 import Foundation
 import Dispatch
 import BinaryCodable
+import NeedleTailLogger
 @testable import NeedleTailIRC
 
 final class PacketDerivationTests {
@@ -59,6 +60,32 @@ final class PacketDerivationTests {
             }
         }
         #expect(receivedMessage == message)
+    }
+
+    @Test func testMessageGeneratorPreservesNoticeCommand() async throws {
+        let executor = TestableExecutor(queue: DispatchQueue.global())
+        let messageGenerator = IRCMessageGenerator(executor: executor)
+        let stream = await messageGenerator.createMessages(
+            origin: "server",
+            command: .notice([.all], "Conference permissions updated"),
+            tags: [IRCTag(key: "conference-permissions", value: "abc123")],
+            logger: NeedleTailLogger("[ PacketDerivationTests ]")
+        )
+
+        var generatedMessages: [IRCMessage] = []
+        for await message in stream {
+            generatedMessages.append(message)
+        }
+
+        #expect(generatedMessages.count == 1)
+        guard let message = generatedMessages.first else { return }
+        if case .notice(let recipients, let payload) = message.command {
+            #expect(recipients == [.all])
+            #expect(payload == "")
+        } else {
+            Issue.record("Expected NOTICE command to be preserved")
+        }
+        #expect(message.tags?.contains { $0.key == "conference-permissions" && $0.value == "abc123" } == true)
     }
     
     @Test func testCalculateAndDispenseWithLongMessage() async throws {
@@ -404,5 +431,136 @@ final class PacketDerivationTests {
         case .data(_):
             #expect(Bool(false), "Expected .message but got .data")
         }
+    }
+    
+    /// Tests that recipient values are maintained when packets are derived and reassembled.
+    /// This test verifies that recipient information (like nick recipients) is preserved
+    /// through the packet derivation and reassembly process.
+    @Test func testRecipientValuesMaintainedDuringDerivationAndReassembly() async throws {
+        let executor = TestableExecutor(queue: DispatchQueue.global())
+        let generator = IRCMessageGenerator(executor: executor)
+        let logger = NeedleTailLogger()
+        
+        // Create a nickname recipient with a specific value
+        let deviceId = UUID()
+        let nickName = "lt"
+        guard let nick = NeedleTailNick(name: nickName, deviceId: deviceId) else {
+            #expect(Bool(false), "Failed to create NeedleTailNick")
+            return
+        }
+        
+        // Create a message with the nickname recipient
+        let originalRecipient = IRCMessageRecipient.nick(nick)
+        let messageContent = "This is a test message that will be split into multiple packets"
+        
+        // Create messages (this will derive packets)
+        let messages = await generator.createMessages(
+            origin: "testuser",
+            command: .privMsg([originalRecipient], messageContent),
+            logger: logger
+        )
+        
+        // Collect all messages and reassemble them
+        var reassembledMessage: IRCMessage?
+        for await message in messages {
+            if let rebuilt = try await generator.messageReassembler(ircMessage: message) {
+                reassembledMessage = rebuilt
+                break
+            }
+        }
+        
+        // Verify we got a reassembled message
+        guard let reassembled = reassembledMessage else {
+            #expect(Bool(false), "Failed to reassemble message")
+            return
+        }
+        
+        // Verify the command is PRIVMSG
+        guard case .privMsg(let recipients, let reassembledContent) = reassembled.command else {
+            #expect(Bool(false), "Reassembled message should be PRIVMSG")
+            return
+        }
+        
+        // Verify we have exactly one recipient
+        #expect(recipients.count == 1, "Should have exactly one recipient")
+        
+        // Verify the recipient is a nick recipient
+        guard case .nick(let reassembledNick) = recipients.first else {
+            #expect(Bool(false), "Recipient should be a nick recipient")
+            return
+        }
+        
+        // Verify the recipient values are maintained
+        #expect(reassembledNick.name == nickName, "Nick name should be maintained: expected '\(nickName)', got '\(reassembledNick.name)'")
+        #expect(reassembledNick.deviceId == deviceId, "Device ID should be maintained: expected '\(deviceId)', got '\(reassembledNick.deviceId?.uuidString ?? "nil")'")
+        
+        // Verify the message content is correct
+        #expect(reassembledContent == messageContent, "Message content should be maintained")
+    }
+    
+    /// Tests that multiple recipients are maintained when packets are derived and reassembled.
+    @Test func testMultipleRecipientsMaintainedDuringDerivationAndReassembly() async throws {
+        let executor = TestableExecutor(queue: DispatchQueue.global())
+        let generator = IRCMessageGenerator(executor: executor)
+        let logger = NeedleTailLogger()
+        
+        // Create multiple recipients
+        let deviceId1 = UUID()
+        let deviceId2 = UUID()
+        guard let nick1 = NeedleTailNick(name: "alice", deviceId: deviceId1),
+              let nick2 = NeedleTailNick(name: "bob", deviceId: deviceId2) else {
+            #expect(Bool(false), "Failed to create NeedleTailNick instances")
+            return
+        }
+        
+        let recipients = [IRCMessageRecipient.nick(nick1), IRCMessageRecipient.nick(nick2)]
+        let messageContent = "This is a test message for multiple recipients"
+        
+        // Create messages (this will derive packets)
+        let messages = await generator.createMessages(
+            origin: "testuser",
+            command: .privMsg(recipients, messageContent),
+            logger: logger
+        )
+        
+        // Collect all messages and reassemble them
+        var reassembledMessage: IRCMessage?
+        for await message in messages {
+            if let rebuilt = try await generator.messageReassembler(ircMessage: message) {
+                reassembledMessage = rebuilt
+                break
+            }
+        }
+        
+        // Verify we got a reassembled message
+        guard let reassembled = reassembledMessage else {
+            #expect(Bool(false), "Failed to reassemble message")
+            return
+        }
+        
+        // Verify the command is PRIVMSG
+        guard case .privMsg(let reassembledRecipients, let reassembledContent) = reassembled.command else {
+            #expect(Bool(false), "Reassembled message should be PRIVMSG")
+            return
+        }
+        
+        // Verify we have the correct number of recipients
+        #expect(reassembledRecipients.count == 2, "Should have exactly two recipients")
+        
+        // Verify each recipient is maintained
+        guard case .nick(let reassembledNick1) = reassembledRecipients[0],
+              case .nick(let reassembledNick2) = reassembledRecipients[1] else {
+            #expect(Bool(false), "Recipients should be nick recipients")
+            return
+        }
+        
+        // Verify recipient values are maintained
+        #expect(reassembledNick1.name == "alice", "First nick name should be maintained")
+        #expect(reassembledNick1.deviceId == deviceId1, "First device ID should be maintained")
+        #expect(reassembledNick2.name == "bob", "Second nick name should be maintained")
+        #expect(reassembledNick2.deviceId == deviceId2, "Second device ID should be maintained")
+
+        // Verify the message content is correct
+        #expect(reassembledContent == messageContent, "Message content should be maintained")
     }
 }

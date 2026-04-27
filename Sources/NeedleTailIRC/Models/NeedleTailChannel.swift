@@ -12,6 +12,7 @@
 //  This file is part of the NeedleTailIRC SDK, which provides
 //  IRC protocol implementation and messaging capabilities.
 //
+import Foundation
 
 /// A representation of an IRC channel name that is thread-safe and conforms to Codable,
 /// Hashable, and CustomStringConvertible protocols. This class uses a lock to protect
@@ -75,7 +76,59 @@ public final class NeedleTailChannel: Codable, Hashable, CustomStringConvertible
     private static func isValidCharacter(_ c: UInt8) -> Bool {
         return c != 7 && c != 32 && c != 44 // Excludes BEL, SPACE, and COMMA
     }
-    
+
+    /// Maximum number of characters allowed after the channel prefix (`#`, `&`, `+`, `!`) while satisfying `validate`.
+    public static let maxChannelBodyLength = 49
+
+    /// Builds a wire-safe channel name from user-facing text (spaces, mixed case, optional leading `#` / `&` / `+` / `!`).
+    ///
+    /// Keeps ASCII letters, digits, and underscores as runs; inserts `-` between runs separated by spaces or punctuation.
+    /// Returns `nil` when nothing usable remains or the result fails `validate`.
+    public static func derivedName(fromUserFacing userInput: String, preferredPrefix: Character = "#") -> String? {
+        guard "#&+!".contains(preferredPrefix) else { return nil }
+        var remainder = userInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !remainder.isEmpty else { return nil }
+        if let first = remainder.first, first.isChannelNamePrefixed {
+            remainder.removeFirst()
+            remainder = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard !remainder.isEmpty else { return nil }
+
+        var segments: [String] = []
+        var current = ""
+        func flushCurrent() {
+            if !current.isEmpty {
+                segments.append(current)
+                current = ""
+            }
+        }
+        for scalar in remainder.lowercased().unicodeScalars {
+            if scalar.isASCII,
+               ((0x61...0x7A).contains(scalar.value)) // a-z
+               || ((0x30...0x39).contains(scalar.value)) // 0-9
+               || scalar.value == 0x5F { // _
+                current.append(Character(scalar))
+            } else {
+                flushCurrent()
+            }
+        }
+        flushCurrent()
+        var slug = segments.joined(separator: "-")
+        guard !slug.isEmpty else { return nil }
+        if slug.count > maxChannelBodyLength {
+            slug = String(slug.prefix(maxChannelBodyLength))
+        }
+        while slug.last == "-" || slug.last == "_" {
+            slug.removeLast()
+        }
+        guard !slug.isEmpty else { return nil }
+
+        let candidate = String(preferredPrefix) + slug
+        let wire = candidate.ircLowercased
+        guard validate(string: wire) else { return nil }
+        return wire
+    }
+
     // MARK: - Codable Conformance
     enum CodingKeys: String, CodingKey, Sendable {
         case original = "a"
@@ -101,6 +154,28 @@ public final class NeedleTailChannel: Codable, Hashable, CustomStringConvertible
 extension String {
     public var constructedChannel: NeedleTailChannel? {
         return NeedleTailChannel(self)
+    }
+}
+
+public extension NeedleTailChannel {
+    /// Human-friendly channel title derived from a canonical wire id like `#travel_<uuid>`.
+    ///
+    /// This preserves legacy channel names unchanged and only strips a trailing UUID suffix when
+    /// the channel name matches the canonical `#slug_uuid` format.
+    var displayTitle: String {
+        let raw = stringValue
+        let withoutPrefix = raw.first?.isChannelNamePrefixed == true ? String(raw.dropFirst()) : raw
+        guard let separatorIndex = withoutPrefix.lastIndex(of: "_") else {
+            return withoutPrefix
+        }
+
+        let suffix = String(withoutPrefix[withoutPrefix.index(after: separatorIndex)...])
+        guard UUID(uuidString: suffix) != nil else {
+            return withoutPrefix
+        }
+
+        let title = String(withoutPrefix[..<separatorIndex])
+        return title.isEmpty ? withoutPrefix : title
     }
 }
 
