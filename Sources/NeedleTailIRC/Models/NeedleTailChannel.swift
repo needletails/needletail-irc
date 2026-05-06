@@ -40,6 +40,11 @@ public final class NeedleTailChannel: Codable, Hashable, CustomStringConvertible
     public var stringValue: String {
         original
     }
+
+    /// The normalized channel name used for stable IRC wire, cache, and storage comparisons.
+    public var canonicalWireName: String {
+        canonical
+    }
     
     /// Computes a hash value based on the normalized channel name.
     public func hash(into hasher: inout Hasher) {
@@ -158,6 +163,11 @@ extension String {
 }
 
 public extension NeedleTailChannel {
+    /// UUID suffix from a canonical `#slug_uuid` channel identity.
+    var identityUUIDString: String? {
+        NeedleTailChannelIdentity.uuidString(fromWireName: canonicalWireName)
+    }
+
     /// Human-friendly channel title derived from a canonical wire id like `#travel_<uuid>`.
     ///
     /// This preserves legacy channel names unchanged and only strips a trailing UUID suffix when
@@ -165,12 +175,9 @@ public extension NeedleTailChannel {
     var displayTitle: String {
         let raw = stringValue
         let withoutPrefix = raw.first?.isChannelNamePrefixed == true ? String(raw.dropFirst()) : raw
-        guard let separatorIndex = withoutPrefix.lastIndex(of: "_") else {
-            return withoutPrefix
-        }
-
-        let suffix = String(withoutPrefix[withoutPrefix.index(after: separatorIndex)...])
-        guard UUID(uuidString: suffix) != nil else {
+        guard identityUUIDString != nil,
+              let separatorIndex = withoutPrefix.lastIndex(of: "_")
+        else {
             return withoutPrefix
         }
 

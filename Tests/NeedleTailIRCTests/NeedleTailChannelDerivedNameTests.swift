@@ -67,4 +67,42 @@ struct NeedleTailChannelDerivedNameTests {
         let channel = NeedleTailChannel("#travel")
         #expect(channel?.displayTitle == "travel")
     }
+
+    @Test func canonicalWireNameNormalizesValidatedChannel() {
+        let channel = NeedleTailChannel("#Travel_00000000-0000-0000-0000-000000000001")
+        #expect(channel?.canonicalWireName == "#travel_00000000-0000-0000-0000-000000000001")
+        #expect(channel?.identityUUIDString == "00000000-0000-0000-0000-000000000001")
+        #expect(channel?.displayTitle == "Travel")
+    }
+
+    @Test func canonicalWireNameAddsUuidSuffix() throws {
+        let uuid = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
+        let wireName = NeedleTailChannelIdentity.canonicalWireName(
+            fromDisplayName: "My Family",
+            roomId: uuid)
+        #expect(wireName == "#my-family_00000000-0000-0000-0000-000000000001")
+        #expect(wireName.flatMap(NeedleTailChannel.init) != nil)
+    }
+
+    @Test func canonicalWireNameTrimsSlugToLeaveRoomForUuid() throws {
+        let uuid = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
+        let wireName = NeedleTailChannelIdentity.canonicalWireName(
+            fromDisplayName: "abcdefghijklmnopqrstuvwxyz",
+            roomId: uuid)
+        #expect(wireName == "#abcdefghijkl_00000000-0000-0000-0000-000000000001")
+        #expect(wireName?.count == 50)
+    }
+
+    @Test func previewWireNameUsesPlaceholderUuid() {
+        let wireName = NeedleTailChannelIdentity.previewWireName(fromDisplayName: "My Family")
+        #expect(wireName == "#my-family_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
+        #expect(wireName.flatMap(NeedleTailChannel.init) != nil)
+    }
+
+    @Test func uuidStringParsesCanonicalWireNameSuffix() {
+        let uuid = NeedleTailChannelIdentity.uuidString(
+            fromWireName: "#travel_00000000-0000-0000-0000-000000000001")
+        #expect(uuid == "00000000-0000-0000-0000-000000000001")
+        #expect(NeedleTailChannelIdentity.uuidString(fromWireName: "#travel") == nil)
+    }
 }
