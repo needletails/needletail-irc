@@ -28,6 +28,23 @@ final class NeedleTailIRCTests {
     struct Base64Struct: Sendable, Codable {
         var string: String
     }
+
+    @Test func ircDecoderBlankLinePolicyDoesNotRelaxCommandOrNickParsing() throws {
+        #expect(IRCPayloadDecoder.shouldIgnoreIRCLine(""))
+        #expect(IRCPayloadDecoder.shouldIgnoreIRCLine(" "))
+        #expect(IRCPayloadDecoder.shouldIgnoreIRCLine("\t"))
+
+        #expect(!IRCPayloadDecoder.shouldIgnoreIRCLine(" NICK alice"))
+        #expect(!IRCPayloadDecoder.shouldIgnoreIRCLine("NICK alice "))
+        #expect(!IRCPayloadDecoder.shouldIgnoreIRCLine("@tag=value"))
+
+        #expect(throws: (any Error).self) {
+            _ = try NeedleTailIRCParser.parseMessage(" NICK alice")
+        }
+        #expect(NeedleTailNick(name: "alice ", deviceId: UUID()) == nil)
+        #expect(NeedleTailNick(name: "alice\n", deviceId: UUID()) == nil)
+    }
+
     @Test func testAllIRCCommandsRoundTrip() async throws {
         let nick = NeedleTailNick(name: "testnick", deviceId: UUID())!
         let channel = NeedleTailChannel("#testchannel")!

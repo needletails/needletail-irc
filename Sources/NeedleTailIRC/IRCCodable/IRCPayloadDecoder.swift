@@ -25,6 +25,10 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
     public init(logger: NeedleTailLogger = NeedleTailLogger()) {
         self.logger = logger
     }
+
+    static func shouldIgnoreIRCLine(_ line: String) -> Bool {
+        line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
     
     public func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
         guard buffer.readableBytes > 0 else {
@@ -70,6 +74,9 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
                 
                 guard let line = lineBuffer.getString(at: 0, length: lineBuffer.readableBytes) else {
                     return .needMoreData
+                }
+                guard !Self.shouldIgnoreIRCLine(line) else {
+                    return .continue
                 }
                 do {
                     let message = try NeedleTailIRCParser.parseMessage(line)
