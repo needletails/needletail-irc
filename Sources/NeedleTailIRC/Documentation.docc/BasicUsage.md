@@ -16,7 +16,7 @@ An IRC message consists of several components:
 let message = IRCMessage(
     origin: "alice!alice@localhost",  // Who sent the message
     target: "bob",                    // Who receives the message (optional)
-    command: .privMsg([.user("bob")], "Hello!"),  // The IRC command
+    command: .privMsg([.nick(NeedleTailNick(name: "bob", deviceId: UUID())!)], "Hello!"),
     tags: [IRCTag(key: "time", value: "2023-01-01T12:00:00Z")]  // IRCv3 tags (optional)
 )
 ```
@@ -47,7 +47,7 @@ let message = IRCMessage(
 // Notice message
 let notice = IRCMessage(
     origin: "server",
-    command: .notice([.user("alice")], "Welcome to the server!")
+    command: .notice([.nick(NeedleTailNick(name: "alice", deviceId: UUID())!)], "Welcome to the server!")
 )
 ```
 
@@ -105,7 +105,7 @@ let message = IRCMessage(
 )
 
 // Encode to string format
-let encodedString = await NeedleTailIRCEncoder.encode(value: message)
+let encodedString = NeedleTailIRCEncoder.encode(value: message)
 print(encodedString) // ":bob JOIN #test"
 ```
 
@@ -118,7 +118,7 @@ let message = IRCMessage(
     tags: [IRCTag(key: "time", value: "2023-01-01T12:00:00Z")]
 )
 
-let encoded = await NeedleTailIRCEncoder.encode(value: message)
+let encoded = NeedleTailIRCEncoder.encode(value: message)
 print(encoded) // "@time=2023-01-01T12:00:00Z :alice PRIVMSG #general :Hello!"
 ```
 
@@ -133,8 +133,7 @@ let nickCommand = IRCCommand.nick(NeedleTailNick(name: "newNick", deviceId: UUID
 // Set user information
 let userCommand = IRCCommand.user(IRCUserDetails(
     username: "alice",
-    realname: "Alice Smith",
-    mode: 0
+    realname: "Alice Smith"
 ))
 
 // Quit the server
@@ -184,13 +183,13 @@ let listCommand = IRCCommand.list(channels: nil, target: nil)
 // Send to a channel
 let channelRecipient = IRCMessageRecipient.channel(NeedleTailChannel("#general")!)
 
-// Send to a user
-let userRecipient = IRCMessageRecipient.user("bob")
+// Send to a nick
+let userRecipient = IRCMessageRecipient.nick(NeedleTailNick(name: "bob", deviceId: UUID())!)
 
 // Send to multiple recipients
 let recipients = [
     IRCMessageRecipient.channel(NeedleTailChannel("#general")!),
-    IRCMessageRecipient.user("alice")
+    IRCMessageRecipient.nick(NeedleTailNick(name: "alice", deviceId: UUID())!)
 ]
 
 let message = IRCMessage(

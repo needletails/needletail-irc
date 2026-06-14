@@ -4,7 +4,7 @@ Learn about IRC message structure and formatting according to RFC 2812 and RFC 1
 
 ## Overview
 
-IRC messages follow a specific format defined by the IRC protocol standards. NeedleTailIRC provides type-safe representations of these messages while maintaining full compliance with the protocol specifications.
+IRC messages follow a specific format defined by the IRC protocol standards. NeedleTailIRC provides type-safe representations for parsing and encoding wire-format messages.
 
 ## Message Structure
 
@@ -122,7 +122,7 @@ Messages sent by clients to the server:
 ```swift
 // Registration
 let nickMsg = IRCMessage(command: .nick(NeedleTailNick(name: "alice", deviceId: UUID())!))
-let userMsg = IRCMessage(command: .user(IRCUserDetails(username: "alice", realname: "Alice Smith", mode: 0)))
+let userMsg = IRCMessage(command: .user(IRCUserDetails(username: "alice", realname: "Alice Smith")))
 
 // Channel operations
 let joinMsg = IRCMessage(command: .join(channels: [NeedleTailChannel("#general")!], keys: nil))
@@ -130,7 +130,7 @@ let partMsg = IRCMessage(command: .part(channels: [NeedleTailChannel("#general")
 
 // Messaging
 let privMsg = IRCMessage(command: .privMsg([.channel(NeedleTailChannel("#general")!)], "Hello!"))
-let noticeMsg = IRCMessage(command: .notice([.user("bob")], "Important notice"))
+let noticeMsg = IRCMessage(command: .notice([.nick(NeedleTailNick(name: "bob", deviceId: UUID())!)], "Important notice"))
 ```
 
 ### Server Messages
@@ -165,7 +165,7 @@ Messages sent between users:
 // Private message
 let privMsg = IRCMessage(
     origin: "alice!alice@localhost",
-    command: .privMsg([.user("bob")], "Hello, Bob!")
+    command: .privMsg([.nick(NeedleTailNick(name: "bob", deviceId: UUID())!)], "Hello, Bob!")
 )
 
 // Channel message
@@ -221,7 +221,7 @@ let message = IRCMessage(
     command: .privMsg([.channel(NeedleTailChannel("#general")!)], "Hello, world!")
 )
 
-let encoded = await NeedleTailIRCEncoder.encode(value: message)
+let encoded = NeedleTailIRCEncoder.encode(value: message)
 print(encoded) // ":alice PRIVMSG #general :Hello, world!"
 ```
 
@@ -234,7 +234,7 @@ let message = IRCMessage(
     tags: [IRCTag(key: "time", value: "2023-01-01T12:00:00Z")]
 )
 
-let encoded = await NeedleTailIRCEncoder.encode(value: message)
+let encoded = NeedleTailIRCEncoder.encode(value: message)
 print(encoded) // "@time=2023-01-01T12:00:00Z :alice PRIVMSG #general :Hello!"
 ```
 

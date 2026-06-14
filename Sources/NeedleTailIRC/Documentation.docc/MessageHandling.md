@@ -50,8 +50,8 @@ func handlePrivateMessage(from origin: String?, to recipients: [IRCMessageRecipi
     // Check if message is for us
     for recipient in recipients {
         switch recipient {
-        case .user(let username):
-            if username == ourNickname {
+        case .nick(let nick):
+            if nick.name == ourNickname {
                 await processPrivateMessage(from: origin, text: text)
             }
         case .channel(let channel):
@@ -143,7 +143,7 @@ func handleNicknameInUse(parameters: [String]) async {
 ```swift
 // Send a message
 func sendMessage(_ message: IRCMessage) async throws {
-    let encodedMessage = await NeedleTailIRCEncoder.encode(value: message)
+    let encodedMessage = NeedleTailIRCEncoder.encode(value: message)
     try await sendToServer(encodedMessage)
 }
 
@@ -158,7 +158,7 @@ func sendToChannel(_ channel: NeedleTailChannel, message: String) async throws {
 // Send to a user
 func sendToUser(_ username: String, message: String) async throws {
     let ircMessage = IRCMessage(
-        command: .privMsg([.user(username)], message)
+        command: .privMsg([.nick(NeedleTailNick(name: username, deviceId: UUID())!)], message)
     )
     try await sendMessage(ircMessage)
 }
@@ -212,7 +212,7 @@ func changeNickname(_ nickname: String) async throws {
 // Create private message
 let privMsg = IRCMessage(
     origin: "alice!alice@localhost",
-    command: .privMsg([.user("bob")], "Hello, Bob!")
+    command: .privMsg([.nick(NeedleTailNick(name: "bob", deviceId: UUID())!)], "Hello, Bob!")
 )
 
 // Create channel message
@@ -228,7 +228,7 @@ let channelMsg = IRCMessage(
 // Create notice message
 let notice = IRCMessage(
     origin: "server.example.com",
-    command: .notice([.user("alice")], "Welcome to the server!")
+    command: .notice([.nick(NeedleTailNick(name: "alice", deviceId: UUID())!)], "Welcome to the server!")
 )
 
 // Create channel notice

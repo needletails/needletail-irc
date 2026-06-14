@@ -40,7 +40,7 @@
 ///     origin: "alice",
 ///     command: .privMsg([.channel(NeedleTailChannel("#general")!)], "Hello!")
 /// )
-/// let encoded = await NeedleTailIRCEncoder.encode(value: message)
+/// let encoded = NeedleTailIRCEncoder.encode(value: message)
 /// // Result: "PRIVMSG #general :Hello!"
 ///
 /// // Encode a message with tags
@@ -49,7 +49,7 @@
 ///     command: .privMsg([.channel(NeedleTailChannel("#general")!)], "Hello!"),
 ///     tags: [IRCTag(key: "time", value: "2023-01-01T12:00:00Z")]
 /// )
-/// let encodedTagged = await NeedleTailIRCEncoder.encode(value: taggedMessage)
+/// let encodedTagged = NeedleTailIRCEncoder.encode(value: taggedMessage)
 /// // Result: "@time=2023-01-01T12:00:00Z PRIVMSG #general :Hello!"
 /// ```
 ///
@@ -82,7 +82,7 @@ public struct NeedleTailIRCEncoder: Sendable {
     /// ```swift
     /// // Simple message
     /// let message = IRCMessage(command: .privMsg([.channel(channel)], "Hello!"))
-    /// let encoded = await NeedleTailIRCEncoder.encode(value: message)
+    /// let encoded = NeedleTailIRCEncoder.encode(value: message)
     /// // Result: "PRIVMSG #general :Hello!"
     ///
     /// // Message with origin and tags
@@ -91,7 +91,7 @@ public struct NeedleTailIRCEncoder: Sendable {
     ///     command: .privMsg([.channel(channel)], "Hello!"),
     ///     tags: [IRCTag(key: "time", value: "2023-01-01T12:00:00Z")]
     /// )
-    /// let encoded = await NeedleTailIRCEncoder.encode(value: message)
+    /// let encoded = NeedleTailIRCEncoder.encode(value: message)
     /// // Result: "@time=2023-01-01T12:00:00Z :alice!alice@localhost PRIVMSG #general :Hello!"
     /// ```
     ///

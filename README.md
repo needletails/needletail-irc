@@ -2,30 +2,25 @@
 
 # NeedleTailIRC
 
-A comprehensive Swift SDK for implementing IRC (Internet Relay Chat) protocol functionality with modern Swift concurrency features.
+A Swift package for parsing, encoding, and framing IRC (Internet Relay Chat) messages with modern concurrency support.
 
 [![Swift](https://img.shields.io/badge/Swift-6.0+-orange.svg)](https://swift.org)
-[![Platform](https://img.shields.io/badge/Platform-iOS%2018%2B%20%7C%20macOS%2015%2B%20%7C%20Linux%20%7C%20Android-blue.svg)](https://developer.apple.com)
+[![Platform](https://img.shields.io/badge/Platform-iOS%2018%2B%20%7C%20macOS%2015%2B-blue.svg)](https://developer.apple.com)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## Overview
 
-NeedleTailIRC is a production-ready Swift package that provides a complete implementation of the IRC protocol (RFC 2812, RFC 1459) with support for IRCv3 extensions. It's designed for building IRC clients, servers, and bots with a focus on type safety, performance, and modern Swift features.
+NeedleTailIRC is a type-safe IRC protocol layer for the NeedleTail stack. It covers message parsing and encoding (RFC 2812, RFC 1459), IRCv3 message tags, multipart payload chunking, and NIO writer integration. It does **not** include socket/TLS connection management — you provide the transport and wire encoded lines through your own NIO pipeline or app layer.
 
 ## Features
 
-- **Full IRC Protocol Support**: Complete implementation of RFC 2812 and RFC 1459 standards
-- **IRCv3 Extensions**: Support for modern IRC extensions including message tags and capabilities
-- **Modern Swift Concurrency**: Built with async/await, actors, and structured concurrency
-- **Type-Safe API**: Strongly typed interfaces for all IRC operations
-- **Multipart Message Support**: Built-in support for large message chunking and reassembly
-- **DCC Protocol**: Direct Client-to-Client file transfer and chat capabilities
-- **Channel Management**: Comprehensive channel operations and permissions
-- **User Management**: Complete user mode and permission handling
-- **Error Handling**: Robust error handling with detailed error types
-- **Logging Integration**: Built-in logging with NeedleTailLogger
-- **Binary Codable**: Efficient binary serialization for metadata
-- **Transport Layer**: Flexible transport protocol abstraction
+- **Parse & encode IRC wire format**: `NeedleTailIRCParser` and `NeedleTailIRCEncoder`
+- **IRCv3 message tags**: Tag parsing, escaping, and round-trip encoding
+- **Type-safe commands & models**: `IRCCommand`, `NeedleTailChannel`, `NeedleTailNick`, and related types
+- **Multipart framing**: `IRCMessageGenerator` and `PacketBuilder` for large payload chunking and reassembly
+- **DCC command representation**: Encode/decode DCC-related IRC commands (not a full file-transfer client)
+- **NIO integration**: `NeedleTailWriterDelegate` for sending framed messages through `NIOAsyncChannelOutboundWriter`
+- **NeedleTail extensions**: Custom commands in `Constants` for blob sync, media, and device workflows
 
 ## Quick Start
 
@@ -51,71 +46,59 @@ let message = IRCMessage(
 )
 
 // Parse an IRC message string
-let parsedMessage = try NeedleTailIRCParser.parseMessage(":alice!alice@localhost PRIVMSG #general :Hello, world!")
+let parsedMessage = try NeedleTailIRCParser.parseMessage(
+    ":alice!alice@localhost PRIVMSG #general :Hello, world!"
+)
 
-// Encode a message to string format
-let encodedString = await NeedleTailIRCEncoder.encode(value: message)
+// Encode a message to string format (synchronous)
+let encodedString = NeedleTailIRCEncoder.encode(value: message)
 ```
 
-### Connection Management
+### Sending Large Messages
+
+`IRCMessageGenerator` splits oversized payloads into multipart IRC messages. Reassemble inbound chunks with `messageReassembler(ircMessage:)`.
 
 ```swift
-// Create transport layer
-let transport = TLSTransport(host: "irc.example.com", port: 6697)
-try await transport.connect()
-
-// Process incoming messages
-for await data in transport.receiveStream {
-    let messageString = String(data: data, encoding: .utf8) ?? ""
-    let message = try NeedleTailIRCParser.parseMessage(messageString)
-    await handleMessage(message)
-}
-
-// Send messages
-//
-// Important: IRC servers may enforce a 512-byte line limit.
-// IRCMessageGenerator can chunk/reassemble large payloads; in commit-style multipart the chunk
-// is carried inside a base64 `packet-metadata` tag, so wrapper lines are not guaranteed <= 512.
 let generator = IRCMessageGenerator(executor: executor)
 let stream = await generator.createMessages(
     origin: "alice!user@host",
-    command: .join(channels: [NeedleTailChannel("#general")!], keys: nil),
+    command: .privMsg([.channel(NeedleTailChannel("#general")!)], largePayload),
     logger: NeedleTailLogger()
 )
+
 for await message in stream {
-let encoded = await NeedleTailIRCEncoder.encode(value: message)
-try await transport.send(encoded.data(using: .utf8)!)
+    let line = NeedleTailIRCEncoder.encode(value: message)
+    // Write `line` through your NIO outbound writer or socket layer.
+}
+
+// On receive:
+if let rebuilt = try await generator.messageReassembler(ircMessage: incomingMessage) {
+    await handleMessage(rebuilt)
 }
 ```
 
-## Standard IRC Ports
-
-The standard ports to run the IRC protocol on are:
-- **Port 6667**: Unencrypted traffic
-- **Port 6697**: TLS/SSL encrypted connections
+> **Note:** The codec does not enforce the classic 512-byte IRC line limit. Some NeedleTail deployments use larger lines; when talking to standard IRC networks, chunk payloads with `IRCMessageGenerator` and validate wire size in your transport layer.
 
 ## Architecture
 
-The SDK is organized into several key components:
-
 ### Core Components
 
-- **Parsing**: `NeedleTailIRCParser` for parsing raw IRC messages
-- **Encoding**: `NeedleTailIRCEncoder` for encoding messages to IRC format
-- **Commands**: `IRCCommand` enum representing all IRC commands
-- **Models**: Type-safe representations of IRC entities (channels, users, etc.)
-- **Transport**: Protocol-based transport layer for message delivery
-- **Multipart**: Support for large message handling and chunking
+- **Parsing**: `NeedleTailIRCParser` — raw IRC strings to `IRCMessage`
+- **Encoding**: `NeedleTailIRCEncoder` — `IRCMessage` to wire-format strings
+- **Commands**: `IRCCommand` — typed representation of IRC commands and numerics
+- **Models**: Channels, nicks, tags, permissions, and error types
+- **Multipart**: `IRCMessageGenerator`, `PacketBuilder`, `MultipartPacket`
+- **Transport hook**: `NeedleTailWriterDelegate` — bridges message generation to NIO writers
 
 ### Key Types
 
-- `IRCMessage`: Complete IRC message representation
-- `IRCCommand`: Type-safe IRC command enum
-- `NeedleTailChannel`: Validated channel representation
-- `NeedleTailNick`: Validated nickname representation
-- `IRCTag`: IRCv3 message tag support
-- `MultipartPacket`: Large message chunking support
-- `NeedleTailIRCTransportProtocol`: Transport layer abstraction
+- `IRCMessage` — complete IRC message representation
+- `IRCCommand` — type-safe IRC command enum
+- `NeedleTailChannel` — validated channel name
+- `NeedleTailNick` — validated nickname (with optional device UUID suffix)
+- `IRCTag` — IRCv3 message tag
+- `IRCMessageGenerator` — multipart encode path
+- `NeedleTailWriterDelegate` — NIO outbound transport helper
 
 ## Examples
 
@@ -136,7 +119,7 @@ let message = IRCMessage(
 // Set channel modes
 let modeCommand = IRCCommand.channelMode(
     NeedleTailChannel("#general")!,
-    addMode: IRCChannelPermissions.inviteOnly,
+    addMode: .inviteOnly,
     addParameters: nil,
     removeMode: nil,
     removeParameters: nil
@@ -163,20 +146,16 @@ let whoisCommand = IRCCommand.whois(server: nil, usermasks: ["alice"])
 ### Multipart Messages
 
 ```swift
-// Handle large messages
-let multipartPacket = MultipartPacket(
-    recipients: [IRCMessageRecipient.channel(NeedleTailChannel("#general")!)],
-    content: largeMessage,
-    messageId: UUID().uuidString
+let generator = IRCMessageGenerator(executor: executor)
+let stream = await generator.createMessages(
+    origin: "alice",
+    command: .privMsg([.channel(NeedleTailChannel("#general")!)], largeMessage),
+    logger: NeedleTailLogger()
 )
 
-// Create chunked messages
-let messages = multipartPacket.createMessages()
-
-// Send each part
-for message in messages {
-    try await sendMessage(message)
-    try await Task.sleep(nanoseconds: 100_000_000) // Rate limiting
+for await chunk in stream {
+    let line = NeedleTailIRCEncoder.encode(value: chunk)
+    try await writeToTransport(line)
 }
 ```
 
@@ -201,44 +180,41 @@ do {
 
 ## Documentation
 
-Comprehensive documentation is available in the [Documentation.docc](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc) directory:
+Documentation lives in [Documentation.docc](Sources/NeedleTailIRC/Documentation.docc):
 
-- [Getting Started](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/GettingStarted.md) - Installation and basic setup
-- [Basic Usage](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/BasicUsage.md) - Core concepts and patterns
-- [Message Format](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/MessageFormat.md) - IRC message structure
-- [Message Handling](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/MessageHandling.md) - Processing messages
-- [IRC Commands](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/IRCCommands.md) - Complete command reference
-- [Channels](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/Channels.md) - Channel management
-- [Users](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/Users.md) - User management and permissions
-- [Multipart Messages](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/MultipartMessages.md) - Large message handling
-- [Transport Layer](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/TransportLayer.md) - Connection management
-- [Error Handling](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/ErrorHandling.md) - Error types and strategies
-- [API Reference](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc/APIReference.md) - Complete API documentation
+- [Getting Started](Sources/NeedleTailIRC/Documentation.docc/GettingStarted.md) — installation and first messages
+- [Basic Usage](Sources/NeedleTailIRC/Documentation.docc/BasicUsage.md) — core concepts and patterns
+- [Message Format](Sources/NeedleTailIRC/Documentation.docc/MessageFormat.md) — IRC message structure
+- [Message Handling](Sources/NeedleTailIRC/Documentation.docc/MessageHandling.md) — processing messages
+- [IRC Commands](Sources/NeedleTailIRC/Documentation.docc/IRCCommands.md) — command reference
+- [Channels](Sources/NeedleTailIRC/Documentation.docc/Channels.md) — channel management
+- [Users](Sources/NeedleTailIRC/Documentation.docc/Users.md) — user management and permissions
+- [Multipart Messages](Sources/NeedleTailIRC/Documentation.docc/MultipartMessages.md) — large message handling
+- [Transport Layer](Sources/NeedleTailIRC/Documentation.docc/TransportLayer.md) — NIO writer integration
+- [Error Handling](Sources/NeedleTailIRC/Documentation.docc/ErrorHandling.md) — error types and strategies
+- [API Reference](Sources/NeedleTailIRC/Documentation.docc/APIReference.md) — public API overview
 
 ## Requirements
 
 - **Swift**: 6.0+
-- **Platforms**: 
-  - iOS 18.0+
-  - macOS 15.0+
-- **Xcode**: 15.0+ (for Apple Platform development)
+- **Platforms**: iOS 18.0+, macOS 15.0+
+- **Xcode**: 15.0+ (for Apple platform development)
 
 ## Dependencies
 
-NeedleTailIRC automatically includes these dependencies:
-- `swift-nio` - Network I/O framework (NIOCore, NIOConcurrencyHelpers)
-- `swift-algorithms` - Algorithm utilities
-- `swift-async-algorithms` - Async algorithm support
-- `swift-collections` - Collection types (DequeModule)
-- `needletail-logger` - Logging framework
-- `needletail-algorithms` - Algorithm utilities
-- `binary-codable` - Binary serialization
+NeedleTailIRC pulls in:
+
+- `swift-nio` — NIOCore, NIOConcurrencyHelpers
+- `swift-algorithms` — algorithm utilities
+- `swift-async-algorithms` — async algorithm support
+- `swift-collections` — DequeModule
+- `needletail-logger` — logging
+- `needletail-algorithms` — NeedleTailAsyncSequence and related utilities
+- `binary-codable` — binary serialization for packet metadata
 
 ## Installation
 
 ### Swift Package Manager
-
-Add the following to your `Package.swift`:
 
 ```swift
 dependencies: [
@@ -249,26 +225,25 @@ dependencies: [
 ### Xcode
 
 1. Go to **File** → **Add Package Dependencies**
-2. Enter the repository URL: `https://github.com/needletails/needletail-irc.git`
-3. Select the version you want to use
+2. Enter: `https://github.com/needletails/needletail-irc.git`
+3. Select the version you want
 4. Add to your target
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](https://github.com/needletails/needletail-irc/blob/main/CONTRIBUTING.md) for details.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
 
 ## Support
 
-- **Documentation**: [Documentation.docc](https://github.com/needletails/needletail-irc/tree/main/Sources/NeedleTailIRC/Documentation.docc)
+- **Documentation**: [Documentation.docc](Sources/NeedleTailIRC/Documentation.docc)
 - **Issues**: [GitHub Issues](https://github.com/needletails/needletail-irc/issues)
 
 ## Acknowledgments
 
 - IRC protocol specifications (RFC 2812, RFC 1459)
 - IRCv3 extension specifications
-- Swift concurrency features
-- The Swift community 
+- The Swift community

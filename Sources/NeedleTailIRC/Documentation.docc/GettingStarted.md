@@ -46,7 +46,7 @@ let message = IRCMessage(
 )
 
 // Encode to IRC format
-let encodedString = await NeedleTailIRCEncoder.encode(value: message)
+let encodedString = NeedleTailIRCEncoder.encode(value: message)
 print(encodedString)
 // Output: :bob JOIN #test
 ```
@@ -153,4 +153,4 @@ MyIRCClient/
 └── Package.swift
 ```
 
-This structure provides a good foundation for building a complete IRC client application.
+This structure is a starting point for an app that uses NeedleTailIRC for protocol parsing and framing. Socket connectivity, registration, and server negotiation belong in your client target.

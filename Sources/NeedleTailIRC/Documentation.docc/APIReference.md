@@ -94,7 +94,8 @@ Represents message recipients (channels or users).
 ```swift
 enum IRCMessageRecipient {
     case channel(NeedleTailChannel)
-    case user(String)
+    case nick(NeedleTailNick)
+    case all
 }
 ```
 
@@ -128,9 +129,9 @@ Represents an IRC nickname with device ID.
 ```swift
 struct NeedleTailNick {
     let name: String
-    let deviceId: UUID
-    
-    init?(name: String, deviceId: UUID)
+    let deviceId: UUID?
+
+    init?(name: String, deviceId: UUID?)
 }
 ```
 
@@ -154,16 +155,19 @@ User information for registration.
 struct IRCUserDetails {
     let username: String
     let realname: String
-    let mode: Int
-    
-    init(username: String, realname: String, mode: Int)
+    let userModeFlags: IRCUserModeFlags?
+    let hostname: String?
+    let servername: String?
+
+    init(username: String, realname: String)
+    init(username: String, hostname: String, servername: String, realname: String)
 }
 ```
 
 **Properties:**
 - `username`: Username for registration
 - `realname`: Real name/GECOS field
-- `mode`: User mode flags
+- `userModeFlags`: Optional legacy user mode flags
 
 ### IRCTag
 
@@ -335,7 +339,7 @@ Static methods for encoding IRC messages.
 
 ```swift
 struct NeedleTailIRCEncoder {
-    static func encode(value: IRCMessage) async -> String
+    static func encode(value: IRCMessage) -> String
 }
 ```
 
@@ -350,7 +354,7 @@ struct NeedleTailIRCEncoder {
 let message = IRCMessage(
     command: .privMsg([.channel(NeedleTailChannel("#general")!)], "Hello!")
 )
-let encoded = await NeedleTailIRCEncoder.encode(value: message)
+let encoded = NeedleTailIRCEncoder.encode(value: message)
 print(encoded) // ": PRIVMSG #general :Hello!"
 ```
 
@@ -365,19 +369,28 @@ protocol NeedleTailWriterDelegate: AnyObject, Sendable {
     func transportMessage(
         _ messageGenerator: IRCMessageGenerator,
         executor: any AnyExecutor,
-        consumer: NeedleTailAsyncConsumer<ByteBuffer>,
         logger: NeedleTailLogger,
-        writer: NIOAsyncChannelOutboundWriter<ByteBuffer>,
+        writer: NIOAsyncChannelOutboundWriter<IRCPayload>,
         origin: String,
         command: IRCCommand,
         tags: [IRCTag]?,
         authPacket: AuthPacket?
     ) async throws
+
+    func sendAndFlushMessage<OutboundOut>(
+        executor: (any AnyExecutor)?,
+        logger: NeedleTailLogger,
+        writer: NIOAsyncChannelOutboundWriter<OutboundOut>,
+        message: OutboundOut
+    ) async throws
 }
 ```
 
 **Methods:**
-- `transportMessage(...)`: Transport messages using the provided generator and writer
+- `transportMessage(...)`: Generate multipart messages and write each through `sendAndFlushMessage`
+- `sendAndFlushMessage(...)`: Write a single outbound payload to the NIO writer
+
+See <doc:TransportLayer> for integration guidance. This package does not provide socket or TLS connectivity.
 
 ## Error Types
 
@@ -386,18 +399,13 @@ protocol NeedleTailWriterDelegate: AnyObject, Sendable {
 Main error enumeration.
 
 ```swift
-enum NeedleTailError: Error {
-    case couldNotConnectToServer
-    case transportNotIntitialized
+enum NeedleTailError: String, Error, Sendable {
     case invalidIRCChannelName
     case nilNickName
-    case invalidMessageFormat
-    case encodingFailed
-    case decodingFailed
-    case timeout
-    case networkError(String)
-    case protocolError(String)
-    case validationError(String)
+    case transportNotIntitialized
+    case payloadTooLarge
+    case parsingError
+    // ... additional cases for NeedleTail client integration
 }
 ```
 
@@ -406,13 +414,10 @@ enum NeedleTailError: Error {
 Message parsing specific errors.
 
 ```swift
-enum MessageParsingErrors: Error {
+enum MessageParsingErrors: Error, Sendable {
     case invalidArguments(String)
+    case invalidCAPCommand(String)
     case invalidTag
-    case invalidPrefix
-    case invalidCommand
-    case invalidParameters
-    case malformedMessage
 }
 ```
 
@@ -420,92 +425,67 @@ enum MessageParsingErrors: Error {
 
 ### MultipartPacket
 
-Handles large message chunking and reassembly.
+Binary/text chunk used by `PacketDerivation` and `PacketBuilder`.
 
 ```swift
 struct MultipartPacket {
-    let recipients: [IRCMessageRecipient]
-    let content: String
-    let messageId: String
-    let partNumber: Int
+    let groupId: String
+    var date: Date
+    var partNumber: Int
     let totalParts: Int
-    let isLast: Bool
-    
-    init(recipients: [IRCMessageRecipient], content: String, messageId: String, partNumber: Int = 1, totalParts: Int = 1, isLast: Bool = true)
-    
-    func createMessages() -> [IRCMessage]
-    static func from(_ message: IRCMessage) -> MultipartPacket?
+    var message: String?
+    var data: Data?
+
+    init(groupId: String, date: Date, partNumber: Int, totalParts: Int, message: String?, data: Data?)
 }
 ```
 
-### DCCPacket
+### IRCMessageGenerator
 
-Direct Client-to-Client packet.
+Actor that creates outbound IRC messages and reassembles multipart inbound chunks.
 
 ```swift
-struct DCCPacket {
-    let filename: String
-    let fileSize: Int
-    let ipAddress: String
-    let port: Int
-    
-    init(filename: String, fileSize: Int, ipAddress: String, port: Int)
+actor IRCMessageGenerator {
+    func createMessages(origin: String, command: IRCCommand, tags: [IRCTag]?, authPacket: AuthPacket?, logger: NeedleTailLogger) async -> AsyncStream<IRCMessage>
+    func messageReassembler(ircMessage: IRCMessage) async throws -> IRCMessage?
 }
 ```
 
-### DataToFilePacket
+### PacketBuilder
 
-Data-to-file transfer packet.
+Actor that reassembles `MultipartPacket` values into complete text or binary payloads.
 
 ```swift
-struct DataToFilePacket {
-    let filename: String
-    let data: Data
-    
-    init(filename: String, data: Data)
+actor PacketBuilder {
+    func processPacket(_ packet: MultipartPacket) -> ProcessedResult
 }
 ```
 
-## Helper Types
+### DirectMessage
 
-### Acknowledgment
-
-Acknowledgment packet.
+DCC-style direct message envelope (encode/decode only — not a socket file-transfer client).
 
 ```swift
-struct Acknowledgment {
-    let messageId: String
-    let timestamp: Date
-    
-    init(messageId: String, timestamp: Date = Date())
-}
-```
-
-### Call
-
-Call packet.
-
-```swift
-struct Call {
-    let callId: String
-    let participants: [String]
-    let timestamp: Date
-    
-    init(callId: String, participants: [String], timestamp: Date = Date())
+enum DirectMessage {
+    case serviceName(String)
+    case message(MultipartPacket)
+    case multipart(MultipartPacket)
+    case blob(Data)
+    case close
 }
 ```
 
 ### Constants
 
-IRC protocol constants.
+String constants for IRC command names and NeedleTail extension commands.
 
 ```swift
-struct Constants {
-    static let maxMessageLength = 512
-    static let maxNickLength = 9
-    static let maxChannelLength = 50
-    static let defaultPort = 6667
-    static let defaultSSLPort = 6697
+enum Constants: String {
+    case privMsg = "PRIVMSG"
+    case nick = "NICK"
+    case join = "JOIN"
+    case publishBlob = "PUBLISHBLOB"
+    // ...
 }
 ```
 
@@ -522,7 +502,7 @@ let message = IRCMessage(
 // Create message with origin
 let messageWithOrigin = IRCMessage(
     origin: "alice!alice@localhost",
-    command: .notice([.user("bob")], "Important notice")
+    command: .notice([.nick(NeedleTailNick(name: "bob", deviceId: UUID())!)], "Important notice")
 )
 
 // Create message with tags
@@ -548,8 +528,8 @@ do {
             switch recipient {
             case .channel(let channel):
                 print("To channel: \(channel.name)")
-            case .user(let username):
-                print("To user: \(username)")
+            case .nick(let nick):
+                print("To nick: \(nick.name)")
             }
         }
     default:
@@ -569,7 +549,7 @@ let message = IRCMessage(
     command: .join(channels: [NeedleTailChannel("#test")!], keys: nil)
 )
 
-let encoded = await NeedleTailIRCEncoder.encode(value: message)
+let encoded = NeedleTailIRCEncoder.encode(value: message)
 print(encoded) // ":bob JOIN #test"
 ```
 
@@ -604,8 +584,7 @@ let nickMessage = IRCMessage(
 let userMessage = IRCMessage(
     command: .user(IRCUserDetails(
         username: "alice",
-        realname: "Alice Smith",
-        mode: 0
+        realname: "Alice Smith"
     ))
 )
 
@@ -679,12 +658,20 @@ do {
 }
 ```
 
-### 4. Use Async/Await Correctly
+### 4. Chunk large payloads before sending
 
 ```swift
-// Proper async usage
-let encodedMessage = await NeedleTailIRCEncoder.encode(value: message)
-try await transport.send(encodedMessage.data(using: .utf8)!)
+let generator = IRCMessageGenerator(executor: executor)
+let stream = await generator.createMessages(
+    origin: "alice",
+    command: .privMsg([.channel(channel)], largeText),
+    logger: logger
+)
+
+for await message in stream {
+    let line = NeedleTailIRCEncoder.encode(value: message)
+    try await writeLineToYourTransport(line)
+}
 ```
 
 ## Next Steps

@@ -1,24 +1,20 @@
 # ``NeedleTailIRC``
 
-A comprehensive Swift SDK for implementing IRC (Internet Relay Chat) protocol functionality with modern Swift concurrency features.
+A Swift package for parsing, encoding, and framing IRC messages with modern concurrency support.
 
 ## Overview
 
-NeedleTailIRC is a production-ready Swift package that provides a complete implementation of the IRC protocol (RFC 2812, RFC 1459) with support for IRCv3 extensions. It's designed for building IRC clients, servers, and bots with a focus on type safety, performance, and modern Swift features.
+NeedleTailIRC is a type-safe IRC protocol layer for the NeedleTail stack. It handles message parsing and encoding (RFC 2812, RFC 1459), IRCv3 tags, multipart payload chunking, and NIO writer integration. Socket and TLS connectivity live in your application — not in this package.
 
 The SDK offers:
 
-- **Full IRC Protocol Support**: Complete implementation of RFC 2812 and RFC 1459 standards
-- **IRCv3 Extensions**: Support for modern IRC extensions including message tags and capabilities
-- **Modern Swift Concurrency**: Built with async/await, actors, and structured concurrency
-- **Type-Safe API**: Strongly typed interfaces for all IRC operations
-- **Multipart Message Support**: Built-in support for large message chunking and reassembly
-- **DCC Protocol**: Direct Client-to-Client file transfer and chat capabilities
-- **Channel Management**: Comprehensive channel operations and permissions
-- **User Management**: Complete user mode and permission handling
-- **Error Handling**: Robust error handling with detailed error types
-- **Logging Integration**: Built-in logging with NeedleTailLogger
-- **Binary Serialization**: Efficient binary serialization for metadata
+- **Parse & encode**: `NeedleTailIRCParser` and `NeedleTailIRCEncoder`
+- **IRCv3 tags**: Message tag parsing and escaping
+- **Modern Swift concurrency**: `IRCMessageGenerator` and `PacketBuilder` actors
+- **Type-safe API**: `IRCCommand`, channels, nicks, permissions
+- **Multipart framing**: Large payload chunking and reassembly
+- **DCC command types**: Wire-format encode/decode for DCC-related commands
+- **NIO hooks**: `NeedleTailWriterDelegate` for outbound integration
 
 ## Quick Start
 
@@ -32,10 +28,12 @@ let message = IRCMessage(
 )
 
 // Parse an IRC message string
-let parsedMessage = try NeedleTailIRCParser.parseMessage(":alice!alice@localhost PRIVMSG #general :Hello, world!")
+let parsedMessage = try NeedleTailIRCParser.parseMessage(
+    ":alice!alice@localhost PRIVMSG #general :Hello, world!"
+)
 
 // Encode a message to string format
-let encodedString = await NeedleTailIRCEncoder.encode(value: message)
+let encodedString = NeedleTailIRCEncoder.encode(value: message)
 ```
 
 ## Topics
@@ -43,44 +41,44 @@ let encodedString = await NeedleTailIRCEncoder.encode(value: message)
 ### Getting Started
 
 - <doc:GettingStarted>
-Learn how to set up and start using NeedleTailIRC in your project.
+Installation and your first IRC messages.
 
 ### Core Concepts
 
 - <doc:BasicUsage>
-Understand the fundamental concepts and basic usage patterns.
+Fundamental concepts and usage patterns.
 
 - <doc:MessageFormat>
-Learn about IRC message structure and formatting.
+IRC message structure and formatting.
 
 - <doc:MessageHandling>
-Discover how to handle incoming and outgoing IRC messages.
+Processing incoming and outgoing messages.
 
 ### IRC Operations
 
 - <doc:IRCCommands>
-Explore all available IRC commands and their usage.
+IRC commands and numerics.
 
 - <doc:Channels>
-Learn about channel management and operations.
+Channel naming, validation, and operations.
 
 - <doc:Users>
-Understand user management and permissions.
+Nicknames, user modes, and permissions.
 
 ### Advanced Features
 
 - <doc:MultipartMessages>
-Handle large messages with automatic chunking and reassembly.
+Chunking and reassembling large payloads.
 
 - <doc:TransportLayer>
-Learn about the transport layer and connection management.
+NIO writer integration (no built-in sockets).
 
 ### Error Handling
 
 - <doc:ErrorHandling>
-Understand error types and best practices for error handling.
+Error types and handling strategies.
 
 ### API Reference
 
 - <doc:APIReference>
-Complete API reference for all public types and methods.
+Public API overview.

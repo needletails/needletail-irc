@@ -28,8 +28,7 @@ let message = IRCMessage(command: nickCommand)
 // Set user details
 let userDetails = IRCUserDetails(
     username: "alice",
-    realname: "Alice Smith",
-    mode: 0
+    realname: "Alice Smith"
 )
 let userCommand = IRCCommand.user(userDetails)
 
@@ -177,7 +176,7 @@ let privMsgCommand = IRCCommand.privMsg(
 
 // Send to user
 let privMsgCommand = IRCCommand.privMsg(
-    [.user("alice")],
+    [.nick(NeedleTailNick(name: "alice", deviceId: UUID())!)],
     "Hello, Alice!"
 )
 
@@ -185,7 +184,7 @@ let privMsgCommand = IRCCommand.privMsg(
 let privMsgCommand = IRCCommand.privMsg(
     [
         .channel(NeedleTailChannel("#general")!),
-        .user("alice")
+        .nick(NeedleTailNick(name: "alice", deviceId: UUID())!)
     ],
     "Hello, everyone and Alice!"
 )
@@ -205,7 +204,7 @@ let noticeCommand = IRCCommand.notice(
 
 // Send notice to user
 let noticeCommand = IRCCommand.notice(
-    [.user("alice")],
+    [.nick(NeedleTailNick(name: "alice", deviceId: UUID())!)],
     "You have a new message."
 )
 
@@ -461,7 +460,7 @@ func buildMessageCommand(to recipients: [String], message: String) -> IRCCommand
             guard let channel = NeedleTailChannel(recipient) else { return nil }
             return IRCMessageRecipient.channel(channel)
         } else {
-            return IRCMessageRecipient.user(recipient)
+            return NeedleTailNick(name: recipient, deviceId: UUID()).map { IRCMessageRecipient.nick($0) }
         }
     }
     
@@ -498,7 +497,7 @@ struct IRCCommandFactory {
             if recipient.hasPrefix("#") {
                 return NeedleTailChannel(recipient).map { IRCMessageRecipient.channel($0) }
             } else {
-                return IRCMessageRecipient.user(recipient)
+                return NeedleTailNick(name: recipient, deviceId: UUID()).map { IRCMessageRecipient.nick($0) }
             }
         }
         
@@ -538,7 +537,8 @@ func validateCommand(_ command: IRCCommand) -> Bool {
     case .join(let channels, _):
         return !channels.isEmpty && channels.allSatisfy { $0.name.count > 1 }
     case .privMsg(let recipients, let text):
-        return !recipients.isEmpty && !text.isEmpty && text.count <= 512
+        return !recipients.isEmpty && !text.isEmpty
+        // Use IRCMessageGenerator to chunk text that exceeds your transport line limit.
     case .nick(let nick):
         return nick.name.count > 0
     default:
