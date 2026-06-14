@@ -20,8 +20,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-algorithms.git", from: "1.2.0"),
         .package(url: "https://github.com/apple/swift-async-algorithms.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
-        .package(url: "https://github.com/needletails/needletail-logger.git", from: "3.1.3"),
-        .package(url: "https://github.com/needletails/needletail-algorithms.git", from: "2.0.4"),
+        .package(url: "https://github.com/needletails/needletail-logger.git", from: "3.1.5"),
+        .package(url: "https://github.com/needletails/needletail-algorithms.git", from: "2.0.5"),
         .package(url: "https://github.com/needletails/binary-codable.git", from: "1.0.5")
     ],
     targets: [
