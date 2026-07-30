@@ -19,11 +19,56 @@ import NeedleTailLogger
 
 public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable {
     public typealias InboundOut = IRCPayload
+
+    /// Default max IRC line length (bytes) before newline. Large enough for NeedleTail payloads.
+    public static let defaultMaxLineLength: Int = 32_000_000
+
+    public enum DecoderError: Error, Sendable {
+        case lineTooLong(maxLineLength: Int)
+    }
     
     private let logger: NeedleTailLogger
-    
+    let maxLineLength: Int
+    /// When true, a leading byte in 0...4 is treated as a binary frame discriminator
+    /// and decoded as a `DirectMessage`. When false, all bytes are framed as IRC lines.
+    let allowsBinaryFrames: Bool
+
+    /// Published default: IRC lines + binary `DirectMessage` frames (discriminator 0...4).
+    /// Prefer the named factories at production call sites so intent is obvious.
     public init(logger: NeedleTailLogger = NeedleTailLogger()) {
         self.logger = logger
+        self.maxLineLength = IRCPayloadDecoder.defaultMaxLineLength
+        self.allowsBinaryFrames = true
+    }
+
+    /// Full configuration.
+    public init(
+        logger: NeedleTailLogger = NeedleTailLogger(),
+        maxLineLength: Int = IRCPayloadDecoder.defaultMaxLineLength,
+        allowsBinaryFrames: Bool
+    ) {
+        self.logger = logger
+        self.maxLineLength = maxLineLength
+        self.allowsBinaryFrames = allowsBinaryFrames
+    }
+
+    /// Line-based IRC only. Use on sockets that never carry peer `DirectMessage` frames
+    /// (NudgeServer IRC listener, SFU signaling, mock IRC servers). Prevents a low leading
+    /// byte from being misread as a binary frame and stalling the connection.
+    public static func lineBasedIRC(
+        logger: NeedleTailLogger = NeedleTailLogger(),
+        maxLineLength: Int = IRCPayloadDecoder.defaultMaxLineLength
+    ) -> IRCPayloadDecoder {
+        IRCPayloadDecoder(logger: logger, maxLineLength: maxLineLength, allowsBinaryFrames: false)
+    }
+
+    /// IRC lines plus binary `DirectMessage` frames. Use on peer DCC sockets (and any
+    /// client pipeline that may open DCC), where payloads are encoded with a 0...4 discriminator.
+    public static func withBinaryFrames(
+        logger: NeedleTailLogger = NeedleTailLogger(),
+        maxLineLength: Int = IRCPayloadDecoder.defaultMaxLineLength
+    ) -> IRCPayloadDecoder {
+        IRCPayloadDecoder(logger: logger, maxLineLength: maxLineLength, allowsBinaryFrames: true)
     }
 
     static func shouldIgnoreIRCLine(_ line: String) -> Bool {
@@ -39,8 +84,8 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
             return .needMoreData
         }
         
-        if (0...4).contains(discriminator) {
-            // === Handle DCC (binary messages) ===
+        if allowsBinaryFrames, (0...4).contains(discriminator) {
+            // Binary DirectMessage frame (peer DCC path) — not line-based IRC.
             let originalReaderIndex = buffer.readerIndex
             do {
                 var slice = buffer
@@ -50,12 +95,12 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
                 context.fireChannelRead(self.wrapInboundOut(.dcc(directMessage)))
                 return .continue
             } catch {
-                // Likely not enough bytes yet — wait for more
+                // Incomplete binary frame — wait for more bytes.
                 buffer.moveReaderIndex(to: originalReaderIndex)
                 return .needMoreData
             }
         } else {
-            // === Handle IRC (line-based, replicates LineBasedFrameDecoder) ===
+            // Line-based IRC (including textual DCCCHAT / SDCCCHAT offers).
             let view = buffer.readableBytesView
             
             if let newlineIndex = view.firstIndex(of: UInt8(ascii: "\n")) {
@@ -73,7 +118,9 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
                 buffer.moveReaderIndex(forwardBy: hasCR ? 2 : 1)
                 
                 guard let line = lineBuffer.getString(at: 0, length: lineBuffer.readableBytes) else {
-                    return .needMoreData
+                    // Line bytes already consumed — do not stall waiting for more data.
+                    logger.log(level: .error, message: "Failed to decode IRC line as UTF-8 after consume; skipping")
+                    return .continue
                 }
                 guard !Self.shouldIgnoreIRCLine(line) else {
                     return .continue
@@ -90,6 +137,9 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
                 
                 return .continue
             } else {
+                if buffer.readableBytes > maxLineLength {
+                    throw DecoderError.lineTooLong(maxLineLength: maxLineLength)
+                }
                 return .needMoreData
             }
         }

@@ -45,7 +45,9 @@ let package = Package(
             dependencies: [
                 "NeedleTailIRC",
                 .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
-                .product(name: "BinaryCodable", package: "binary-codable")
+                .product(name: "BinaryCodable", package: "binary-codable"),
+                .product(name: "NIO", package: "swift-nio"),
+                .product(name: "NIOEmbedded", package: "swift-nio"),
             ],
 
         )

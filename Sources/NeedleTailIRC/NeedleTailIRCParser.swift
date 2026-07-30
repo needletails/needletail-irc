@@ -134,6 +134,9 @@ public struct NeedleTailIRCParser: Sendable {
         
         // 4. Extract Origin and Command
         if let firstComponent = messageComponents.first, firstComponent.hasPrefix(Constants.colon.rawValue) {
+            guard messageComponents.count >= 2 else {
+                throw MessageParsingErrors.invalidArguments("Prefix-only line missing command.")
+            }
             origin = String(firstComponent.dropFirst())
             command = messageComponents[1].uppercased()
             // Extract message and non-message parts
@@ -141,6 +144,9 @@ public struct NeedleTailIRCParser: Sendable {
             let nonMessages = extractNonMessages(from: Array(messageComponents.dropFirst(2)))
             argumentString = nonMessages.joined(separator: Constants.space.rawValue) + (messagePart.isEmpty ? "" : " " + messagePart)
         } else {
+            guard !messageComponents.isEmpty else {
+                throw MessageParsingErrors.invalidArguments("Empty message.")
+            }
             command = messageComponents[0].uppercased()
             argumentString = messageComponents.dropFirst().joined(separator: Constants.space.rawValue)
         }
@@ -237,15 +243,21 @@ public struct NeedleTailIRCParser: Sendable {
         /// - Parameter argumentString: The string to split.
         /// - Returns: A tuple containing the part before the colon and the part after the colon (including the colon).
         func splitArguments(_ argumentString: String) -> (String, String) {
-            // Find the first occurrence of the colon
-            if let colonIndex = argumentString.firstIndex(of: ":") {
-                // Extract the part before the colon and trim whitespace
+            // Trailing starts only at string start or after a space (" :"), not mid-token (e.g. "1:2").
+            let trailingStart: String.Index?
+            if argumentString.hasPrefix(":") {
+                trailingStart = argumentString.startIndex
+            } else if let spaced = argumentString.range(of: " :") {
+                // Point at ':' (skip the preceding space)
+                trailingStart = argumentString.index(after: spaced.lowerBound)
+            } else {
+                trailingStart = nil
+            }
+            if let colonIndex = trailingStart {
                 let beforeColon = String(argumentString[..<colonIndex]).trimmingCharacters(in: .whitespaces)
-                // Extract the part after the colon (including the colon) and trim whitespace
                 let afterColon = String(argumentString[colonIndex...]).trimmingCharacters(in: .whitespaces)
                 return (beforeColon, afterColon)
             } else {
-                // If no colon is found, return the entire string as the first part and an empty string as the second part
                 return (argumentString.trimmingCharacters(in: .whitespaces), "")
             }
         }
@@ -290,8 +302,10 @@ public struct NeedleTailIRCParser: Sendable {
                     arguments.append(params[1])
                 }
             default:
-                // For other commands, handle arguments based on the presence of a colon
-                if argumentString.contains(Constants.colon.rawValue) {
+                // Trailing param only when ':' is at start or after a space — not mid-token ("1:2").
+                let hasTrailingMarker = argumentString.hasPrefix(Constants.colon.rawValue)
+                    || argumentString.contains(" \(Constants.colon.rawValue)")
+                if hasTrailingMarker {
                     var splitArgs = splitArguments(argumentString)
                     // Split the part before the colon into space-separated arguments
                     let initialArgs = splitArgs.0.components(separatedBy: Constants.space.rawValue)
@@ -302,7 +316,7 @@ public struct NeedleTailIRCParser: Sendable {
                     }
                     arguments.append(splitArgs.1.trimmingCharacters(in: .whitespaces))
                 } else {
-                    // If no colon is present, split the entire argument string by spaces
+                    // No trailing marker: split by spaces (mid-token colons stay inside tokens)
                     arguments.append(contentsOf: argumentString.components(separatedBy: Constants.space.rawValue).filter { !$0.isEmpty }.map { $0.trimmingCharacters(in: .whitespaces) })
                 }
                 if let firstArgument = arguments.first, !firstArgument.isEmpty {

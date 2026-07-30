@@ -498,6 +498,11 @@ public actor PacketBuilder {
 
         // Find the index of the group that contains the packet (array-based lookup)
         if let groupIndex = packets.firstIndex(where: { $0.first?.groupId == packet.groupId }) {
+            // Reject packets that disagree with the group's established totalParts.
+            if let groupTotal = packets[groupIndex].first?.totalParts, groupTotal != packet.totalParts {
+                return .none
+            }
+
             // Check for duplicate partNumber
             if packets[groupIndex].contains(where: { $0.partNumber == packet.partNumber }) {
                 return finishProcess(groupIndex: groupIndex)
@@ -614,8 +619,10 @@ public actor PacketBuilder {
         let groupPackets = packets[groupIndex]
         guard let first = groupPackets.first else { return .none }
         
-        // Check if we have all parts
-        guard groupPackets.count == first.totalParts else {
+        // Require the exact part-number set {1...totalParts}, not merely matching count.
+        let partNumbers = Set(groupPackets.map(\.partNumber))
+        let expectedParts = Set(1...first.totalParts)
+        guard partNumbers == expectedParts else {
             return .none
         }
         

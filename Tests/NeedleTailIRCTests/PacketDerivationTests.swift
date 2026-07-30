@@ -102,6 +102,41 @@ final class PacketDerivationTests {
         #expect(receivedMessage == longMessage)
     }
     
+    @Test func testPacketBuilderMismatchedTotalPartsDoesNotAssemble() async {
+        let executor = TestableExecutor(queue: DispatchQueue.global())
+        let packetBuilder = PacketBuilder(executor: executor)
+        let groupId = "mismatch-group"
+        let date = Date()
+
+        let p1 = MultipartPacket(groupId: groupId, date: date, partNumber: 1, totalParts: 3, message: "A")
+        let p2 = MultipartPacket(groupId: groupId, date: date, partNumber: 2, totalParts: 3, message: "B")
+        // Part 4 claims totalParts=5 so entry sanity (partNumber <= totalParts) passes,
+        // but joining a group whose first.totalParts is 3 must not assemble.
+        let p4 = MultipartPacket(groupId: groupId, date: date, partNumber: 4, totalParts: 5, message: "D")
+
+        let r1 = await packetBuilder.processPacket(p1)
+        #expect({
+            if case .none = r1 { return true }
+            return false
+        }())
+
+        let r2 = await packetBuilder.processPacket(p2)
+        #expect({
+            if case .none = r2 { return true }
+            return false
+        }())
+
+        let r3 = await packetBuilder.processPacket(p4)
+        switch r3 {
+        case .message(let msg):
+            Issue.record("Must not assemble corrupt part set; got message: \(msg)")
+        case .data:
+            Issue.record("Must not assemble corrupt part set as data")
+        case .none:
+            break
+        }
+    }
+
     @Test func testProcessPacketWithValidData() async {
         let packet = MultipartPacket(
             groupId: "testGroup",

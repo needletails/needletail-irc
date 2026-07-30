@@ -29,12 +29,21 @@ public final class IRCPayloadEncoder: MessageToByteEncoder, @unchecked Sendable 
     public func encode(data: IRCPayload, out: inout ByteBuffer) throws {
         switch data {
         case .irc(let iRCMessage):
-            let messageString = NeedleTailIRCEncoder.encode(value: iRCMessage)
+            var messageString = NeedleTailIRCEncoder.encode(value: iRCMessage)
             
             // Ensure message is not empty
             guard !messageString.isEmpty else {
-                logger.log(level: .warning, message: "Attempted to encode empty IRC message. Skipping.")
+                logger.log(level: .error, message: "Attempted to encode empty IRC message. Skipping.", metadata: [
+                    "command": "\(iRCMessage.command)"
+                ])
                 return
+            }
+
+            if messageString.contains(where: { $0 == "\r" || $0 == "\n" }) {
+                logger.log(level: .error, message: "Stripping embedded CR/LF from IRC line before framing", metadata: [
+                    "command": "\(iRCMessage.command)"
+                ])
+                messageString.removeAll { $0 == "\r" || $0 == "\n" }
             }
 
             out.writeString(messageString + "\r\n")
