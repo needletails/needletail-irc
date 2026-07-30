@@ -1,4 +1,4 @@
-// swift-tools-version:6.2
+// swift-tools-version:6.3
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -16,13 +16,13 @@ let package = Package(
             targets: ["NeedleTailIRC"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
-        .package(url: "https://github.com/apple/swift-algorithms.git", from: "1.2.0"),
-        .package(url: "https://github.com/apple/swift-async-algorithms.git", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
-        .package(url: "https://github.com/needletails/needletail-logger.git", from: "3.1.5"),
-        .package(url: "https://github.com/needletails/needletail-algorithms.git", from: "2.0.5"),
-        .package(url: "https://github.com/needletails/binary-codable.git", from: "1.0.5")
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.101.3"),
+        .package(url: "https://github.com/apple/swift-algorithms.git", from: "1.2.1"),
+        .package(url: "https://github.com/apple/swift-async-algorithms.git", from: "1.1.5"),
+        .package(url: "https://github.com/apple/swift-collections.git", from: "1.6.0"),
+        .package(url: "https://github.com/needletails/needletail-logger.git", from: "3.2.0"),
+        .package(url: "https://github.com/needletails/needletail-algorithms.git", from: "2.1.0"),
+        .package(url: "https://github.com/needletails/binary-codable.git", from: "1.1.0")
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
