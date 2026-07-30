@@ -73,7 +73,7 @@ final class PacketDerivationTests {
         )
 
         var generatedMessages: [IRCMessage] = []
-        for await message in stream {
+        for try await message in stream {
             generatedMessages.append(message)
         }
 
@@ -497,7 +497,7 @@ final class PacketDerivationTests {
         
         // Collect all messages and reassemble them
         var reassembledMessage: IRCMessage?
-        for await message in messages {
+        for try await message in messages {
             if let rebuilt = try await generator.messageReassembler(ircMessage: message) {
                 reassembledMessage = rebuilt
                 break
@@ -560,7 +560,7 @@ final class PacketDerivationTests {
         
         // Collect all messages and reassemble them
         var reassembledMessage: IRCMessage?
-        for await message in messages {
+        for try await message in messages {
             if let rebuilt = try await generator.messageReassembler(ircMessage: message) {
                 reassembledMessage = rebuilt
                 break

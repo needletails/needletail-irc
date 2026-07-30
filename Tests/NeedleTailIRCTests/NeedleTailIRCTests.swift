@@ -625,7 +625,7 @@ final class NeedleTailIRCTests {
                                              [base64]),
             logger: NeedleTailLogger())
         
-        for await message in messages {
+        for try await message in messages {
             if let rebuiltMessage = try await generator.messageReassembler(ircMessage: message) {
                 #expect(message == rebuiltMessage)
             }
@@ -642,7 +642,7 @@ final class NeedleTailIRCTests {
             tags: [],
             logger:  NeedleTailLogger())
         
-        for await message in messages {
+        for try await message in messages {
             if let rebuiltMessage = try await generator.messageReassembler(ircMessage: message) {
                 #expect(message == rebuiltMessage)
             }
@@ -759,7 +759,7 @@ final class NeedleTailIRCTests {
         var reassembled: IRCMessage? = nil
         var emitted = 0
 
-        for await msg in outbound {
+        for try await msg in outbound {
             emitted += 1
             let encoded = NeedleTailIRCEncoder.encode(value: msg)
             let parsed = try NeedleTailIRCParser.parseMessage(encoded)
@@ -1107,7 +1107,7 @@ final class NeedleTailIRCTests {
         )
 
         var reassembled: IRCMessage?
-        for await message in messages {
+        for try await message in messages {
             // Round-trip through encode → parse → reassemble
             let encoded = NeedleTailIRCEncoder.encode(value: message)
             let parsed = try NeedleTailIRCParser.parseMessage(encoded)
@@ -1141,7 +1141,7 @@ final class NeedleTailIRCTests {
         var reassembled: IRCMessage?
         var emittedCount = 0
         
-        for await message in messages {
+        for try await message in messages {
             emittedCount += 1
             // Reassembler should return nil until the last part arrives
             if let rebuilt = try await generator.messageReassembler(ircMessage: message) {

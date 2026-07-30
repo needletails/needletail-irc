@@ -96,13 +96,36 @@ extension NeedleTailWriterDelegate {
             authPacket: authPacket,
             logger: logger
         )
-        
-        for try await message in messageStream {
+        try await transportMessage(
+            messages: messageStream,
+            executor: executor,
+            logger: logger,
+            writer: writer
+        )
+    }
+
+    /// Transports a pre-built throwing stream of IRC frames.
+    ///
+    /// Throws ``IRCMessageGeneratorError/zeroFramesGenerated`` when the stream
+    /// finishes without yielding any frames — a silent-send failure mode that
+    /// previously looked like a successful local write.
+    public func transportMessage(
+        messages: AsyncThrowingStream<IRCMessage, Error>,
+        executor: any AnyExecutor,
+        logger: NeedleTailLogger = NeedleTailLogger("[ com.needletails.writer.delegate ]"),
+        writer: NIOAsyncChannelOutboundWriter<IRCPayload>
+    ) async throws {
+        var writtenFrames = 0
+        for try await message in messages {
             try await self.sendAndFlushMessage(
                 executor: executor,
                 logger: logger,
                 writer: writer,
                 message: .irc(message))
+            writtenFrames += 1
+        }
+        guard writtenFrames > 0 else {
+            throw IRCMessageGeneratorError.zeroFramesGenerated
         }
     }
     

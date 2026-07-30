@@ -707,12 +707,19 @@ public actor IRCMessageGenerator: Sendable {
     let executor: any AnyExecutor
     
     private let packetBuilder: PacketBuilder
+    private let binaryEncoder: any BinaryEncoding
     
     /// Initializes a new IRC message generator with the specified executor.
-    /// - Parameter executor: The executor to use for task management.
-    public init(executor: any AnyExecutor) {
+    /// - Parameters:
+    ///   - executor: The executor to use for task management.
+    ///   - binaryEncoder: Encoder used for `packet-metadata` / auth tags (injectable for tests).
+    public init(
+        executor: any AnyExecutor,
+        binaryEncoder: any BinaryEncoding = BinaryEncoder()
+    ) {
         self.executor = executor
         self.packetBuilder = PacketBuilder(executor: executor)
+        self.binaryEncoder = binaryEncoder
     }
     
     /// Returns the unowned executor for this actor.
@@ -750,13 +757,13 @@ public actor IRCMessageGenerator: Sendable {
         authPacket: AuthPacket? = nil,
         logger: NeedleTailLogger,
         currentPacket: MultipartPacket,
-        continuation: AsyncStream<IRCMessage>.Continuation
+        continuation: AsyncThrowingStream<IRCMessage, Error>.Continuation
     ) async {
         var mutableTags = [IRCTag]()
         
         if let authPacket {
             do {
-                let value = try BinaryEncoder().encode(authPacket).base64EncodedString()
+                let value = try binaryEncoder.encode(authPacket).base64EncodedString()
                 mutableTags.append(IRCTag(key: "irc-protected", value: value))
             } catch {
                 logger.log(level: .error, message: "Error Encoding Auth Packet, \(error)")
@@ -787,12 +794,16 @@ public actor IRCMessageGenerator: Sendable {
         var modifiedPacket = currentPacket
         modifiedPacket.message = ""
         
+        let packetMetadata: String
         do {
-            let packetMetadata = try BinaryEncoder().encode(currentPacket).base64EncodedString()
-            mutableTags.append(IRCTag(key: "packet-metadata", value: packetMetadata))
+            packetMetadata = try binaryEncoder.encode(currentPacket).base64EncodedString()
         } catch {
             logger.log(level: .error, message: "Failed to encode IRCTag for packet metadata: \(error)")
+            // Do not yield a contentless frame — recipient reassembly would discard it silently.
+            continuation.finish(throwing: IRCMessageGeneratorError.packetMetadataEncodeFailed)
+            return
         }
+        mutableTags.append(IRCTag(key: "packet-metadata", value: packetMetadata))
         
         let message = IRCMessage(
             origin: origin,
@@ -860,17 +871,17 @@ public actor IRCMessageGenerator: Sendable {
     ///   - tags: Optional IRCv3 tags to include in messages.
     ///   - authPacket: Optional authentication packet for JWT-based auth.
     ///   - logger: Logger instance for error reporting.
-    /// - Returns: An async stream that yields `IRCMessage` instances.
+    /// - Returns: A throwing async stream that yields `IRCMessage` instances.
     public func createMessages(
         origin: String,
         command: IRCCommand,
         tags: [IRCTag]? = nil,
         authPacket: AuthPacket? = nil,
         logger: NeedleTailLogger
-    ) async -> AsyncStream<IRCMessage> {
+    ) async -> AsyncThrowingStream<IRCMessage, Error> {
         let packetDeriver = PacketDerivation()
-        var streamContinuation: AsyncStream<IRCMessage>.Continuation?
-        let stream = AsyncStream<IRCMessage>(bufferingPolicy: .unbounded) { continuation in
+        var streamContinuation: AsyncThrowingStream<IRCMessage, Error>.Continuation?
+        let stream = AsyncThrowingStream<IRCMessage, Error>(bufferingPolicy: .unbounded) { continuation in
             streamContinuation = continuation
         }
         
