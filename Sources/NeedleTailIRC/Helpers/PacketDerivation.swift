@@ -432,6 +432,22 @@ public actor PacketBuilder {
     public init(executor: any AnyExecutor) {
         self.executor = executor
     }
+
+    /// Updates reassembly limits. Required because actor-isolated stored properties
+    /// cannot be assigned from outside the actor.
+    public func configure(
+        timeout: TimeInterval? = nil,
+        maxBytesPerGroup: Int? = nil,
+        maxTotalBufferedBytes: Int? = nil,
+        maxConcurrentGroups: Int? = nil,
+        maxTotalPartsPerGroup: Int? = nil
+    ) {
+        if let timeout { self.timeout = timeout }
+        if let maxBytesPerGroup { self.maxBytesPerGroup = maxBytesPerGroup }
+        if let maxTotalBufferedBytes { self.maxTotalBufferedBytes = maxTotalBufferedBytes }
+        if let maxConcurrentGroups { self.maxConcurrentGroups = maxConcurrentGroups }
+        if let maxTotalPartsPerGroup { self.maxTotalPartsPerGroup = maxTotalPartsPerGroup }
+    }
     
     /// Returns the unowned executor for this actor.
     public nonisolated var unownedExecutor: UnownedSerialExecutor {

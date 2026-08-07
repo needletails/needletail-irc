@@ -599,3 +599,144 @@ final class PacketDerivationTests {
         #expect(reassembledContent == messageContent, "Message content should be maintained")
     }
 }
+
+// MARK: - Link-attempt payload sizes (from 2026-08-07 iPhone/iPad logs)
+//
+// QR (child UserDeviceConfiguration) — what was scanned:
+//   iPad:  `[QR] generation: json=2336b, gzip=246b`
+//   iPhone:`[QR] scan received: chars=328, … base64=246b, base64+gunzip=2336b`
+//
+// That QR is NOT the PRIVMSG that failed. Master then published
+// `requestNewKeys` UserConfiguration (signedDeviceCount=2); staging saw ~559
+// incomplete multipart PRIVMSG fragments over ~100s and never reassembled.
+
+enum LinkAttemptQRPayloadFixture {
+    /// Decompressed QR JSON bytes (`base64+gunzip` / `json=`).
+    static let decompressedJSONBytes = 2336
+    /// Gzip payload bytes inside the QR.
+    static let gzipBytes = 246
+    /// Character count of the scanned QR string.
+    static let qrCharacterCount = 328
+    /// Multipart PRIVMSG fragments observed on IRC for the master's publish
+    /// (Inbound reassembly returned nil with packet-metadata), 13:50:43–13:52:25Z.
+    static let observedRequestNewKeysFragmentCount = 559
+    /// Default text chunk size used by `IRCMessageGenerator` for PRIVMSG.
+    static let privmsgChunkSize = 512
+}
+
+extension PacketDerivationTests {
+
+    @Test("Scanned link QR (~2336b) is only a few PRIVMSG chunks and reassembles under default timeout")
+    func linkQRSizedBasePayloadReassemblesUnderDefaultTimeout() async throws {
+        let payload = String(repeating: "Q", count: LinkAttemptQRPayloadFixture.decompressedJSONBytes)
+        #expect(payload.utf8.count == LinkAttemptQRPayloadFixture.decompressedJSONBytes)
+
+        let packets = await PacketDerivation().calculateAndDispense(
+            text: payload,
+            chunkCount: LinkAttemptQRPayloadFixture.privmsgChunkSize
+        )
+        var parts: [MultipartPacket] = []
+        for await packet in packets {
+            parts.append(packet)
+        }
+
+        // 2336 / 512 ≈ 5 parts — far below the ~559-fragment publish that failed.
+        #expect(parts.count == 5)
+        #expect(parts.count < 30, "QR-sized base must not approach the observed publish fragment count")
+
+        let builder = PacketBuilder(executor: TestableExecutor(queue: DispatchQueue.global()))
+        // Production default remains 30s; QR-sized intake finishes immediately.
+        #expect(await builder.timeout == 30.0)
+
+        var completed: String?
+        for part in parts {
+            switch await builder.processPacket(part) {
+            case .message(let message):
+                completed = message
+            case .data, .none:
+                break
+            }
+        }
+        #expect(completed == payload)
+    }
+
+    @Test("Observed requestNewKeys fragment count (~559) times out when intake spans reassembly window")
+    func observedLinkPublishFragmentCountTimesOutWhenIntakeSpansTimeout() async throws {
+        // CI-scaled timeout: same *relative* failure as production 30s vs ~100s intake.
+        let testTimeout: TimeInterval = 0.05
+        let totalParts = LinkAttemptQRPayloadFixture.observedRequestNewKeysFragmentCount
+        let groupId = "link-requestNewKeys-observed-559"
+        let date = Date()
+        let builder = PacketBuilder(executor: TestableExecutor(queue: DispatchQueue.global()))
+        await builder.configure(timeout: testTimeout)
+
+        // First fragment opens the group (mirrors 13:50:43Z).
+        let first = MultipartPacket(
+            groupId: groupId,
+            date: date,
+            partNumber: 1,
+            totalParts: totalParts,
+            message: String(repeating: "A", count: LinkAttemptQRPayloadFixture.privmsgChunkSize)
+        )
+        let r1 = await builder.processPacket(first)
+        guard case .none = r1 else {
+            Issue.record("First fragment must not complete a \(totalParts)-part group")
+            return
+        }
+
+        // Cross the timeout while the group is still incomplete (production: parts
+        // kept arriving for ~100s after firstSeen).
+        try await Task.sleep(for: .milliseconds(70))
+
+        var sawComplete = false
+        for partNumber in 2...totalParts {
+            let chunkLen = partNumber == totalParts ? 64 : LinkAttemptQRPayloadFixture.privmsgChunkSize
+            let packet = MultipartPacket(
+                groupId: groupId,
+                date: date,
+                partNumber: partNumber,
+                totalParts: totalParts,
+                message: String(repeating: "B", count: chunkLen)
+            )
+            switch await builder.processPacket(packet) {
+            case .message, .data:
+                sawComplete = true
+            case .none:
+                break
+            }
+        }
+
+        #expect(
+            !sawComplete,
+            "After timeout, remaining fragments of a \(totalParts)-part link publish must not reassemble (group dropped / incomplete)"
+        )
+    }
+
+    @Test("Synthetic wire payload matching ~559×512 chunks needs more than 30s at observed ~5.5 chunks/s")
+    func observedLinkPublishWireBudgetExceedsDefaultReassemblyWindow() async throws {
+        let fragmentCount = LinkAttemptQRPayloadFixture.observedRequestNewKeysFragmentCount
+        let chunk = LinkAttemptQRPayloadFixture.privmsgChunkSize
+        // Lower bound on PRIVMSG base64 body size implied by the staging fragment flood.
+        let minWireBytes = (fragmentCount - 1) * chunk
+        let payload = String(repeating: "W", count: minWireBytes)
+
+        var partCount = 0
+        for await _ in await PacketDerivation().calculateAndDispense(
+            text: payload,
+            chunkCount: chunk
+        ) {
+            partCount += 1
+        }
+        #expect(partCount >= fragmentCount - 1)
+        #expect(partCount > LinkAttemptQRPayloadFixture.decompressedJSONBytes / chunk)
+
+        let observedChunksPerSecond = 5.5
+        let estimatedSeconds = Double(partCount) / observedChunksPerSecond
+        #expect(estimatedSeconds > 30.0)
+        #expect(
+            LinkAttemptQRPayloadFixture.decompressedJSONBytes < minWireBytes / 50,
+            "Scanned QR JSON is two orders of magnitude smaller than the failed publish body"
+        )
+    }
+}
+
