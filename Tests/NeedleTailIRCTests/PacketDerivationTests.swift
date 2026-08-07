@@ -646,7 +646,8 @@ extension PacketDerivationTests {
 
         let builder = PacketBuilder(executor: TestableExecutor(queue: DispatchQueue.global()))
         // Production default remains 30s; QR-sized intake finishes immediately.
-        #expect(await builder.timeout == 30.0)
+        #expect(await builder.timeout == PacketReassemblyLimits.default.timeout)
+        #expect(await builder.limits == PacketReassemblyLimits.default)
 
         var completed: String?
         for part in parts {
@@ -667,8 +668,10 @@ extension PacketDerivationTests {
         let totalParts = LinkAttemptQRPayloadFixture.observedRequestNewKeysFragmentCount
         let groupId = "link-requestNewKeys-observed-559"
         let date = Date()
-        let builder = PacketBuilder(executor: TestableExecutor(queue: DispatchQueue.global()))
-        await builder.configure(timeout: testTimeout)
+        let builder = PacketBuilder(
+            executor: TestableExecutor(queue: DispatchQueue.global()),
+            limits: PacketReassemblyLimits(timeout: testTimeout)
+        )
 
         // First fragment opens the group (mirrors 13:50:43Z).
         let first = MultipartPacket(

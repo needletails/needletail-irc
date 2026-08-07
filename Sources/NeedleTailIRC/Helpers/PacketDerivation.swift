@@ -366,6 +366,40 @@ public struct PacketDerivation: Sendable {
 }
 
 
+/// Limits for incomplete multipart group tracking in ``PacketBuilder``.
+///
+/// Defaults match production ``PacketBuilder`` property defaults. Pass a value to
+/// ``PacketBuilder/init(executor:limits:)`` or ``PacketBuilder/configure(_:)``.
+public struct PacketReassemblyLimits: Sendable, Equatable {
+    public var timeout: TimeInterval
+    public var maxBytesPerGroup: Int
+    public var maxTotalBufferedBytes: Int
+    public var maxConcurrentGroups: Int
+    public var maxTotalPartsPerGroup: Int
+
+    public static let `default` = PacketReassemblyLimits(
+        timeout: 30.0,
+        maxBytesPerGroup: 2 * 1024 * 1024,
+        maxTotalBufferedBytes: 8 * 1024 * 1024,
+        maxConcurrentGroups: 64,
+        maxTotalPartsPerGroup: 4_096
+    )
+
+    public init(
+        timeout: TimeInterval = Self.default.timeout,
+        maxBytesPerGroup: Int = Self.default.maxBytesPerGroup,
+        maxTotalBufferedBytes: Int = Self.default.maxTotalBufferedBytes,
+        maxConcurrentGroups: Int = Self.default.maxConcurrentGroups,
+        maxTotalPartsPerGroup: Int = Self.default.maxTotalPartsPerGroup
+    ) {
+        self.timeout = timeout
+        self.maxBytesPerGroup = maxBytesPerGroup
+        self.maxTotalBufferedBytes = maxTotalBufferedBytes
+        self.maxConcurrentGroups = maxConcurrentGroups
+        self.maxTotalPartsPerGroup = maxTotalPartsPerGroup
+    }
+}
+
 /// An actor responsible for reassembling multipart packets into complete messages or data.
 ///
 /// `PacketBuilder` manages the process of collecting and reassembling multipart packets
@@ -413,28 +447,60 @@ public actor PacketBuilder {
 
     /// Max number of concurrent multipart groups to track.
     /// Production default: 64 groups per connection prevents memory exhaustion from incomplete reassembly.
-    public var maxConcurrentGroups: Int = 64
+    public var maxConcurrentGroups: Int = PacketReassemblyLimits.default.maxConcurrentGroups
     /// Max buffered bytes (message UTF-8 + data bytes) per group before dropping it.
     /// Production default: 2MB per group prevents single large message from consuming excessive memory.
-    public var maxBytesPerGroup: Int = 2 * 1024 * 1024
+    public var maxBytesPerGroup: Int = PacketReassemblyLimits.default.maxBytesPerGroup
     /// Max buffered bytes across all groups before dropping oldest groups.
     /// Production default: 8MB total prevents aggregate memory exhaustion across all concurrent reassemblies.
-    public var maxTotalBufferedBytes: Int = 8 * 1024 * 1024
+    public var maxTotalBufferedBytes: Int = PacketReassemblyLimits.default.maxTotalBufferedBytes
     /// Timeout after which an incomplete group is dropped.
     /// Production default: 30 seconds prevents stale incomplete groups from consuming memory indefinitely.
-    public var timeout: TimeInterval = 30.0
+    public var timeout: TimeInterval = PacketReassemblyLimits.default.timeout
     /// Sanity cap on total parts claimed by a group.
     /// Production default: 4,096 parts (with 512-byte chunks ≈ 2MB max, consistent with maxBytesPerGroup).
-    public var maxTotalPartsPerGroup: Int = 4_096
+    public var maxTotalPartsPerGroup: Int = PacketReassemblyLimits.default.maxTotalPartsPerGroup
+
+    /// Snapshot of the current reassembly limit properties.
+    public var limits: PacketReassemblyLimits {
+        PacketReassemblyLimits(
+            timeout: timeout,
+            maxBytesPerGroup: maxBytesPerGroup,
+            maxTotalBufferedBytes: maxTotalBufferedBytes,
+            maxConcurrentGroups: maxConcurrentGroups,
+            maxTotalPartsPerGroup: maxTotalPartsPerGroup
+        )
+    }
     
-    /// Initializes a new packet builder with the specified executor.
+    /// Initializes a new packet builder with the specified executor and default limits.
     /// - Parameter executor: The executor to use for task management.
     public init(executor: any AnyExecutor) {
         self.executor = executor
     }
 
-    /// Updates reassembly limits. Required because actor-isolated stored properties
+    /// Initializes a packet builder with custom ``PacketReassemblyLimits``.
+    ///
+    /// Values are applied to the existing public limit properties (`timeout`, etc.).
+    public init(executor: any AnyExecutor, limits: PacketReassemblyLimits) {
+        self.executor = executor
+        self.timeout = limits.timeout
+        self.maxBytesPerGroup = limits.maxBytesPerGroup
+        self.maxTotalBufferedBytes = limits.maxTotalBufferedBytes
+        self.maxConcurrentGroups = limits.maxConcurrentGroups
+        self.maxTotalPartsPerGroup = limits.maxTotalPartsPerGroup
+    }
+
+    /// Replaces all reassembly limits. Required because actor-isolated stored properties
     /// cannot be assigned from outside the actor.
+    public func configure(_ limits: PacketReassemblyLimits) {
+        timeout = limits.timeout
+        maxBytesPerGroup = limits.maxBytesPerGroup
+        maxTotalBufferedBytes = limits.maxTotalBufferedBytes
+        maxConcurrentGroups = limits.maxConcurrentGroups
+        maxTotalPartsPerGroup = limits.maxTotalPartsPerGroup
+    }
+
+    /// Updates selected reassembly limits. Omitted arguments leave the current value unchanged.
     public func configure(
         timeout: TimeInterval? = nil,
         maxBytesPerGroup: Int? = nil,
