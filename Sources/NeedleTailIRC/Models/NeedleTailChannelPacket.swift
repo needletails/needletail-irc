@@ -47,6 +47,9 @@ public struct NeedleTailChannelPacket: Codable, Sendable {
     
     /// An array of bots enabled for this channel
     public let enabledBots: [Bots]
+
+    /// Optional per-channel ChanBot copy. Empty fields use server defaults.
+    public let botMessages: ChannelBotMessageTemplates?
     
     /// Initializes a new `NeedleTailChannelPacket` instance with the provided parameters.
     /// - Parameters:
@@ -63,7 +66,8 @@ public struct NeedleTailChannelPacket: Codable, Sendable {
         channelOperators: Set<String>,
         members: Set<String>,
         destroyChannel: Bool = false,
-        enabledBots: [Bots] = []
+        enabledBots: [Bots] = [],
+        botMessages: ChannelBotMessageTemplates? = nil
     ) {
         self.name = name
         self.channelOperatorAdmin = channelOperatorAdmin
@@ -71,6 +75,24 @@ public struct NeedleTailChannelPacket: Codable, Sendable {
         self.members = members
         self.destroyChannel = destroyChannel
         self.enabledBots = enabledBots
+        self.botMessages = botMessages
+    }
+}
+
+/// Wire-safe ChanBot templates shared by clients and the server.
+public struct ChannelBotMessageTemplates: Codable, Sendable, Equatable, Hashable {
+    public let memberWelcome: String?
+    public let operatorWelcome: String?
+    public let idleHint: String?
+
+    public init(
+        memberWelcome: String? = nil,
+        operatorWelcome: String? = nil,
+        idleHint: String? = nil
+    ) {
+        self.memberWelcome = memberWelcome
+        self.operatorWelcome = operatorWelcome
+        self.idleHint = idleHint
     }
 }
 
