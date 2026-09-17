@@ -25,6 +25,33 @@ public enum MessageParsingErrors: Error, Sendable {
     case invalidTag
 }
 
+/// Optional resource limits for parsing untrusted IRCv3 tag sections.
+public struct IRCParserLimits: Sendable, Equatable {
+    public var maxTagSectionBytes: Int
+    public var maxTagCount: Int
+    public var maxTagKeyBytes: Int
+    public var maxTagValueBytes: Int
+
+    public static let standardIRC = IRCParserLimits(
+        maxTagSectionBytes: IRCTag.defaultMaxTagSectionBytes,
+        maxTagCount: IRCTag.defaultMaxTagCount,
+        maxTagKeyBytes: IRCTag.defaultMaxTagKeyBytes,
+        maxTagValueBytes: IRCTag.defaultMaxTagValueBytes
+    )
+
+    public init(
+        maxTagSectionBytes: Int,
+        maxTagCount: Int,
+        maxTagKeyBytes: Int,
+        maxTagValueBytes: Int
+    ) {
+        self.maxTagSectionBytes = maxTagSectionBytes
+        self.maxTagCount = maxTagCount
+        self.maxTagKeyBytes = maxTagKeyBytes
+        self.maxTagValueBytes = maxTagValueBytes
+    }
+}
+
 /// A comprehensive parser for IRC messages that conforms to RFC 2812 and RFC 1459 standards.
 /// 
 /// This parser implements the IRC message format as specified in the IRC protocol:
@@ -109,6 +136,21 @@ public struct NeedleTailIRCParser: Sendable {
     /// - Throws: `MessageParsingErrors` for invalid message formats.
     /// - Returns: An `IRCMessage` representing the parsed message.
     public static func parseMessage(_ message: String) throws -> IRCMessage {
+        try parseMessage(message, limits: nil)
+    }
+
+    /// Parses an IRC message while enforcing explicit IRCv3 tag resource limits.
+    public static func parseMessage(
+        _ message: String,
+        limits: IRCParserLimits
+    ) throws -> IRCMessage {
+        try parseMessage(message, limits: Optional(limits))
+    }
+
+    private static func parseMessage(
+        _ message: String,
+        limits: IRCParserLimits?
+    ) throws -> IRCMessage {
         var origin: String?
         var tags: [String] = []
         var command = ""
@@ -117,13 +159,16 @@ public struct NeedleTailIRCParser: Sendable {
         
         // 1. Separate Tags (only if the message starts with '@')
         if message.hasPrefix(Constants.atString.rawValue) {
-            guard let firstSpaceIndex = message.firstIndex(of: Character(Constants.space.rawValue)) else { throw MessageParsingErrors.invalidTag }
+            guard let firstSpaceIndex = tagSectionEnd(in: message) else {
+                throw MessageParsingErrors.invalidTag
+            }
             let tagString = String(message[..<firstSpaceIndex])
+            if let limits, tagString.utf8.count > limits.maxTagSectionBytes {
+                throw MessageParsingErrors.invalidTag
+            }
             // 2. Set Tagless Message
             taglessMessage = String(message[message.index(after: firstSpaceIndex)...])
-            
-            let seperateTags = tagString.split(separator: Constants.semiColonSpace.rawValue).map { $0.trimmingCharacters(in: .whitespaces) }
-            tags.append(contentsOf: seperateTags)
+            tags.append(tagString)
         } else {
             // 2. Set Tagless Message
             taglessMessage = message
@@ -152,7 +197,9 @@ public struct NeedleTailIRCParser: Sendable {
         }
         
         // 5. Parse Tags
-        let parsedTags = !tags.isEmpty ? try parseTags(tags: tags[0]) : nil
+        let parsedTags = !tags.isEmpty
+            ? try parseTags(tags: tags[0], limits: limits)
+            : nil
         
         // 6. Parse Arguments
         let (arguments, target) = try parseArgument(command: command, argumentString: argumentString)
@@ -166,6 +213,18 @@ public struct NeedleTailIRCParser: Sendable {
         }
         // 8. Return the constructed IRCMessage
         return IRCMessage(origin: origin, target: target, command: builtCommand, tags: parsedTags)
+    }
+
+    private static func tagSectionEnd(in message: String) -> String.Index? {
+        var boundary = message.firstIndex(of: Character(Constants.space.rawValue))
+        while let currentBoundary = boundary,
+              currentBoundary > message.startIndex,
+              message[message.index(before: currentBoundary)] == Character(Constants.semiColon.rawValue)
+        {
+            let nextStart = message.index(after: currentBoundary)
+            boundary = message[nextStart...].firstIndex(of: Character(Constants.space.rawValue))
+        }
+        return boundary
     }
     
     
@@ -195,12 +254,18 @@ public struct NeedleTailIRCParser: Sendable {
     /// - Parameter tags: The string containing tags.
     /// - Throws: `MessageParsingErrors` for invalid tag formats.
     /// - Returns: An array of `IRCTag` if successful, otherwise `nil`.
-    static func parseTags(tags: String = "") throws -> [IRCTag]? {
+    static func parseTags(
+        tags: String = "",
+        limits: IRCParserLimits? = nil
+    ) throws -> [IRCTag]? {
         guard tags.hasPrefix(Constants.atString.rawValue) else { return nil }
         
         var tagArray: [IRCTag] = []
         let raw = String(tags.dropFirst())
         let seperatedTags = raw.components(separatedBy: Constants.semiColon.rawValue)
+        if let limits, seperatedTags.count > limits.maxTagCount {
+            throw MessageParsingErrors.invalidTag
+        }
         
         for tag in seperatedTags {
             var cleanedTag = tag.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -219,9 +284,14 @@ public struct NeedleTailIRCParser: Sendable {
             let rawValue = kvpArray.count > 1 ? String(kvpArray[1]) : ""
             let value = IRCTag.ircv3UnescapeTagValue(rawValue)
             let k = String(key)
-            // Do not artificially cap tag values here; this SDK intentionally supports
-            // larger-than-512 IRC lines in some deployments (e.g., base64/encrypted payloads).
-            guard IRCTag.validate(key: k, value: value, maxValueBytes: .max) else {
+            let maxKeyBytes = limits?.maxTagKeyBytes ?? .max
+            let maxValueBytes = limits?.maxTagValueBytes ?? .max
+            guard IRCTag.validate(
+                key: k,
+                value: value,
+                maxKeyBytes: maxKeyBytes,
+                maxValueBytes: maxValueBytes
+            ) else {
                 throw MessageParsingErrors.invalidArguments("Invalid tag key/value.")
             }
             tagArray.append(IRCTag(key: k, value: value))

@@ -43,29 +43,46 @@ public struct IRCUserIdentifier: Codable, Hashable, CustomStringConvertible, Sen
     ///   - deviceId: An optional UUID representing the device.
     public init?(_ s: String, deviceId: UUID? = nil) {
         let atIndex = s.firstIndex(of: Character(Constants.atString.rawValue))
-        let exIndex = s.firstIndex(of: Character(Constants.exclamation.rawValue))
-        
-        // Extract host if it exists
-        if let atIdx = atIndex {
-            self.host = String(s[s.index(after: atIdx)...])
-            
-            // Extract user if it exists
-            if let exIdx = exIndex, exIdx < atIdx {
-                self.user = String(s[s.index(after: exIdx)..<atIdx])
-                guard let nick = NeedleTailNick(name: String(s[..<exIdx]), deviceId: deviceId) else { return nil }
-                self.nick = nick
-            } else {
-                self.user = nil
-                guard let nick = NeedleTailNick(name: String(s[..<atIdx]), deviceId: deviceId) else { return nil }
-                self.nick = nick
-            }
-        } else {
-            // No host, assume the whole string is a nickname
-            self.user = nil
-            self.host = nil
-            guard let nick = NeedleTailNick(name: s, deviceId: deviceId) else { return nil }
-            self.nick = nick
+        let exclamationIndex = s.firstIndex(of: Character(Constants.exclamation.rawValue))
+
+        if let atIndex, let exclamationIndex, exclamationIndex > atIndex {
+            return nil
         }
+
+        let nickEnd = [atIndex, exclamationIndex].compactMap { $0 }.min() ?? s.endIndex
+        let nickValue = String(s[..<nickEnd])
+        guard !nickValue.isEmpty else { return nil }
+
+        if let exclamationIndex {
+            let userEnd = atIndex ?? s.endIndex
+            let userStart = s.index(after: exclamationIndex)
+            let user = String(s[userStart..<userEnd])
+            guard !user.isEmpty else { return nil }
+            self.user = user
+        } else {
+            self.user = nil
+        }
+
+        if let atIndex {
+            let host = String(s[s.index(after: atIndex)...])
+            guard !host.isEmpty else { return nil }
+            self.host = host
+        } else {
+            self.host = nil
+        }
+
+        let containsWireDeviceID: Bool
+        if let separator = nickValue.lastIndex(of: "_") {
+            let suffix = nickValue[nickValue.index(after: separator)...]
+            containsWireDeviceID = UUID(uuidString: String(suffix)) != nil
+        } else {
+            containsWireDeviceID = false
+        }
+        let parsedNick = containsWireDeviceID
+            ? NeedleTailNick(wireValue: nickValue)
+            : NeedleTailNick(name: nickValue, deviceId: deviceId)
+        guard let parsedNick else { return nil }
+        self.nick = parsedNick
     }
     
     /// Hashable conformance to compute a hash value.
@@ -80,12 +97,14 @@ public struct IRCUserIdentifier: Codable, Hashable, CustomStringConvertible, Sen
     
     /// Returns a string representation of the user ID.
     public var stringValue: String {
-        var ms = "\(nick)"
-        if let host = host {
-            if let user = user { ms += "\(Constants.exclamation)\(user)" }
-            ms += "\(Constants.atString)\(host)"
+        var value = nick.stringValue
+        if let user {
+            value += "\(Constants.exclamation.rawValue)\(user)"
         }
-        return ms
+        if let host {
+            value += "\(Constants.atString.rawValue)\(host)"
+        }
+        return value
     }
     
     /// A textual representation of the `IRCUserIdentifier`.

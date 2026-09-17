@@ -28,7 +28,6 @@ public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
     /// - Parameters:
     ///   - messageGenerator: An instance of `IRCMessageGenerator` that generates messages to be sent.
     ///   - executor: An optional executor of type `AnyExecutor` for managing task execution.
-    ///   - consumer: An instance of `NeedleTailAsyncConsumer<ByteBuffer>` that handles the message consumption.
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes. Defaults to a logger with a specific label.
     ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCMessage>` used to write the messages.
     ///   - origin: A `String` representing the origin of the messages. Defaults to an empty string.
@@ -50,7 +49,6 @@ public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
     /// Sends and flushes a message using the provided parameters.
     ///
     /// - Parameters:
-    ///   - consumer: An instance of `NeedleTailAsyncConsumer<ByteBuffer>` that handles the message consumption.
     ///   - executor: An optional executor of type `AnyExecutor` for managing task execution.
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes.
     ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCMessage>` used to write the message.
@@ -71,7 +69,6 @@ extension NeedleTailWriterDelegate {
     /// - Parameters:
     ///   - messageGenerator: An instance of `IRCMessageGenerator` that generates messages to be sent.
     ///   - executor: An optional executor of type `AnyExecutor` for managing task execution.
-    ///   - consumer: An instance of `NeedleTailAsyncConsumer<ByteBuffer>` that handles the message consumption.
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes. Defaults to a logger with a specific label.
     ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCPayload>` used to write the messages.
     ///   - origin: A `String` representing the origin of the messages. Defaults to an empty string.
@@ -134,7 +131,6 @@ extension NeedleTailWriterDelegate {
     /// This method handles both cases where an executor is provided and where it is not.
     ///
     /// - Parameters:
-    ///   - consumer: An instance of `NeedleTailAsyncConsumer<ByteBuffer>` that handles the message consumption.
     ///   - executor: An optional executor of type `AnyExecutor` for managing task execution. If `nil`, the task will run without a specific executor.
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes. Defaults to a logger with a specific label.
     ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCMessage>` used to write the message.

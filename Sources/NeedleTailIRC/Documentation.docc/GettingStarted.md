@@ -31,6 +31,8 @@ print(message.description)
 // Parse a raw IRC message string
 let rawMessage = ":alice!alice@localhost PRIVMSG #general :Hello, everyone!"
 let parsedMessage = try NeedleTailIRCParser.parseMessage(rawMessage)
+// For untrusted standard-IRC input:
+// let parsedMessage = try NeedleTailIRCParser.parseMessage(rawMessage, limits: .standardIRC)
 
 print("Origin: \(parsedMessage.origin ?? "none")")
 print("Command: \(parsedMessage.command)")
@@ -63,7 +65,7 @@ guard let channel = NeedleTailChannel("#general") else {
 }
 
 // Channel names are automatically validated
-print(channel.name) // "#general"
+print(channel.stringValue) // "#general"
 ```
 
 ### Channel Operations
@@ -90,8 +92,16 @@ let messageCommand = IRCCommand.privMsg(
 ### Creating Nickname Objects
 
 ```swift
-// Create a nickname with device ID
+// Standard IRC nick (no device suffix)
+let standardNick = NeedleTailNick(name: "alice", deviceId: nil)!
+print(standardNick.stringValue) // "alice"
+
+// NeedleTail nick with a device identifier
 let nick = NeedleTailNick(name: "alice", deviceId: UUID())!
+print(nick.stringValue) // "alice_<UUID>"
+
+// Parse either wire form
+let parsed = NeedleTailNick(wireValue: "alice")
 
 // Change nickname
 let nickCommand = IRCCommand.nick(nick)
@@ -102,7 +112,7 @@ let nickCommand = IRCCommand.nick(nick)
 ```swift
 // Set user modes
 let modeCommand = IRCCommand.mode(
-    nick: NeedleTailNick(name: "alice", deviceId: UUID())!,
+    NeedleTailNick(name: "alice", deviceId: UUID())!,
     add: [.invisible, .away],
     remove: nil
 )

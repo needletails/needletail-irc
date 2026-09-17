@@ -36,6 +36,9 @@ public enum DirectMessage: Codable, Sendable {
                try packet.encode(into: &buffer)
 
            case .blob(let data):
+               guard data.count <= Int(UInt32.max) else {
+                   throw NIODecodeError.malformed("Blob is too large to encode")
+               }
                buffer.writeInteger(UInt8(3))
                buffer.writeInteger(UInt32(data.count))
                buffer.writeBytes(data)
@@ -45,28 +48,49 @@ public enum DirectMessage: Codable, Sendable {
            }
        }
     
-    static func decode(from buffer: inout ByteBuffer) throws -> DirectMessage {
+    static func decode(
+        from buffer: inout ByteBuffer,
+        maxFrameLength: Int
+    ) throws -> DirectMessage {
             guard let type = buffer.readInteger(as: UInt8.self) else {
-                throw NIODecodeError("Missing enum discriminator")
+                throw NIODecodeError.incomplete("Missing enum discriminator")
             }
 
             switch type {
             case 0:
+                guard buffer.readableBytes <= maxFrameLength else {
+                    throw NIODecodeError.malformed("Service name exceeds configured limit")
+                }
                 guard let name = buffer.readString(length: buffer.readableBytes) else {
-                    throw NIODecodeError("Missing serviceName string")
+                    throw NIODecodeError.malformed("Invalid serviceName string")
                 }
                 return .serviceName(name)
 
             case 1:
-                return .message(try MultipartPacket.decode(from: &buffer))
+                return .message(
+                    try MultipartPacket.decode(
+                        from: &buffer,
+                        maxFieldLength: maxFrameLength
+                    )
+                )
 
             case 2:
-                return .multipart(try MultipartPacket.decode(from: &buffer))
+                return .multipart(
+                    try MultipartPacket.decode(
+                        from: &buffer,
+                        maxFieldLength: maxFrameLength
+                    )
+                )
 
             case 3:
-                guard let length = buffer.readInteger(as: UInt32.self),
-                      let data = buffer.readBytes(length: Int(length)) else {
-                    throw NIODecodeError("Invalid blob data")
+                guard let length = buffer.readInteger(as: UInt32.self) else {
+                    throw NIODecodeError.incomplete("Missing blob length")
+                }
+                guard Int(length) <= maxFrameLength else {
+                    throw NIODecodeError.malformed("Blob exceeds configured limit")
+                }
+                guard let data = buffer.readBytes(length: Int(length)) else {
+                    throw NIODecodeError.incomplete("Incomplete blob data")
                 }
                 return .blob(Data(data))
 
@@ -74,7 +98,7 @@ public enum DirectMessage: Codable, Sendable {
                 return .close
 
             default:
-                throw NIODecodeError("Unknown enum discriminator: \(type)")
+                throw NIODecodeError.malformed("Unknown enum discriminator: \(type)")
             }
         }
 }

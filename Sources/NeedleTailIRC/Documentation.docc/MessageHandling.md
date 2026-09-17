@@ -15,6 +15,7 @@ Message handling is a core aspect of working with IRC. This guide covers how to 
 for await rawMessage in messageStream {
     do {
         let message = try NeedleTailIRCParser.parseMessage(rawMessage)
+        // Or: try NeedleTailIRCParser.parseMessage(rawMessage, limits: .standardIRC)
         await handleMessage(message)
     } catch {
         print("Failed to parse message: \(error)")
@@ -77,7 +78,7 @@ func handleJoin(from origin: String?, channels: [NeedleTailChannel]) async {
     guard let origin = origin else { return }
     
     for channel in channels {
-        print("\(origin) joined \(channel.name)")
+        print("\(origin) joined \(channel.stringValue)")
         await updateChannelUsers(channel: channel, user: origin, joined: true)
     }
 }
@@ -87,7 +88,7 @@ func handlePart(from origin: String?, channels: [NeedleTailChannel]) async {
     guard let origin = origin else { return }
     
     for channel in channels {
-        print("\(origin) left \(channel.name)")
+        print("\(origin) left \(channel.stringValue)")
         await updateChannelUsers(channel: channel, user: origin, joined: false)
     }
 }

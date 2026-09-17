@@ -191,6 +191,7 @@ public enum IRCCommand: Codable, Sendable {
     /// Shuts down the IRC server.
     case die // DIE command
     /// Disconnects a server from the network.
+    @available(*, deprecated, renamed: "sQuit")
     case squit(String, String) // SQUIT command (server, comment)
     /// Connects to another server.
     case connect(String, Int, String?) // CONNECT command (target server, port, remote server)

@@ -32,9 +32,9 @@ let messages = await generator.createMessages(
     logger: NeedleTailLogger()
 )
 
-for await message in messages {
+for try await message in messages {
     // Send via your NIO pipeline using IRCPayloadEncoder
-    // writer.write(.irc(message))
+    // try await writer.write(.irc(message))
 }
 ```
 
@@ -77,24 +77,28 @@ The `calculateAndDispense` method supports different buffering policies:
 ### Unbounded Buffering
 ```swift
 let stream = await packetDerivation.calculateAndDispense(
-    text: largeMessage, 
+    text: largeMessage,
+    chunkCount: 512,
     bufferingPolicy: .unbounded
 )
 ```
-- Processes the entire message at once
-- Uses more memory but is faster
-- Best for smaller messages or when memory isn't a concern
+- Lets the async stream retain every pending packet
+- Use `chunkCount` to control IRC payload size, not the stream policy
 
-### Bounded Buffering
+### Newest-N Buffering
 ```swift
 let stream = await packetDerivation.calculateAndDispense(
-    text: largeMessage, 
-    bufferingPolicy: .bounded(maxSize: 1024 * 1024) // 1MB chunks
+    text: largeMessage,
+    chunkCount: 512,
+    bufferingPolicy: .bufferingNewest(16)
 )
 ```
-- Processes message in chunks of specified size
-- More memory efficient for very large messages
-- Slightly slower due to multiple processing passes
+- Keeps only the newest N packets in the stream
+- Does not change how source text is chunked
+
+## Binary DirectMessage framing
+
+Peer connections that carry `DirectMessage` values use `IRCPayloadDecoder.withBinaryFrames()`. Multipart `groupId` and message fields are UInt32 length-prefixed UTF-8. Discriminators `0`, `3`, and `4` keep their existing layouts.
 
 ## Binary Data Support
 
@@ -129,25 +133,17 @@ case .message(_), .none:
 The system includes robust error handling:
 
 ```swift
-// Handle missing packets
 let packetBuilder = PacketBuilder(executor: executor)
+await packetBuilder.configure(timeout: 30.0)
 
-// Set timeout for incomplete packets
-packetBuilder.timeout = 30.0 // 30 seconds
-
-// Process packets with error handling
-do {
-    let result = await packetBuilder.processPacket(packet)
-    switch result {
-    case .message(let message):
-        print("Complete message: \(message)")
-    case .data(let data):
-        print("Complete data: \(data.count) bytes")
-    case .none:
-        print("Packet processed, waiting for more parts")
-    }
-} catch {
-    print("Error processing packet: \(error)")
+let result = await packetBuilder.processPacket(packet)
+switch result {
+case .message(let message):
+    print("Complete message: \(message)")
+case .data(let data):
+    print("Complete data: \(data.count) bytes")
+case .none:
+    print("Packet processed, waiting for more parts")
 }
 ```
 
@@ -158,10 +154,10 @@ do {
 For very large files, use bounded buffering to manage memory usage:
 
 ```swift
-// For files larger than 100MB
 let stream = await packetDerivation.calculateAndDispense(
-    data: fileData, 
-    bufferingPolicy: .bounded(maxSize: 10 * 1024 * 1024) // 10MB chunks
+    data: fileData,
+    chunkCount: 512,
+    bufferingPolicy: .unbounded
 )
 ```
 
@@ -180,11 +176,11 @@ let results = await (message1, message2, message3)
 
 ## Best Practices
 
-1. **Use Appropriate Buffering**: Choose unbounded for smaller messages, bounded for large files
-2. **Handle Timeouts**: Set reasonable timeouts for packet reassembly
+1. **Use Appropriate Buffering**: Prefer `.unbounded` unless a consumer needs `.bufferingNewest` / `.bufferingOldest`
+2. **Handle Timeouts**: Configure `PacketBuilder` reassembly limits; incomplete groups are dropped when they expire
 3. **Monitor Memory Usage**: For very large transfers, monitor memory consumption
-4. **Error Recovery**: Implement retry logic for failed packet transmissions
-5. **Cleanup**: Periodically clean up old incomplete packet groups
+4. **Propagate Failures**: `createMessages` is an `AsyncThrowingStream` — do not swallow generator errors
+5. **Cleanup**: Incomplete groups are evicted by the configured timeout; do not add timer-based send retries in this layer
 
 ## Integration with IRC Protocol
 

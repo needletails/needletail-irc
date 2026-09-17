@@ -66,18 +66,7 @@ public extension IRCMessageRecipient {
     /// - Parameter string: The string representation of the nick.
     /// - Returns: An optional `NeedleTailNick`. Returns `nil` if parsing fails.
     private static func createNick(from string: String) -> NeedleTailNick? {
-        guard let underscoreIndex = string.firstIndex(of: Constants.underScore.rawValue.first!) else {
-            return nil
-        }
-        
-        let name = String(string[..<underscoreIndex])
-        let deviceIdSubstring = string[string.index(after: underscoreIndex)...]
-        
-        guard let deviceId = UUID(uuidString: String(deviceIdSubstring)) else {
-            return nil
-        }
-        
-        return NeedleTailNick(name: name, deviceId: deviceId)
+        NeedleTailNick(wireValue: string)
     }
     
     

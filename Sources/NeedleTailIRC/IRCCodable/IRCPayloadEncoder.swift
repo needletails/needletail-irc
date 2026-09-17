@@ -29,6 +29,17 @@ public final class IRCPayloadEncoder: MessageToByteEncoder, @unchecked Sendable 
     public func encode(data: IRCPayload, out: inout ByteBuffer) throws {
         switch data {
         case .irc(let iRCMessage):
+            switch iRCMessage.command {
+            case .join(let channels, _) where channels.isEmpty,
+                 .part(let channels) where channels.isEmpty:
+                throw IRCMessageGeneratorError.emptyCommandRejected
+            case .privMsg(let recipients, _) where recipients.isEmpty,
+                 .notice(let recipients, _) where recipients.isEmpty:
+                throw IRCMessageGeneratorError.emptyCommandRejected
+            default:
+                break
+            }
+
             var messageString = NeedleTailIRCEncoder.encode(value: iRCMessage)
             
             // Ensure message is not empty
@@ -36,7 +47,7 @@ public final class IRCPayloadEncoder: MessageToByteEncoder, @unchecked Sendable 
                 logger.log(level: .error, message: "Attempted to encode empty IRC message. Skipping.", metadata: [
                     "command": "\(iRCMessage.command)"
                 ])
-                return
+                throw IRCMessageGeneratorError.emptyCommandRejected
             }
 
             if messageString.contains(where: { $0 == "\r" || $0 == "\n" }) {
