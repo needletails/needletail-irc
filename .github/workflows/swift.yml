@@ -84,6 +84,25 @@ jobs:
           swiftly install --assume-yes --use "$SWIFT_VERSION"
           echo "$HOME/.swiftly/bin" >> "$GITHUB_PATH"
 
+          TOOLCHAIN=""
+          for candidate in "$HOME/Library/Developer/Toolchains/"*.xctoolchain; do
+            if [ -f "$candidate/usr/lib/swift/macosx/libswift_Concurrency.dylib" ]; then
+              TOOLCHAIN="$candidate"
+              break
+            fi
+          done
+          if [ -z "$TOOLCHAIN" ]; then
+            echo "Swiftly toolchain runtime not found"
+            exit 1
+          fi
+          echo "DYLD_LIBRARY_PATH=${TOOLCHAIN}/usr/lib/swift/macosx" >> "$GITHUB_ENV"
+          if [ -f "$TOOLCHAIN/Info.plist" ]; then
+            BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$TOOLCHAIN/Info.plist" 2>/dev/null || true)
+            if [ -n "$BUNDLE_ID" ]; then
+              echo "TOOLCHAINS=$BUNDLE_ID" >> "$GITHUB_ENV"
+            fi
+          fi
+
       - name: Cache Swift packages
         uses: actions/cache@v4
         with:
@@ -95,22 +114,27 @@ jobs:
             ${{ runner.os }}-swift-
 
       - name: Verify toolchain
-        run: swift --version
+        run: swiftly run swift --version +"$SWIFT_VERSION"
 
       - name: Build and test (debug)
-        run: swift test
+        run: swiftly run swift test +"$SWIFT_VERSION"
 
       - name: Build and test (release)
-        run: swift test --configuration release
+        run: swiftly run swift test --configuration release +"$SWIFT_VERSION"
 
       - name: Check complete concurrency
-        run: swift build -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors
+        run: >
+          swiftly run swift build
+          -Xswiftc -strict-concurrency=complete
+          -Xswiftc -warnings-as-errors
+          +"$SWIFT_VERSION"
 
       - name: Build documentation
         run: >
-          swift package
+          swiftly run swift package
           --allow-writing-to-directory .build/documentation
           generate-documentation
           --target NeedleTailIRC
           --output-path .build/documentation
           --warnings-as-errors
+          +"$SWIFT_VERSION"
