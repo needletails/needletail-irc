@@ -325,6 +325,16 @@ let kickCommand = IRCCommand.kick(
 let message = IRCMessage(command: kickCommand)
 ```
 
+#### SQUIT - Disconnect Server
+
+```swift
+// Preferred spelling
+let quitServers = IRCCommand.sQuit("hub.example.com", "Maintenance")
+
+// Historical alias; still accepted inbound
+let legacy = IRCCommand.squit("hub.example.com", "Maintenance")
+```
+
 #### KILL - Disconnect User
 
 ```swift

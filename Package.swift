@@ -1,4 +1,4 @@
-// swift-tools-version:6.3
+// swift-tools-version: 6.3
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -18,8 +18,8 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.101.3"),
         .package(url: "https://github.com/apple/swift-algorithms.git", from: "1.2.1"),
-        .package(url: "https://github.com/apple/swift-async-algorithms.git", from: "1.1.5"),
-        .package(url: "https://github.com/apple/swift-collections.git", from: "1.6.0"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.6.4"),
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin.git", from: "1.4.5"),
         .package(url: "https://github.com/needletails/needletail-logger.git", from: "3.2.0"),
         .package(url: "https://github.com/needletails/needletail-algorithms.git", from: "2.1.0"),
         .package(url: "https://github.com/needletails/binary-codable.git", from: "1.1.0")
@@ -31,10 +31,8 @@ let package = Package(
             name: "NeedleTailIRC",
             dependencies: [
                 .product(name: "NIOCore", package: "swift-nio"),
-                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
                 .product(name: "Algorithms", package: "swift-algorithms"),
-                .product(name: "AsyncAlgorithms", package: "swift-async-algorithms"),
-                .product(name: "DequeModule", package: "swift-collections"),
+                .product(name: "Logging", package: "swift-log"),
                 .product(name: "NeedleTailLogger", package: "needletail-logger"),
                 .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
                 .product(name: "BinaryCodable", package: "binary-codable")
@@ -45,8 +43,9 @@ let package = Package(
             dependencies: [
                 "NeedleTailIRC",
                 .product(name: "NeedleTailAlgorithms", package: "needletail-algorithms"),
+                .product(name: "NeedleTailLogger", package: "needletail-logger"),
                 .product(name: "BinaryCodable", package: "binary-codable"),
-                .product(name: "NIO", package: "swift-nio"),
+                .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOEmbedded", package: "swift-nio"),
             ],
 

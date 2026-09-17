@@ -15,8 +15,8 @@
 import Foundation
 
 /// A representation of an IRC channel name that is thread-safe and conforms to Codable,
-/// Hashable, and CustomStringConvertible protocols. This class uses a lock to protect
-/// mutable state, making it Sendable for concurrent use.
+/// Hashable, and CustomStringConvertible protocols. Its immutable stored properties make
+/// it safe to share across concurrency domains.
 ///
 /// - Important: The channel name must be valid as per IRC specifications and is stored
 ///   in both its original and normalized forms.
@@ -140,11 +140,34 @@ public final class NeedleTailChannel: Codable, Hashable, CustomStringConvertible
         case canonical = "b"
     }
     
-    /// Decodes an IRCChannelIdentifier from the given decoder.
+    /// Decodes and validates an IRC channel, deriving rather than trusting canonical state.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let original = try container.decode(String.self, forKey: .original)
+        guard Self.validate(string: original) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .original,
+                in: container,
+                debugDescription: "Invalid IRC channel name."
+            )
+        }
+        self.original = original
+        self.canonical = original.ircLowercased
+    }
+
+    @available(*, deprecated, message: "Use the synchronous Decodable initializer.")
     public init(from decoder: Decoder) async throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.original = try container.decode(String.self, forKey: .original)
-        self.canonical = try container.decode(String.self, forKey: .canonical)
+        let original = try container.decode(String.self, forKey: .original)
+        guard Self.validate(string: original) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .original,
+                in: container,
+                debugDescription: "Invalid IRC channel name."
+            )
+        }
+        self.original = original
+        self.canonical = original.ircLowercased
     }
     
     /// Encodes the IRCChannelIdentifier to the given encoder.

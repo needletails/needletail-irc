@@ -57,9 +57,9 @@ public struct NeedleTailChannelPacket: Codable, Sendable {
     ///   - channelOperatorAdmin: The identifier of the channel operator admin.
     ///   - channelOperators: A set of identifiers for the channel operators.
     ///   - members: A set of identifiers for the members.
-    ///   - permissions: The permissions associated with the channel.
     ///   - destroyChannel: A Boolean flag indicating if the channel should be destroyed (defaults to false).
     ///   - enabledBots: An array of bots enabled for this channel
+    ///   - botMessages: Optional per-channel bot message templates.
     public init(
         name: NeedleTailChannel,
         channelOperatorAdmin: String,

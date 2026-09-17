@@ -22,6 +22,8 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
 
     /// Default max IRC line length (bytes) before newline. Large enough for NeedleTail payloads.
     public static let defaultMaxLineLength: Int = 32_000_000
+    /// Default maximum declared size for one binary frame field.
+    public static let defaultMaxBinaryFrameLength: Int = 32_000_000
 
     public enum DecoderError: Error, Sendable {
         case lineTooLong(maxLineLength: Int)
@@ -32,6 +34,7 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
     /// When true, a leading byte in 0...4 is treated as a binary frame discriminator
     /// and decoded as a `DirectMessage`. When false, all bytes are framed as IRC lines.
     let allowsBinaryFrames: Bool
+    let maxBinaryFrameLength: Int
 
     /// Published default: IRC lines + binary `DirectMessage` frames (discriminator 0...4).
     /// Prefer the named factories at production call sites so intent is obvious.
@@ -39,6 +42,7 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
         self.logger = logger
         self.maxLineLength = IRCPayloadDecoder.defaultMaxLineLength
         self.allowsBinaryFrames = true
+        self.maxBinaryFrameLength = IRCPayloadDecoder.defaultMaxBinaryFrameLength
     }
 
     /// Full configuration.
@@ -50,6 +54,20 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
         self.logger = logger
         self.maxLineLength = maxLineLength
         self.allowsBinaryFrames = allowsBinaryFrames
+        self.maxBinaryFrameLength = IRCPayloadDecoder.defaultMaxBinaryFrameLength
+    }
+
+    /// Full configuration including the binary frame resource limit.
+    public init(
+        logger: NeedleTailLogger = NeedleTailLogger(),
+        maxLineLength: Int = IRCPayloadDecoder.defaultMaxLineLength,
+        allowsBinaryFrames: Bool,
+        maxBinaryFrameLength: Int
+    ) {
+        self.logger = logger
+        self.maxLineLength = maxLineLength
+        self.allowsBinaryFrames = allowsBinaryFrames
+        self.maxBinaryFrameLength = maxBinaryFrameLength
     }
 
     /// Line-based IRC only. Use on sockets that never carry peer `DirectMessage` frames
@@ -71,6 +89,20 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
         IRCPayloadDecoder(logger: logger, maxLineLength: maxLineLength, allowsBinaryFrames: true)
     }
 
+    /// IRC plus binary frames with an explicit binary field-size limit.
+    public static func withBinaryFrames(
+        logger: NeedleTailLogger = NeedleTailLogger(),
+        maxLineLength: Int = IRCPayloadDecoder.defaultMaxLineLength,
+        maxBinaryFrameLength: Int
+    ) -> IRCPayloadDecoder {
+        IRCPayloadDecoder(
+            logger: logger,
+            maxLineLength: maxLineLength,
+            allowsBinaryFrames: true,
+            maxBinaryFrameLength: maxBinaryFrameLength
+        )
+    }
+
     static func shouldIgnoreIRCLine(_ line: String) -> Bool {
         line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -89,15 +121,20 @@ public final class IRCPayloadDecoder: ByteToMessageDecoder, @unchecked Sendable 
             let originalReaderIndex = buffer.readerIndex
             do {
                 var slice = buffer
-                let directMessage = try DirectMessage.decode(from: &slice)
+                let directMessage = try DirectMessage.decode(
+                    from: &slice,
+                    maxFrameLength: maxBinaryFrameLength
+                )
                 let bytesRead = slice.readerIndex - originalReaderIndex
                 buffer.moveReaderIndex(forwardBy: bytesRead)
                 context.fireChannelRead(self.wrapInboundOut(.dcc(directMessage)))
                 return .continue
-            } catch {
-                // Incomplete binary frame — wait for more bytes.
+            } catch let error as NIODecodeError where error.kind == .incomplete {
                 buffer.moveReaderIndex(to: originalReaderIndex)
                 return .needMoreData
+            } catch {
+                buffer.moveReaderIndex(to: originalReaderIndex)
+                throw error
             }
         } else {
             // Line-based IRC (including textual DCCCHAT / SDCCCHAT offers).

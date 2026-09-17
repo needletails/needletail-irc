@@ -25,7 +25,8 @@ public struct NeedleTailNick: Codable, Hashable, Equatable, CustomStringConverti
     }
     
     public var stringValue: String {
-        return "\(name)_\(deviceId?.uuidString ?? "nil")"
+        guard let deviceId else { return name }
+        return "\(name)_\(deviceId.uuidString)"
     }
     
     public init?(name: String, deviceId: UUID?, nameRules: NameRules = NameRules()) {
@@ -86,7 +87,15 @@ public struct NeedleTailNick: Codable, Hashable, Equatable, CustomStringConverti
     // MARK: - Codable
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.name = try container.decode(String.self, forKey: .name)
+        let name = try container.decode(String.self, forKey: .name)
+        guard NeedleTailNick.validateName(name, nameRules: NameRules()) == .isValidated else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .name,
+                in: container,
+                debugDescription: "Invalid NeedleTail nickname."
+            )
+        }
+        self.name = name
         self.deviceId = try container.decodeIfPresent(UUID.self, forKey: .deviceId)
     }
     
@@ -106,6 +115,20 @@ public struct NeedleTailNick: Codable, Hashable, Equatable, CustomStringConverti
         // Initialize with the lowercase version of the name and default name rules
         self.init(name: name.lowercased(), deviceId: deviceId, nameRules: .init())
     }
+
+    /// Creates a nickname from either a standard IRC nick or NeedleTail's `name_UUID` form.
+    public init?(wireValue: String) {
+        if let separator = wireValue.lastIndex(of: "_") {
+            let name = String(wireValue[..<separator])
+            let suffixStart = wireValue.index(after: separator)
+            let suffix = String(wireValue[suffixStart...])
+            if let deviceId = UUID(uuidString: suffix) {
+                self.init(name: name, deviceId: deviceId)
+                return
+            }
+        }
+        self.init(name: wireValue, deviceId: nil)
+    }
 }
 
 fileprivate enum CharacterSets: Sendable {
@@ -119,12 +142,6 @@ fileprivate enum CharacterSets: Sendable {
 
 extension String {
     public var constructedNick: NeedleTailNick? {
-        let senderComponents = self.split(separator: "_").map(String.init)
-        guard let senderUsername = senderComponents.first,
-              senderComponents.count > 1,
-              let senderDeviceId = UUID(uuidString: senderComponents.last!) else {
-            return nil
-        }
-        return NeedleTailNick(name: senderUsername, deviceId: senderDeviceId)
+        NeedleTailNick(wireValue: self)
     }
 }

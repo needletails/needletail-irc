@@ -40,7 +40,7 @@ let stream = await generator.createMessages(
     logger: logger
 )
 
-for await message in stream {
+for try await message in stream {
     let line = NeedleTailIRCEncoder.encode(value: message)
     var buffer = ByteBuffer()
     buffer.writeString(line)
@@ -85,6 +85,30 @@ func handleLine(_ line: String) async throws {
 }
 ```
 
+For untrusted standard-IRC connections, parse with explicit tag limits:
+
+```swift
+let message = try NeedleTailIRCParser.parseMessage(
+    line,
+    limits: .standardIRC
+)
+```
+
+## Binary DirectMessage framing
+
+Use `IRCPayloadDecoder.withBinaryFrames()` only on peer connections that carry
+`DirectMessage` values. Multipart `groupId` and message fields are UInt32
+length-prefixed UTF-8, and binary lengths are bounded before allocation. The
+line-only factory avoids interpreting a leading byte in `0...4` as a binary
+discriminator:
+
+```swift
+let ircDecoder = IRCPayloadDecoder.lineBasedIRC()
+let peerDecoder = IRCPayloadDecoder.withBinaryFrames(
+    maxBinaryFrameLength: 8 * 1024 * 1024
+)
+```
+
 ## Line length and interoperability
 
 The encoder does not hard-cap output at 512 bytes. NeedleTail transports may allow larger lines (for example base64 `packet-metadata` tags). When integrating with standard IRC servers:
@@ -101,3 +125,7 @@ The encoder does not hard-cap output at 512 bytes. NeedleTail transports may all
 - Rate limiting or flood protection
 
 Build those in your client or server target on top of this protocol layer.
+
+`IRCEventProtocol` provides no-op defaults so integrations can adopt callbacks
+incrementally. Override every callback that is meaningful to your application;
+an unimplemented callback is intentionally ignored.

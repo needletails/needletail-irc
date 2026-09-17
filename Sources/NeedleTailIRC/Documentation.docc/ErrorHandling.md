@@ -8,8 +8,9 @@ NeedleTailIRC provides specific error types for different failure scenarios. Und
 
 ## Key Errors You Should Handle
 
-- **`NeedleTailError.payloadTooLarge`**: Raised when inbound buffering exceeds configured safety limits (e.g. runaway buffer without newline).
+- **`IRCPayloadDecoder.DecoderError.lineTooLong`**: Raised when an IRC buffer exceeds its configured limit without a newline.
 - **`MessageParsingErrors`**: Raised when parsing a single IRC line fails (invalid tags/arguments/etc).
+- **`IRCMessageGeneratorError`**: Raised for empty outbound commands and authentication or packet-metadata encoding failures.
 
 ## Outbound (encoding) limits
 
@@ -17,6 +18,7 @@ NeedleTailIRC provides specific error types for different failure scenarios. Und
 // IRCPayloadEncoder is the mandatory outbound encoding boundary.
 // This SDK does not enforce a hard IRC line length limit at the encoder boundary by default,
 // because some deployments support/require larger-than-512 lines.
+// Commands with empty required channels or recipients throw emptyCommandRejected.
 ```
 
 ## Inbound (decoding) limits
@@ -25,6 +27,7 @@ NeedleTailIRC provides specific error types for different failure scenarios. Und
 // IRCPayloadDecoder enforces safety limits:
 // - Oversize IRC lines are treated as protocol violations (error + close by default).
 // - If the buffer grows beyond the configured max without a newline, it errors + closes.
+// - Binary frame lengths are validated before their payload is consumed.
 ```
 
 ## Basic Error Handling
@@ -100,7 +103,21 @@ do {
 
 ```swift
 do {
-    // Ensure large payloads are chunked using IRCMessageGenerator before sending.
+    let stream = await generator.createMessages(
+        origin: origin,
+        command: command,
+        authPacket: authPacket,
+        logger: logger
+    )
+    for try await message in stream {
+        try await writer.write(.irc(message))
+    }
+} catch IRCMessageGeneratorError.authPacketEncodeFailed {
+    // Authentication metadata was not sent; no frame was yielded.
+} catch IRCMessageGeneratorError.packetMetadataEncodeFailed {
+    // Multipart metadata was not sent; no contentless frame was yielded.
+} catch IRCMessageGeneratorError.emptyCommandRejected {
+    // JOIN/PART/PRIVMSG/NOTICE was missing a required target.
 } catch {
     print("Other encoding error: \(error)")
 }

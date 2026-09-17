@@ -116,25 +116,33 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
     }
     
     func encode(into buffer: inout ByteBuffer) throws {
-        buffer.writeString(groupId)
+        try buffer.writeLengthPrefixedUTF8(groupId)
         
         let timeInterval = date.timeIntervalSince1970
         let bitPattern = timeInterval.bitPattern // UInt64
         buffer.writeInteger(bitPattern, endianness: .big)
         
-        buffer.writeInteger(Int32(partNumber))
-        buffer.writeInteger(Int32(totalParts))
+        guard let encodedPartNumber = Int32(exactly: partNumber),
+              let encodedTotalParts = Int32(exactly: totalParts)
+        else {
+            throw NIODecodeError.malformed("Multipart part values exceed Int32")
+        }
+        buffer.writeInteger(encodedPartNumber)
+        buffer.writeInteger(encodedTotalParts)
         
         // Encode optional message
         if let message = message {
             buffer.writeInteger(UInt8(1))
-            buffer.writeString(message)
+            try buffer.writeLengthPrefixedUTF8(message)
         } else {
             buffer.writeInteger(UInt8(0))
         }
         
         // Encode optional data
         if let data = data {
+            guard data.count <= Int(UInt32.max) else {
+                throw NIODecodeError.malformed("Data field is too large to encode")
+            }
             buffer.writeInteger(UInt8(1))
             buffer.writeInteger(UInt32(data.count))
             buffer.writeBytes(data)
@@ -143,32 +151,62 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
         }
     }
     
-    static func decode(from buffer: inout ByteBuffer) throws -> MultipartPacket {
-        guard let groupId = buffer.readString(length: buffer.readableBytes) else {
-            throw NIODecodeError("Missing groupId")
-        }
+    static func decode(
+        from buffer: inout ByteBuffer,
+        maxFieldLength: Int
+    ) throws -> MultipartPacket {
+        let groupId = try buffer.readLengthPrefixedUTF8(
+            field: "groupId",
+            maxLength: maxFieldLength
+        )
         
         guard let bitPattern = buffer.readInteger(endianness: .big, as: UInt64.self) else {
-            throw NIODecodeError("Missing timestamp bits")
+            throw NIODecodeError.incomplete("Missing timestamp bits")
         }
         let timeInterval = TimeInterval(bitPattern: bitPattern)
         let date = Date(timeIntervalSince1970: timeInterval)
         
         guard let partNumber = buffer.readInteger(as: Int32.self),
               let totalParts = buffer.readInteger(as: Int32.self) else {
-            throw NIODecodeError("Missing part info")
+            throw NIODecodeError.incomplete("Missing part info")
         }
         
         var message: String? = nil
-        if let hasMessage = buffer.readInteger(as: UInt8.self), hasMessage == 1 {
-            message = buffer.readString(length: buffer.readableBytes)
+        guard let hasMessage = buffer.readInteger(as: UInt8.self) else {
+            throw NIODecodeError.incomplete("Missing message presence flag")
+        }
+        switch hasMessage {
+        case 0:
+            break
+        case 1:
+            message = try buffer.readLengthPrefixedUTF8(
+                field: "message",
+                maxLength: maxFieldLength
+            )
+        default:
+            throw NIODecodeError.malformed("Invalid message presence flag")
         }
         
         var data: Data? = nil
-        if let hasData = buffer.readInteger(as: UInt8.self), hasData == 1,
-           let dataLen = buffer.readInteger(as: UInt32.self),
-           let bytes = buffer.readBytes(length: Int(dataLen)) {
+        guard let hasData = buffer.readInteger(as: UInt8.self) else {
+            throw NIODecodeError.incomplete("Missing data presence flag")
+        }
+        switch hasData {
+        case 0:
+            break
+        case 1:
+            guard let dataLength = buffer.readInteger(as: UInt32.self) else {
+                throw NIODecodeError.incomplete("Missing data length")
+            }
+            guard Int(dataLength) <= maxFieldLength else {
+                throw NIODecodeError.malformed("Data field exceeds configured limit")
+            }
+            guard let bytes = buffer.readBytes(length: Int(dataLength)) else {
+                throw NIODecodeError.incomplete("Incomplete data field")
+            }
             data = Data(bytes)
+        default:
+            throw NIODecodeError.malformed("Invalid data presence flag")
         }
         
         return MultipartPacket(
@@ -183,11 +221,48 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
 }
 
 struct NIODecodeError: Error, CustomStringConvertible {
+    enum Kind: Equatable {
+        case incomplete
+        case malformed
+    }
+
+    let kind: Kind
     let message: String
     var description: String { message }
-    
-    init(_ message: String) {
-        self.message = message
+
+    static func incomplete(_ message: String) -> NIODecodeError {
+        NIODecodeError(kind: .incomplete, message: message)
+    }
+
+    static func malformed(_ message: String) -> NIODecodeError {
+        NIODecodeError(kind: .malformed, message: message)
+    }
+}
+
+private extension ByteBuffer {
+    mutating func writeLengthPrefixedUTF8(_ value: String) throws {
+        let bytes = value.utf8
+        guard bytes.count <= Int(UInt32.max) else {
+            throw NIODecodeError.malformed("UTF-8 field is too large to encode")
+        }
+        writeInteger(UInt32(bytes.count))
+        writeString(value)
+    }
+
+    mutating func readLengthPrefixedUTF8(
+        field: String,
+        maxLength: Int
+    ) throws -> String {
+        guard let encodedLength = readInteger(as: UInt32.self) else {
+            throw NIODecodeError.incomplete("Missing \(field) length")
+        }
+        guard Int(encodedLength) <= maxLength else {
+            throw NIODecodeError.malformed("\(field) exceeds configured limit")
+        }
+        guard let value = readString(length: Int(encodedLength)) else {
+            throw NIODecodeError.incomplete("Incomplete \(field)")
+        }
+        return value
     }
 }
 
@@ -771,11 +846,12 @@ public actor PacketBuilder {
 /// let messageStream = await messageGenerator.createMessages(
 ///     origin: "alice",
 ///     command: .privMsg([.channel(channel)], "Hello, world!"),
-///     tags: [IRCTag(key: "time", value: "2023-01-01T12:00:00Z")]
+///     tags: [IRCTag(key: "time", value: "2023-01-01T12:00:00Z")],
+///     logger: NeedleTailLogger()
 /// )
 ///
 /// // Process the generated messages
-/// for await message in messageStream {
+/// for try await message in messageStream {
 ///     // Send the message
 ///     try await sendMessage(message)
 /// }
@@ -840,7 +916,7 @@ public actor IRCMessageGenerator: Sendable {
         logger: NeedleTailLogger,
         currentPacket: MultipartPacket,
         continuation: AsyncThrowingStream<IRCMessage, Error>.Continuation
-    ) async {
+    ) async -> Bool {
         var mutableTags = [IRCTag]()
         
         if let authPacket {
@@ -849,6 +925,8 @@ public actor IRCMessageGenerator: Sendable {
                 mutableTags.append(IRCTag(key: "irc-protected", value: value))
             } catch {
                 logger.log(level: .error, message: "Error Encoding Auth Packet, \(error)")
+                continuation.finish(throwing: IRCMessageGeneratorError.authPacketEncodeFailed)
+                return false
             }
         }
         if let tags {
@@ -883,7 +961,7 @@ public actor IRCMessageGenerator: Sendable {
             logger.log(level: .error, message: "Failed to encode IRCTag for packet metadata: \(error)")
             // Do not yield a contentless frame — recipient reassembly would discard it silently.
             continuation.finish(throwing: IRCMessageGeneratorError.packetMetadataEncodeFailed)
-            return
+            return false
         }
         mutableTags.append(IRCTag(key: "packet-metadata", value: packetMetadata))
         
@@ -896,6 +974,7 @@ public actor IRCMessageGenerator: Sendable {
         if modifiedPacket.partNumber == modifiedPacket.totalParts {
             continuation.finish()
         }
+        return true
     }
     
     /// Creates a stream of IRC messages from a command, handling multipart content as needed.
@@ -920,21 +999,24 @@ public actor IRCMessageGenerator: Sendable {
     /// // Simple message
     /// let simpleStream = await messageGenerator.createMessages(
     ///     origin: "alice",
-    ///     command: .privMsg([.channel(channel)], "Hello!")
+    ///     command: .privMsg([.channel(channel)], "Hello!"),
+    ///     logger: NeedleTailLogger()
     /// )
     ///
     /// // Message with tags
     /// let taggedStream = await messageGenerator.createMessages(
     ///     origin: "alice",
     ///     command: .privMsg([.channel(channel)], "Hello!"),
-    ///     tags: [IRCTag(key: "time", value: "2023-01-01T12:00:00Z")]
+    ///     tags: [IRCTag(key: "time", value: "2023-01-01T12:00:00Z")],
+    ///     logger: NeedleTailLogger()
     /// )
     ///
     /// // Large message (automatically split)
     /// let largeMessage = String(repeating: "Hello, world! ", count: 100)
     /// let largeStream = await messageGenerator.createMessages(
     ///     origin: "alice",
-    ///     command: .privMsg([.channel(channel)], largeMessage)
+    ///     command: .privMsg([.channel(channel)], largeMessage),
+    ///     logger: NeedleTailLogger()
     /// )
     /// ```
     ///
@@ -971,7 +1053,7 @@ public actor IRCMessageGenerator: Sendable {
         func handleEmptyMessage(for command: IRCCommand) async {
             let packet = await createEmptyPacket()
             guard let continuation = streamContinuation else { return }
-            await createIRCMessage(
+            _ = await createIRCMessage(
                 for: command,
                 origin: origin,
                 tags: tags,
@@ -988,7 +1070,7 @@ public actor IRCMessageGenerator: Sendable {
         ) async {
             guard let continuation = streamContinuation else { return }
             for await packet in packets {
-                await createIRCMessage(
+                let succeeded = await createIRCMessage(
                     for: command,
                     origin: origin,
                     tags: tags,
@@ -996,6 +1078,9 @@ public actor IRCMessageGenerator: Sendable {
                     logger: logger,
                     currentPacket: packet,
                     continuation: continuation)
+                if !succeeded {
+                    break
+                }
             }
         }
         

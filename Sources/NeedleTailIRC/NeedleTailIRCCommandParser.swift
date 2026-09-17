@@ -187,104 +187,212 @@ public struct NeedleTailIRCCommandParser: Sendable {
             return try parseLinksCommand(arguments)
         case Constants.away.rawValue:
             return try parseAwayCommand(arguments)
-        case Constants.oper.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.knock.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.silence.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.invite.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.topic.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.names.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.ban.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.unban.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.kickban.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.clearmode.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.except.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.unexcept.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.inviteExcept.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.uninviteExcept.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.quiet.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.unquiet.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.voice.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.devoice.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.halfop.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.dehalfop.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.protect.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.deprotect.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.owner.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.deowner.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.rehash.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.restart.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.die.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.connect.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.trace.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.stats.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.admin.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.info.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.version.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.time.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.lusers.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.motd.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.rules.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.map.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.users.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.wallops.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.globops.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.locops.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.adl.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
-        case Constants.odlist.rawValue:
-            return .otherCommand(uppercasedCommand, arguments)
         case Constants.ctcp.rawValue:
             return try parseCTCPCommand(arguments)
         case Constants.ctcpreply.rawValue:
             return try parseCTCPReplyCommand(arguments)
         default:
+            if let command = try parseSupplementalCommand(
+                uppercasedCommand,
+                arguments: arguments
+            ) {
+                return command
+            }
             return .otherCommand(uppercasedCommand, arguments)
         }
     }
-    
+
     // MARK: - Individual Command Parsing Methods
+
+    private static func parseSupplementalCommand(
+        _ command: String,
+        arguments: [String]
+    ) throws -> IRCCommand? {
+        func requireCount(_ expected: ClosedRange<Int>) throws {
+            guard expected.contains(arguments.count) else {
+                throw CommandParserErrors.unexpectedArguments(
+                    "Expected \(expected), found \(arguments.count)"
+                )
+            }
+        }
+
+        func channel(at index: Int) throws -> NeedleTailChannel {
+            guard arguments.indices.contains(index),
+                  let channel = NeedleTailChannel(arguments[index])
+            else {
+                throw CommandParserErrors.invalidChannelName(
+                    arguments.indices.contains(index) ? arguments[index] : ""
+                )
+            }
+            return channel
+        }
+
+        func nick(at index: Int) throws -> NeedleTailNick {
+            guard arguments.indices.contains(index),
+                  let nick = NeedleTailNick(wireValue: arguments[index])
+            else {
+                throw CommandParserErrors.invalidNick(
+                    arguments.indices.contains(index) ? arguments[index] : ""
+                )
+            }
+            return nick
+        }
+
+        func integer(at index: Int) throws -> Int {
+            guard arguments.indices.contains(index),
+                  let value = Int(arguments[index])
+            else {
+                throw CommandParserErrors.invalidArgument(
+                    arguments.indices.contains(index) ? arguments[index] : ""
+                )
+            }
+            return value
+        }
+
+        func optionalTarget() throws -> String? {
+            try requireCount(0...1)
+            return arguments.first
+        }
+
+        switch command {
+        case Constants.oper.rawValue:
+            try requireCount(2...2)
+            return .oper(arguments[0], arguments[1])
+        case Constants.knock.rawValue:
+            try requireCount(1...2)
+            return .knock(try channel(at: 0), arguments.count == 2 ? arguments[1] : nil)
+        case Constants.silence.rawValue:
+            try requireCount(1...1)
+            return .silence(arguments[0])
+        case Constants.invite.rawValue:
+            try requireCount(2...2)
+            return .invite(try nick(at: 0), try channel(at: 1))
+        case Constants.topic.rawValue:
+            try requireCount(1...2)
+            return .topic(try channel(at: 0), arguments.count == 2 ? arguments[1] : nil)
+        case Constants.names.rawValue:
+            try requireCount(0...1)
+            return .names(arguments.isEmpty ? nil : try channel(at: 0))
+        case Constants.ban.rawValue:
+            try requireCount(2...2)
+            return .ban(try channel(at: 0), arguments[1])
+        case Constants.unban.rawValue:
+            try requireCount(2...2)
+            return .unban(try channel(at: 0), arguments[1])
+        case Constants.kickban.rawValue:
+            try requireCount(3...3)
+            return .kickban(try channel(at: 0), try nick(at: 1), arguments[2])
+        case Constants.clearmode.rawValue:
+            try requireCount(2...2)
+            return .clearmode(try channel(at: 0), arguments[1])
+        case Constants.except.rawValue:
+            try requireCount(2...2)
+            return .except(try channel(at: 0), arguments[1])
+        case Constants.unexcept.rawValue:
+            try requireCount(2...2)
+            return .unexcept(try channel(at: 0), arguments[1])
+        case Constants.inviteExcept.rawValue:
+            try requireCount(2...2)
+            return .inviteExcept(try channel(at: 0), arguments[1])
+        case Constants.uninviteExcept.rawValue:
+            try requireCount(2...2)
+            return .uninviteExcept(try channel(at: 0), arguments[1])
+        case Constants.quiet.rawValue:
+            try requireCount(2...2)
+            return .quiet(try channel(at: 0), arguments[1])
+        case Constants.unquiet.rawValue:
+            try requireCount(2...2)
+            return .unquiet(try channel(at: 0), arguments[1])
+        case Constants.voice.rawValue:
+            try requireCount(2...2)
+            return .voice(try channel(at: 0), try nick(at: 1))
+        case Constants.devoice.rawValue:
+            try requireCount(2...2)
+            return .devoice(try channel(at: 0), try nick(at: 1))
+        case Constants.halfop.rawValue:
+            try requireCount(2...2)
+            return .halfop(try channel(at: 0), try nick(at: 1))
+        case Constants.dehalfop.rawValue:
+            try requireCount(2...2)
+            return .dehalfop(try channel(at: 0), try nick(at: 1))
+        case Constants.protect.rawValue:
+            try requireCount(2...2)
+            return .protect(try channel(at: 0), try nick(at: 1))
+        case Constants.deprotect.rawValue:
+            try requireCount(2...2)
+            return .deprotect(try channel(at: 0), try nick(at: 1))
+        case Constants.owner.rawValue:
+            try requireCount(2...2)
+            return .owner(try channel(at: 0), try nick(at: 1))
+        case Constants.deowner.rawValue:
+            try requireCount(2...2)
+            return .deowner(try channel(at: 0), try nick(at: 1))
+        case Constants.rehash.rawValue:
+            try requireCount(0...0)
+            return .rehash
+        case Constants.restart.rawValue:
+            try requireCount(0...0)
+            return .restart
+        case Constants.die.rawValue:
+            try requireCount(0...0)
+            return .die
+        case Constants.connect.rawValue:
+            try requireCount(2...3)
+            return .connect(
+                arguments[0],
+                try integer(at: 1),
+                arguments.count == 3 ? arguments[2] : nil
+            )
+        case Constants.trace.rawValue:
+            return .trace(try optionalTarget())
+        case Constants.stats.rawValue:
+            try requireCount(0...2)
+            return .stats(
+                arguments.first,
+                arguments.count == 2 ? arguments[1] : nil
+            )
+        case Constants.admin.rawValue:
+            return .admin(try optionalTarget())
+        case Constants.info.rawValue:
+            return .info(try optionalTarget())
+        case Constants.version.rawValue:
+            return .version(try optionalTarget())
+        case Constants.time.rawValue:
+            return .time(try optionalTarget())
+        case Constants.lusers.rawValue:
+            try requireCount(0...2)
+            return .lusers(
+                arguments.first,
+                arguments.count == 2 ? arguments[1] : nil
+            )
+        case Constants.motd.rawValue:
+            return .motd(try optionalTarget())
+        case Constants.rules.rawValue:
+            return .rules(try optionalTarget())
+        case Constants.map.rawValue:
+            try requireCount(0...0)
+            return .map
+        case Constants.users.rawValue:
+            return .users(try optionalTarget())
+        case Constants.wallops.rawValue:
+            try requireCount(1...1)
+            return .wallops(arguments[0])
+        case Constants.globops.rawValue:
+            try requireCount(1...1)
+            return .globops(arguments[0])
+        case Constants.locops.rawValue:
+            try requireCount(1...1)
+            return .locops(arguments[0])
+        case Constants.adl.rawValue:
+            try requireCount(0...0)
+            return .adl
+        case Constants.odlist.rawValue:
+            try requireCount(0...0)
+            return .odlist
+        default:
+            return nil
+        }
+    }
     
     /// Parses a NICK command with the format: NICK <nickname>_<deviceId>
     /// - Parameter arguments: Array containing the nickname with device ID.
@@ -295,14 +403,8 @@ public struct NeedleTailIRCCommandParser: Sendable {
             throw CommandParserErrors.unexpectedArguments("Expected: 1 Found: \(arguments.count)")
         }
         let first = arguments.first ?? ""
-        let splitNick = first.split(separator: "_", maxSplits: 1)
-        
-        guard let name = splitNick.first.map(String.init), let id = splitNick.last.map(String.init), let deviceId = UUID(uuidString: id) else {
+        guard let nick = NeedleTailNick(wireValue: first) else {
             throw CommandParserErrors.invalidNick(first)
-        }
-        
-        guard let nick = NeedleTailNick(name: name, deviceId: deviceId) else {
-            throw CommandParserErrors.invalidNick("\(name) \(deviceId)")
         }
         return .nick(nick)
     }
@@ -330,8 +432,8 @@ public struct NeedleTailIRCCommandParser: Sendable {
     }
     
     private static func parseQuitCommand(_ arguments: [String]) throws -> IRCCommand {
-        guard arguments.count == 1 else {
-            throw CommandParserErrors.unexpectedArguments("Expected: 1 Found: \(arguments.count)")
+        guard arguments.count <= 1 else {
+            throw CommandParserErrors.unexpectedArguments("Expected at most 1 Found: \(arguments.count)")
         }
         return .quit(arguments.first)
     }
@@ -382,14 +484,20 @@ public struct NeedleTailIRCCommandParser: Sendable {
         
         let args = arguments.dropFirst()
         if let addIndex = args.firstIndex(where: { $0.contains(Constants.plus.rawValue) }) {
-            add.insert(IRCChannelPermissions(String(args[addIndex].dropFirst()))!)
+            guard let permissions = IRCChannelPermissions(String(args[addIndex].dropFirst())) else {
+                throw CommandParserErrors.invalidArgument(args[addIndex])
+            }
+            add.insert(permissions)
             if args.count >= 2, !args[1].contains(Constants.minus.rawValue) {
                 addParameters.append(contentsOf: args[2].components(separatedBy: Constants.comma.rawValue))
             }
         }
         
         if let minusIndex = args.firstIndex(where: { $0.contains(Constants.minus.rawValue) }) {
-            remove.insert(IRCChannelPermissions(String(args[minusIndex].dropFirst()))!)
+            guard let permissions = IRCChannelPermissions(String(args[minusIndex].dropFirst())) else {
+                throw CommandParserErrors.invalidArgument(args[minusIndex])
+            }
+            remove.insert(permissions)
             if args.count >= 2, let lastArg = args.last, !lastArg.contains(Constants.minus.rawValue) {
                 removeParameters.append(contentsOf: lastArg.components(separatedBy: Constants.comma.rawValue))
             }
@@ -506,7 +614,13 @@ public struct NeedleTailIRCCommandParser: Sendable {
             throw CommandParserErrors.missingArgument
         }
         
-        let recipients = recipientString.split(separator: ",").compactMap { IRCMessageRecipient(String($0.trimmingCharacters(in: .whitespacesAndNewlines))) }
+        let recipientValues = recipientString.split(separator: ",").map {
+            String($0.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        let recipients = recipientValues.compactMap(IRCMessageRecipient.init)
+        guard !recipients.isEmpty, recipients.count == recipientValues.count else {
+            throw CommandParserErrors.invalidMessageTarget(recipientString)
+        }
         
         return command == Constants.privMsg.rawValue ? .privMsg(recipients, message) : .notice(recipients, message)
     }
@@ -605,7 +719,11 @@ public struct NeedleTailIRCCommandParser: Sendable {
             throw CommandParserErrors.invalidArgument("Invalid CAP command: \(first)")
         }
         
-        let capIDs = arguments.count > 1 ? arguments[1].components(separatedBy: Constants.space.rawValue) : []
+        let capIDs = arguments.count > 1
+            ? arguments[1]
+                .components(separatedBy: Constants.space.rawValue)
+                .filter { !$0.isEmpty }
+            : []
         return .cap(subcmd, capIDs)
     }
     
@@ -618,7 +736,10 @@ public struct NeedleTailIRCCommandParser: Sendable {
         let ipaddress = arguments[1]
         let port = arguments[2]
         guard let constructedNick = nickname.constructedNick else { throw NeedleTailError.nilNickName }
-        return isSecure ? .sdccChat(constructedNick, ipaddress, Int(port) ?? 0) : .dccChat(constructedNick, ipaddress, Int(port) ?? 0)
+        guard let port = Int(port) else {
+            throw CommandParserErrors.invalidArgument(port)
+        }
+        return isSecure ? .sdccChat(constructedNick, ipaddress, port) : .dccChat(constructedNick, ipaddress, port)
     }
     
     private static func parseDCCSendCommand(_ arguments: [String], isSecure: Bool) throws -> IRCCommand {
@@ -632,7 +753,10 @@ public struct NeedleTailIRCCommandParser: Sendable {
         let isAddress = arguments[3]
         let port = arguments[4]
         guard let constructedNick = nickname.constructedNick else { throw NeedleTailError.nilNickName }
-        return isSecure ? .sdccSend(constructedNick, filename, Int(filesize) ?? 0, isAddress, Int(port) ?? 0) : .dccSend(constructedNick, filename, Int(filesize) ?? 0, isAddress, Int(port) ?? 0)
+        guard let filesize = Int(filesize), let port = Int(port) else {
+            throw CommandParserErrors.invalidArgument("Invalid DCC SEND size or port.")
+        }
+        return isSecure ? .sdccSend(constructedNick, filename, filesize, isAddress, port) : .dccSend(constructedNick, filename, filesize, isAddress, port)
     }
     
     private static func parseDCCResumeCommand(_ arguments: [String], isSecure: Bool) throws -> IRCCommand {
@@ -647,7 +771,10 @@ public struct NeedleTailIRCCommandParser: Sendable {
         let port = arguments[4]
         let offset = arguments[5]
         guard let constructedNick = nickname.constructedNick else { throw NeedleTailError.nilNickName }
-        return isSecure ? .sdccResume(constructedNick, filename, Int(filesize) ?? 0, isAddress, Int(port) ?? 0, Int(offset) ?? 0) : .dccResume(constructedNick, filename, Int(filesize) ?? 0, isAddress, Int(port) ?? 0, Int(offset) ?? 0)
+        guard let filesize = Int(filesize), let port = Int(port), let offset = Int(offset) else {
+            throw CommandParserErrors.invalidArgument("Invalid DCC RESUME numeric argument.")
+        }
+        return isSecure ? .sdccResume(constructedNick, filename, filesize, isAddress, port, offset) : .dccResume(constructedNick, filename, filesize, isAddress, port, offset)
     }
     
     private static func parseSQuitCommand(_ arguments: [String]) throws -> IRCCommand {
@@ -667,15 +794,17 @@ public struct NeedleTailIRCCommandParser: Sendable {
         let version = arguments[1]
         let hopCount = arguments[2]
         let info = arguments[3]
-        return .server(serverName, version, Int(hopCount) ?? 0, info)
+        guard let hopCount = Int(hopCount) else {
+            throw CommandParserErrors.invalidArgument(hopCount)
+        }
+        return .server(serverName, version, hopCount, info)
     }
     
     private static func parseLinksCommand(_ arguments: [String]) throws -> IRCCommand {
-        guard arguments.count == 1 else {
-            throw CommandParserErrors.unexpectedArguments("Expected: 1 Found: \(arguments.count)")
+        guard arguments.count <= 1 else {
+            throw CommandParserErrors.unexpectedArguments("Expected at most 1 Found: \(arguments.count)")
         }
-        let mask = arguments[0]
-        return .links(mask)
+        return .links(arguments.first)
     }
     
     private static func parseAwayCommand(_ arguments: [String]) throws -> IRCCommand {

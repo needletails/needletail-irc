@@ -41,44 +41,33 @@ let encodedString = NeedleTailIRCEncoder.encode(value: message)
 ### Getting Started
 
 - <doc:GettingStarted>
-Installation and your first IRC messages.
 
 ### Core Concepts
 
 - <doc:BasicUsage>
-Fundamental concepts and usage patterns.
 
 - <doc:MessageFormat>
-IRC message structure and formatting.
 
 - <doc:MessageHandling>
-Processing incoming and outgoing messages.
 
 ### IRC Operations
 
 - <doc:IRCCommands>
-IRC commands and numerics.
 
 - <doc:Channels>
-Channel naming, validation, and operations.
 
 - <doc:Users>
-Nicknames, user modes, and permissions.
 
 ### Advanced Features
 
 - <doc:MultipartMessages>
-Chunking and reassembling large payloads.
 
 - <doc:TransportLayer>
-NIO writer integration (no built-in sockets).
 
 ### Error Handling
 
 - <doc:ErrorHandling>
-Error types and handling strategies.
 
 ### API Reference
 
 - <doc:APIReference>
-Public API overview.

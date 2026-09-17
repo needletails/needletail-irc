@@ -4,7 +4,7 @@
 
 A Swift package for parsing, encoding, and framing IRC (Internet Relay Chat) messages with modern concurrency support.
 
-[![Swift](https://img.shields.io/badge/Swift-6.0+-orange.svg)](https://swift.org)
+[![Swift](https://img.shields.io/badge/Swift-6.4+-orange.svg)](https://swift.org)
 [![Platform](https://img.shields.io/badge/Platform-iOS%2018%2B%20%7C%20macOS%2015%2B-blue.svg)](https://developer.apple.com)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -18,7 +18,7 @@ NeedleTailIRC is a type-safe IRC protocol layer for the NeedleTail stack. It cov
 - **IRCv3 message tags**: Tag parsing, escaping, and round-trip encoding
 - **Type-safe commands & models**: `IRCCommand`, `NeedleTailChannel`, `NeedleTailNick`, and related types
 - **Multipart framing**: `IRCMessageGenerator` and `PacketBuilder` for large payload chunking and reassembly
-- **DCC command representation**: Encode/decode DCC-related IRC commands (not a full file-transfer client)
+- **DCC command representation**: Encode/decode bounded, self-delimiting DCC-related frames (not a full file-transfer client)
 - **NIO integration**: `NeedleTailWriterDelegate` for sending framed messages through `NIOAsyncChannelOutboundWriter`
 - **NeedleTail extensions**: Custom commands in `Constants` for blob sync, media, and device workflows
 
@@ -66,7 +66,7 @@ let stream = await generator.createMessages(
     logger: NeedleTailLogger()
 )
 
-for await message in stream {
+for try await message in stream {
     let line = NeedleTailIRCEncoder.encode(value: message)
     // Write `line` through your NIO outbound writer or socket layer.
 }
@@ -134,7 +134,7 @@ let nickCommand = IRCCommand.nick(NeedleTailNick(name: "newNick", deviceId: UUID
 
 // Set user mode
 let modeCommand = IRCCommand.mode(
-    nick: NeedleTailNick(name: "alice", deviceId: UUID())!,
+    NeedleTailNick(name: "alice", deviceId: UUID())!,
     add: [.invisible, .away],
     remove: nil
 )
@@ -153,7 +153,7 @@ let stream = await generator.createMessages(
     logger: NeedleTailLogger()
 )
 
-for await chunk in stream {
+for try await chunk in stream {
     let line = NeedleTailIRCEncoder.encode(value: chunk)
     try await writeToTransport(line)
 }
@@ -196,21 +196,29 @@ Documentation lives in [Documentation.docc](Sources/NeedleTailIRC/Documentation.
 
 ## Requirements
 
-- **Swift**: 6.0+
+- **Swift**: 6.4+
 - **Platforms**: iOS 18.0+, macOS 15.0+
-- **Xcode**: 15.0+ (for Apple platform development)
+- **Xcode**: 27.0+ (for Apple platform development)
 
 ## Dependencies
 
 NeedleTailIRC pulls in:
 
-- `swift-nio` — NIOCore, NIOConcurrencyHelpers
+- `swift-nio` — NIOCore
 - `swift-algorithms` — algorithm utilities
-- `swift-async-algorithms` — async algorithm support
-- `swift-collections` — DequeModule
+- `swift-log` — logging API used by transport integration
 - `needletail-logger` — logging
 - `needletail-algorithms` — NeedleTailAsyncSequence and related utilities
 - `binary-codable` — binary serialization for packet metadata
+
+## API and wire semantics
+
+- `NeedleTailNick.stringValue` emits `name_UUID` when a device identifier exists and a standard `name` otherwise.
+- `IRCUserIdentifier.stringValue` emits `nick[!user][@host]`.
+- `IRCMessage` equality is identity-based (`id`); `IRCTag` equality is key-based. Compare protocol fields explicitly when value equality is required.
+- `NeedleTailIRCParser.parseMessage(_:)` preserves the historical unbounded tag behavior. Use `parseMessage(_:limits:)` with `.standardIRC` for untrusted standard-IRC input.
+- Binary `DirectMessage` multipart fields use UInt32 length-prefixed UTF-8. Blob and close framing retain their existing discriminator layouts.
+- `IRCEventProtocol` supplies no-op defaults for every callback. Override every event your integration needs.
 
 ## Installation
 

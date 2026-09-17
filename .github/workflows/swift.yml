@@ -8,7 +8,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-test:
+  linux:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,13 +20,13 @@ jobs:
           sudo apt-get update
           sudo apt-get -y install libcurl4-openssl-dev
 
-      - name: Install Swift 6.3.0 with Swiftly
+      - name: Install Swift 6.4.0 with Swiftly
         run: |
           curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
           tar zxf swiftly-$(uname -m).tar.gz
-          ./swiftly init --quiet-shell-followup
+          ./swiftly init --skip-install --assume-yes --quiet-shell-followup
           source ~/.local/share/swiftly/env.sh
-          swiftly install --use 6.3.0
+          swiftly install --assume-yes --use 6.4.0
           echo "Looking for Swift in toolchains directory..."
           ls -la $HOME/.local/share/swiftly/toolchains/
           SWIFT_PATH=$(find $HOME/.local/share/swiftly/toolchains -type f \( -path '*/usr/bin/swift' -o -path '*/bin/swift' \) 2>/dev/null | head -1)
@@ -40,15 +40,75 @@ jobs:
           echo "$SWIFT_PATH" >> $GITHUB_PATH
 
       - name: Cache Swift packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
-          path: .build
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
           key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift') }}
           restore-keys: |
             ${{ runner.os }}-swift-
 
-      - name: Build
+      - name: Verify toolchain
+        run: swift --version
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build (debug)
+        run: swift build
+
+      - name: Test (debug)
+        run: swift test
+
+      - name: Build (release)
         run: swift build --configuration release
 
-      - name: Test
+      - name: Test (release)
         run: swift test --configuration release
+
+      - name: Check complete concurrency
+        run: swift build -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors
+
+  macos:
+    runs-on: macos-15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Swift 6.4
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.4"
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
+
+      - name: Verify toolchain
+        run: swift --version
+
+      - name: Build and test (debug)
+        run: swift test
+
+      - name: Build and test (release)
+        run: swift test --configuration release
+
+      - name: Check complete concurrency
+        run: swift build -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors
+
+      - name: Build documentation
+        run: >
+          swift package
+          --allow-writing-to-directory .build/documentation
+          generate-documentation
+          --target NeedleTailIRC
+          --output-path .build/documentation
+          --warnings-as-errors

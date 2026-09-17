@@ -18,7 +18,8 @@ guard let channel = NeedleTailChannel("#general") else {
 }
 
 // Channel names are automatically validated
-print(channel.name) // "#general"
+print(channel.stringValue) // "#general"
+print(channel.canonicalWireName) // IRC-case-folded form used for equality
 
 // Invalid channel names return nil
 let invalidChannel = NeedleTailChannel("invalid") // nil

@@ -53,6 +53,10 @@ let message = IRCMessage(
 )
 ```
 
+`IRCTag` equality and hashing use the key only. Compare `value` explicitly when payload equality is required.
+
+The one-argument `NeedleTailIRCParser.parseMessage(_:)` keeps historical unbounded tag parsing. Pass `limits: .standardIRC` for untrusted standard-IRC traffic.
+
 Common tag keys:
 - `time`: Timestamp of the message
 - `account`: User account name
@@ -199,14 +203,18 @@ Nicknames must be valid IRC nicknames:
 
 ```swift
 // Valid nicknames
-let alice = NeedleTailNick(name: "alice", deviceId: UUID())!
+let alice = NeedleTailNick(name: "alice", deviceId: nil)!
 let bob123 = NeedleTailNick(name: "bob123", deviceId: UUID())!
-let user_123 = NeedleTailNick(name: "user_123", deviceId: UUID())!
+let numbered = NeedleTailNick(name: "123user", deviceId: nil)!
+print(alice.stringValue) // "alice"
+
+// Parse standard or NeedleTail `name_UUID` wire values
+let parsed = NeedleTailNick(wireValue: "alice")
 
 // Invalid nicknames (will return nil)
-let invalid1 = NeedleTailNick(name: "123user", deviceId: UUID())    // Starts with number
-let invalid2 = NeedleTailNick(name: "user-name", deviceId: UUID())  // Contains hyphen
-let invalid3 = NeedleTailNick(name: "", deviceId: UUID())           // Empty name
+let invalid1 = NeedleTailNick(name: "user_name", deviceId: nil)  // Underscore
+let invalid2 = NeedleTailNick(name: "a", deviceId: nil)          // Too short
+let invalid3 = NeedleTailNick(name: "", deviceId: nil)           // Empty name
 ```
 
 ## Message Encoding

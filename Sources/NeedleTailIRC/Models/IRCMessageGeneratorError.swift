@@ -14,4 +14,8 @@ public enum IRCMessageGeneratorError: Error, Sendable, Equatable {
     case zeroFramesGenerated
     /// Encoding `packet-metadata` failed; no contentless frame was yielded.
     case packetMetadataEncodeFailed
+    /// A command with no required channel or recipient reached a throwing transport boundary.
+    case emptyCommandRejected
+    /// Encoding the requested authentication tag failed; no frame was yielded.
+    case authPacketEncodeFailed
 }

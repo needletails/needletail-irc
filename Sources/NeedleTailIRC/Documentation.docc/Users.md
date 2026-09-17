@@ -11,45 +11,44 @@ User management is a core aspect of IRC operations. NeedleTailIRC provides compr
 ### Creating Nickname Objects
 
 ```swift
-// Create a nickname with device ID
+// Standard IRC nick (no device suffix on the wire)
+guard let standardNick = NeedleTailNick(name: "alice", deviceId: nil) else {
+    print("Invalid nickname")
+    return
+}
+print(standardNick.stringValue) // "alice"
+
+// NeedleTail nick with a device identifier
 guard let nick = NeedleTailNick(name: "alice", deviceId: UUID()) else {
     print("Invalid nickname")
     return
 }
-
-// Nickname validation
 print(nick.name) // "alice"
-print(nick.deviceId) // UUID
+print(nick.stringValue) // "alice_<UUID>"
 
-// Invalid nicknames return nil
-let invalidNick1 = NeedleTailNick(name: "", deviceId: UUID()) // nil
-let invalidNick2 = NeedleTailNick(name: "123user", deviceId: UUID()) // nil (starts with number)
-let invalidNick3 = NeedleTailNick(name: "user-name", deviceId: UUID()) // nil (contains hyphen)
+// Parse either a standard nick or a `name_UUID` wire value
+let parsed = NeedleTailNick(wireValue: "alice")
 ```
 
 ### Nickname Validation
 
-Nicknames must follow IRC standards:
-- Cannot start with a number
-- Cannot contain hyphens or special characters
-- Must be between 1 and 9 characters (typically)
-- Cannot contain spaces
+Default `NameRules` accept names that are 2...1024 characters, may start with a digit, allow `-` after the first character, and reject `_`. Names are lowercased by `init?(name:deviceId:)`.
 
 ```swift
 // Valid nicknames
 let validNicks = [
-    NeedleTailNick(name: "alice", deviceId: UUID()),
+    NeedleTailNick(name: "alice", deviceId: nil),
     NeedleTailNick(name: "bob123", deviceId: UUID()),
-    NeedleTailNick(name: "user_123", deviceId: UUID()),
-    NeedleTailNick(name: "test", deviceId: UUID())
+    NeedleTailNick(name: "123user", deviceId: nil),
+    NeedleTailNick(name: "user-name", deviceId: nil)
 ]
 
 // Invalid nicknames
 let invalidNicks = [
-    NeedleTailNick(name: "", deviceId: UUID()),           // Empty
-    NeedleTailNick(name: "123user", deviceId: UUID()),    // Starts with number
-    NeedleTailNick(name: "user-name", deviceId: UUID()),  // Contains hyphen
-    NeedleTailNick(name: "user name", deviceId: UUID())   // Contains space
+    NeedleTailNick(name: "", deviceId: nil),            // Empty
+    NeedleTailNick(name: "a", deviceId: nil),           // Too short
+    NeedleTailNick(name: "user_name", deviceId: nil),   // Underscore
+    NeedleTailNick(name: "user name", deviceId: nil)    // Space
 ]
 ```
 

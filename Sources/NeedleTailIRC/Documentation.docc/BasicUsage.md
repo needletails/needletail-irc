@@ -73,6 +73,8 @@ let taggedMessage = IRCMessage(
 // Parse a complete IRC message
 let rawMessage = ":alice!alice@localhost PRIVMSG #general :Hello, everyone!"
 let parsedMessage = try NeedleTailIRCParser.parseMessage(rawMessage)
+// For untrusted standard-IRC input:
+// let parsedMessage = try NeedleTailIRCParser.parseMessage(rawMessage, limits: .standardIRC)
 
 print("Origin: \(parsedMessage.origin ?? "none")")
 print("Command: \(parsedMessage.command)")

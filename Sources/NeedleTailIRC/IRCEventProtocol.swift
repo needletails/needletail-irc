@@ -71,6 +71,7 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     ///   - addParameters: Optional parameters for the added mode.
     ///   - removeMode: The channel mode to remove.
     ///   - removeParameters: Optional parameters for the removed mode.
+    ///   - associatedTags: Optional tags associated with the mode change.
     func doMode(
         channel: NeedleTailChannel,
         addMode: IRCChannelPermissions?,

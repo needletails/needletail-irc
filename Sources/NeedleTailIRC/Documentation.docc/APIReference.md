@@ -14,18 +14,23 @@ The main message type representing an IRC message.
 
 ```swift
 struct IRCMessage {
-    let origin: String?
-    let command: IRCCommand
-    let tags: [IRCTag]?
+    var id: UUID
+    var origin: String?
+    var target: String?
+    var command: IRCCommand
+    var tags: [IRCTag]?
     
-    init(origin: String? = nil, command: IRCCommand, tags: [IRCTag]? = nil)
+    init(origin: String? = nil, target: String? = nil, command: IRCCommand, tags: [IRCTag]? = nil)
 }
 ```
 
 **Properties:**
 - `origin`: The message origin/source (optional)
+- `target`: Numeric response target (optional)
 - `command`: The IRC command or numeric response
 - `tags`: IRCv3 message tags (optional)
+
+`Equatable` is intentionally identity-based: two messages are equal when their generated `id` values match.
 
 **Example:**
 ```swift
@@ -77,7 +82,7 @@ enum IRCCommand {
     case dccResume(NeedleTailNick, String, Int, String, Int, Int)
     
     // CAP commands
-    case cap(CAPSubcommand, [String])
+    case cap(CAPSubCommand, [String])
     
     // Numeric responses
     case numeric(IRCCommandCode, [String])
@@ -104,15 +109,17 @@ enum IRCMessageRecipient {
 Represents an IRC channel with validation.
 
 ```swift
-struct NeedleTailChannel {
-    let name: String
+final class NeedleTailChannel {
+    var stringValue: String { get }
+    var canonicalWireName: String { get }
     
     init?(_ name: String)
 }
 ```
 
 **Properties:**
-- `name`: The channel name (e.g., "#general")
+- `stringValue`: The original validated channel name (for example, `#general`)
+- `canonicalWireName`: The IRC-case-folded value used for equality and hashing
 
 **Example:**
 ```swift
@@ -132,12 +139,15 @@ struct NeedleTailNick {
     let deviceId: UUID?
 
     init?(name: String, deviceId: UUID?)
+    init?(wireValue: String)
 }
 ```
 
 **Properties:**
 - `name`: The nickname
-- `deviceId`: Unique device identifier
+- `deviceId`: Optional NeedleTail device identifier
+
+`stringValue` emits `name_UUID` when `deviceId` is present and a standard `name` otherwise.
 
 **Example:**
 ```swift
@@ -185,6 +195,8 @@ struct IRCTag {
 **Properties:**
 - `key`: Tag key
 - `value`: Tag value
+
+`Hashable` and `Equatable` intentionally use the key only. Compare `value` explicitly when tag payload equality is required.
 
 ## Command Codes
 
@@ -310,6 +322,7 @@ Static methods for parsing IRC messages.
 ```swift
 struct NeedleTailIRCParser {
     static func parseMessage(_ message: String) throws -> IRCMessage
+    static func parseMessage(_ message: String, limits: IRCParserLimits) throws -> IRCMessage
 }
 ```
 
@@ -321,6 +334,9 @@ struct NeedleTailIRCParser {
 
 **Throws:**
 - `MessageParsingErrors`: Various parsing errors
+
+The one-argument overload retains compatibility with large NeedleTail tags. Pass
+`IRCParserLimits.standardIRC` when parsing untrusted standard-IRC traffic.
 
 **Example:**
 ```swift
@@ -392,6 +408,12 @@ protocol NeedleTailWriterDelegate: AnyObject, Sendable {
 
 See <doc:TransportLayer> for integration guidance. This package does not provide socket or TLS connectivity.
 
+### IRCEventProtocol
+
+Inbound command callbacks used by an application dispatcher.
+
+Every requirement has a no-op default. Override each callback that is meaningful to your integration; an unimplemented callback is ignored.
+
 ## Error Types
 
 ### NeedleTailError
@@ -446,7 +468,7 @@ Actor that creates outbound IRC messages and reassembles multipart inbound chunk
 
 ```swift
 actor IRCMessageGenerator {
-    func createMessages(origin: String, command: IRCCommand, tags: [IRCTag]?, authPacket: AuthPacket?, logger: NeedleTailLogger) async -> AsyncStream<IRCMessage>
+    func createMessages(origin: String, command: IRCCommand, tags: [IRCTag]?, authPacket: AuthPacket?, logger: NeedleTailLogger) async -> AsyncThrowingStream<IRCMessage, Error>
     func messageReassembler(ircMessage: IRCMessage) async throws -> IRCMessage?
 }
 ```
@@ -464,6 +486,10 @@ actor PacketBuilder {
 ### DirectMessage
 
 DCC-style direct message envelope (encode/decode only — not a socket file-transfer client).
+
+Multipart packet strings use UInt32 length-prefixed UTF-8 fields so frames can be
+decoded incrementally and independently. Configure binary size limits with
+`IRCPayloadDecoder.withBinaryFrames(maxBinaryFrameLength:)`.
 
 ```swift
 enum DirectMessage {
@@ -527,7 +553,7 @@ do {
         for recipient in recipients {
             switch recipient {
             case .channel(let channel):
-                print("To channel: \(channel.name)")
+                print("To channel: \(channel.stringValue)")
             case .nick(let nick):
                 print("To nick: \(nick.name)")
             }
@@ -668,7 +694,7 @@ let stream = await generator.createMessages(
     logger: logger
 )
 
-for await message in stream {
+for try await message in stream {
     let line = NeedleTailIRCEncoder.encode(value: message)
     try await writeLineToYourTransport(line)
 }

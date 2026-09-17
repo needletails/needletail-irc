@@ -36,6 +36,7 @@ public struct IRCTag: Hashable, Codable, Sendable {
     }
     
     /// Returns the key of the tag as a string representation.
+    @available(*, deprecated, message: "Use key directly.")
     public var stringValue: String {
         return key
     }
