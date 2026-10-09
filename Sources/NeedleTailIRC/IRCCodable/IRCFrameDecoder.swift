@@ -23,10 +23,10 @@ import NeedleTailLogger
 /// (subject to ``BinaryFraming``), and how to translate a payload type's decode result
 /// into NIO's `DecodingState`. Each payload type owns its own framing rule and limits:
 ///
-/// - ``IRCMessage/decode(from:maxLineLength:)`` — newline-delimited; a bad line is
+/// - `IRCMessage.decode(from:maxLineLength:)` — newline-delimited; a bad line is
 ///   consumed and reported as ``IRCMessage/IgnoredLine`` so the stream continues.
-/// - ``IRCBinaryMessage/decode(from:maxFrameLength:)`` and
-///   ``DCCMessage/decode(from:maxFrameLength:)`` — discriminator + length; a bad frame
+/// - `IRCBinaryMessage.decode(from:maxFrameLength:)` and
+///   `DCCMessage.decode(from:maxFrameLength:)` — discriminator + length; a bad frame
 ///   throws, because there is no delimiter to resynchronise on.
 public final class IRCFrameDecoder: ByteToMessageDecoder, @unchecked Sendable {
     public typealias InboundOut = IRCFrame
