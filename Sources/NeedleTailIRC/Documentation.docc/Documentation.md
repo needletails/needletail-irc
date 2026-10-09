@@ -9,11 +9,13 @@ NeedleTailIRC is a type-safe IRC protocol layer for the NeedleTail stack. It han
 The SDK offers:
 
 - **Parse & encode**: `NeedleTailIRCParser` and `NeedleTailIRCEncoder`
+- **Socket frames**: `IRCFrame` (`.text`, `.binary`, `.dcc`) with `IRCFrameEncoder` / `IRCFrameDecoder`
 - **IRCv3 tags**: Message tag parsing and escaping
 - **Modern Swift concurrency**: `IRCMessageGenerator` and `PacketBuilder` actors
 - **Type-safe API**: `IRCCommand`, channels, nicks, permissions
-- **Multipart framing**: Large payload chunking and reassembly
-- **DCC command types**: Wire-format encode/decode for DCC-related commands
+- **Multipart framing**: Large text-payload chunking and reassembly
+- **Binary payloads**: `IRCBinaryMessage` for server-routed opaque bytes
+- **DCC frames**: `DCCMessage`, self-delimiting peer frames
 - **NIO hooks**: `NeedleTailWriterDelegate` for outbound integration
 
 ## Quick Start

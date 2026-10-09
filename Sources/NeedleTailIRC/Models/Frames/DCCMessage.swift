@@ -1,5 +1,5 @@
 //
-//  DCCPacket.swift
+//  DCCMessage.swift
 //  needletail-irc
 //
 //  Created by Cole M on 9/28/24.
@@ -18,14 +18,31 @@ import struct NIOCore.NIOAsyncChannel
 import struct NIOCore.ByteBuffer
 import struct Foundation.Data
 
-public enum DirectMessage: Codable, Sendable {
+/// A frame on a peer-to-peer DCC socket.
+///
+/// Wire layout: one discriminator byte (`0...4`) followed by a case-specific body.
+/// Every variable-length field (`serviceName`, multipart strings, `blob`) is `UInt32`
+/// length-prefixed, so each frame is self-delimiting, and is bounded against the decoder's
+/// `maxFrameLength` before allocation.
+public enum DCCMessage: Codable, Sendable, IRCWireEncodable {
     case serviceName(String), message(MultipartPacket), multipart(MultipartPacket), blob(Data), close
+
+    /// Payload-free summary safe for logs.
+    public var description: String {
+        switch self {
+        case .serviceName(let name): return "<DCCMessage serviceName=\(name)>"
+        case .message(let packet): return "<DCCMessage message group=\(packet.groupId) part=\(packet.partNumber)/\(packet.totalParts)>"
+        case .multipart(let packet): return "<DCCMessage multipart group=\(packet.groupId) part=\(packet.partNumber)/\(packet.totalParts)>"
+        case .blob(let data): return "<DCCMessage blob bytes=\(data.count)>"
+        case .close: return "<DCCMessage close>"
+        }
+    }
     
     public func encode(into buffer: inout ByteBuffer) throws {
            switch self {
            case .serviceName(let name):
                buffer.writeInteger(UInt8(0))
-               buffer.writeString(name)
+               try buffer.writeLengthPrefixedUTF8(name)
 
            case .message(let packet):
                buffer.writeInteger(UInt8(1))
@@ -51,20 +68,21 @@ public enum DirectMessage: Codable, Sendable {
     static func decode(
         from buffer: inout ByteBuffer,
         maxFrameLength: Int
-    ) throws -> DirectMessage {
+    ) throws -> DCCMessage {
             guard let type = buffer.readInteger(as: UInt8.self) else {
                 throw NIODecodeError.incomplete("Missing enum discriminator")
             }
 
             switch type {
             case 0:
-                guard buffer.readableBytes <= maxFrameLength else {
-                    throw NIODecodeError.malformed("Service name exceeds configured limit")
-                }
-                guard let name = buffer.readString(length: buffer.readableBytes) else {
-                    throw NIODecodeError.malformed("Invalid serviceName string")
-                }
-                return .serviceName(name)
+                // Length-prefixed so the name is self-delimiting. It is the first frame on a
+                // peer connection and may share a read with the next frame or arrive fragmented.
+                return .serviceName(
+                    try buffer.readLengthPrefixedUTF8(
+                        field: "serviceName",
+                        maxLength: maxFrameLength
+                    )
+                )
 
             case 1:
                 return .message(
@@ -132,15 +150,17 @@ public struct DCCMetadata: Sendable {
     }
 }
 
+/// A peer DCC socket. Carries whole ``IRCFrame`` values because a DCC connection speaks
+/// both text lines (handshake) and ``DCCMessage`` frames (transfer).
 public struct DCCChannelContext: Sendable {
     public let id: String
-    public let channel: NIOAsyncChannel<IRCPayload, IRCPayload>
-    public let writer: NIOAsyncChannelOutboundWriter<IRCPayload>
+    public let channel: NIOAsyncChannel<IRCFrame, IRCFrame>
+    public let writer: NIOAsyncChannelOutboundWriter<IRCFrame>
     
     public init(
         id: String,
-        channel: NIOAsyncChannel<IRCPayload, IRCPayload>,
-        writer: NIOAsyncChannelOutboundWriter<IRCPayload>
+        channel: NIOAsyncChannel<IRCFrame, IRCFrame>,
+        writer: NIOAsyncChannelOutboundWriter<IRCFrame>
     ) {
         self.id = id
         self.channel = channel

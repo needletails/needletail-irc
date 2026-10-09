@@ -6,6 +6,19 @@ Discover how to handle incoming and outgoing IRC messages using the NeedleTailIR
 
 Message handling is a core aspect of working with IRC. This guide covers how to process incoming messages, send outgoing messages, and work with different message types using the NeedleTailIRC API.
 
+On a live socket, inbound values are ``IRCFrame``s from ``IRCFrameDecoder``, not raw strings. Switch on the frame first, then on `IRCCommand` for `.text`:
+
+```swift
+switch frame {
+case .text(let message):
+    await handleMessage(message)
+case .binary(let message):
+    await handleBinary(message) // payload is Data; recipients route it
+case .dcc(let message):
+    await handleDCC(message)
+}
+```
+
 ## Incoming Message Processing
 
 ### Basic Message Processing

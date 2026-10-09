@@ -10,16 +10,18 @@ A Swift package for parsing, encoding, and framing IRC (Internet Relay Chat) mes
 
 ## Overview
 
-NeedleTailIRC is a type-safe IRC protocol layer for the NeedleTail stack. It covers message parsing and encoding (RFC 2812, RFC 1459), IRCv3 message tags, multipart payload chunking, and NIO writer integration. It does **not** include socket/TLS connection management — you provide the transport and wire encoded lines through your own NIO pipeline or app layer.
+NeedleTailIRC is a type-safe IRC protocol layer for the NeedleTail stack. It covers message parsing and encoding (RFC 2812, RFC 1459), IRCv3 message tags, multipart text chunking, length-prefixed binary frames, self-delimiting DCC frames, and NIO writer integration. It does **not** include socket/TLS connection management — you provide the transport and write `IRCFrame` values through your own NIO pipeline.
 
 ## Features
 
 - **Parse & encode IRC wire format**: `NeedleTailIRCParser` and `NeedleTailIRCEncoder`
+- **One socket unit**: `IRCFrame` is `.text(IRCMessage)`, `.binary(IRCBinaryMessage)`, or `.dcc(DCCMessage)`
 - **IRCv3 message tags**: Tag parsing, escaping, and round-trip encoding
 - **Type-safe commands & models**: `IRCCommand`, `NeedleTailChannel`, `NeedleTailNick`, and related types
-- **Multipart framing**: `IRCMessageGenerator` and `PacketBuilder` for large payload chunking and reassembly
-- **DCC command representation**: Encode/decode bounded, self-delimiting DCC-related frames (not a full file-transfer client)
-- **NIO integration**: `NeedleTailWriterDelegate` for sending framed messages through `NIOAsyncChannelOutboundWriter`
+- **Multipart text framing**: `IRCMessageGenerator` and `PacketBuilder` for large text payloads (`packet-metadata` tags)
+- **Binary payloads**: `IRCBinaryMessage` carries opaque bytes on the server connection without base64 or line limits
+- **DCC frames**: Encode/decode bounded, self-delimiting `DCCMessage` frames (not a full file-transfer client)
+- **NIO integration**: `IRCFrameEncoder`, `IRCFrameDecoder`, and `NeedleTailWriterDelegate`
 - **NeedleTail extensions**: Custom commands in `Constants` for blob sync, media, and device workflows
 
 ## Quick Start
@@ -30,7 +32,7 @@ Add NeedleTailIRC to your project using Swift Package Manager:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/needletails/needletail-irc.git", from: "1.0.0")
+    .package(url: "https://github.com/needletails/needletail-irc.git", from: "2.0.0")
 ]
 ```
 
@@ -180,7 +182,7 @@ do {
 
 ## Documentation
 
-Documentation lives in [Documentation.docc](Sources/NeedleTailIRC/Documentation.docc):
+Release history is in [CHANGELOG.md](CHANGELOG.md). API documentation lives in [Documentation.docc](Sources/NeedleTailIRC/Documentation.docc):
 
 - [Getting Started](Sources/NeedleTailIRC/Documentation.docc/GettingStarted.md) — installation and first messages
 - [Basic Usage](Sources/NeedleTailIRC/Documentation.docc/BasicUsage.md) — core concepts and patterns
@@ -209,15 +211,18 @@ NeedleTailIRC pulls in:
 - `swift-log` — logging API used by transport integration
 - `needletail-logger` — logging
 - `needletail-algorithms` — NeedleTailAsyncSequence and related utilities
-- `binary-codable` — binary serialization for packet metadata
+- `binary-codable` — binary serialization for `packet-metadata` and auth tags on the text path
 
 ## API and wire semantics
 
 - `NeedleTailNick.stringValue` emits `name_UUID` when a device identifier exists and a standard `name` otherwise.
 - `IRCUserIdentifier.stringValue` emits `nick[!user][@host]`.
-- `IRCMessage` equality is identity-based (`id`); `IRCTag` equality is key-based. Compare protocol fields explicitly when value equality is required.
+- `IRCMessage` and `IRCBinaryMessage` equality is identity-based (`id`); `IRCTag` equality is key-based. Compare protocol fields explicitly when value equality is required.
 - `NeedleTailIRCParser.parseMessage(_:)` preserves the historical unbounded tag behavior. Use `parseMessage(_:limits:)` with `.standardIRC` for untrusted standard-IRC input.
-- Binary `DirectMessage` multipart fields use UInt32 length-prefixed UTF-8. Blob and close framing retain their existing discriminator layouts.
+- A socket speaks `IRCFrame`. The leading byte selects the family: `0xFF` is `IRCBinaryMessage`, `0x00...0x04` is `DCCMessage`, anything else is an `IRCMessage` line.
+- Every variable-length `DCCMessage` field, including `serviceName`, is `UInt32` length-prefixed. `serviceName` changed in 2.0.0; both ends of a DCC connection must update together.
+- Choose a decoder per socket: `lineBasedIRC()` (text only), `serverIRC()` (text plus binary, no DCC), `withBinaryFrames()` (all three).
+- `createMessages` still chunks large text into base64 `packet-metadata` tags. Application payloads that should avoid that overhead belong in `IRCBinaryMessage`.
 - `IRCEventProtocol` supplies no-op defaults for every callback. Override every event your integration needs.
 
 ## Installation
@@ -226,7 +231,7 @@ NeedleTailIRC pulls in:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/needletails/needletail-irc.git", from: "1.0.0")
+    .package(url: "https://github.com/needletails/needletail-irc.git", from: "2.0.0")
 ]
 ```
 

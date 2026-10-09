@@ -45,13 +45,13 @@ for try await message in stream {
     var buffer = ByteBuffer()
     buffer.writeString(line)
     buffer.writeString("\r\n")
-    try await outboundWriter.write(.irc(message)) // or your IRCPayload wrapper
+    try await outboundWriter.write(.text(message)) // IRCFrame
 }
 ```
 
 ## NeedleTailWriterDelegate
 
-Conforming types implement `sendAndFlushMessage` for your `OutboundOut` type (typically `IRCPayload`). The protocol extension provides a default `transportMessage` that:
+Conforming types implement `sendAndFlushMessage` for your `OutboundOut` type (typically `IRCFrame`). The protocol extension provides a default `transportMessage` that:
 
 1. Calls `IRCMessageGenerator.createMessages(...)`
 2. Encodes and writes each chunk via `sendAndFlushMessage`
@@ -94,20 +94,50 @@ let message = try NeedleTailIRCParser.parseMessage(
 )
 ```
 
-## Binary DirectMessage framing
+## Frames and wire contracts
 
-Use `IRCPayloadDecoder.withBinaryFrames()` only on peer connections that carry
-`DirectMessage` values. Multipart `groupId` and message fields are UInt32
-length-prefixed UTF-8, and binary lengths are bounded before allocation. The
-line-only factory avoids interpreting a leading byte in `0...4` as a binary
-discriminator:
+Everything on a NeedleTail IRC socket is an `IRCFrame`. The leading byte selects the family:
+
+| First byte | Frame | Payload type | Framing |
+|---|---|---|---|
+| `0xFF` | `.binary` | `IRCBinaryMessage` | `UInt32` frame length, versioned body |
+| `0x00...0x04` | `.dcc` | `DCCMessage` | discriminator + case-specific body |
+| anything else | `.text` | `IRCMessage` | `\r?\n`-terminated RFC 1459 line |
+
+Each payload type owns its own wire contract through `IRCWireEncodable` and a matching
+`static decode(from:…)`; `IRCFrameEncoder` and `IRCFrameDecoder` are thin NIO adapters.
+You can encode or decode without a pipeline:
 
 ```swift
-let ircDecoder = IRCPayloadDecoder.lineBasedIRC()
-let peerDecoder = IRCPayloadDecoder.withBinaryFrames(
-    maxBinaryFrameLength: 8 * 1024 * 1024
-)
+var buffer = ByteBuffer()
+try IRCFrame.text(message).encode(into: &buffer)      // or message.encode(into:)
+try IRCFrame.binary(binaryMessage).encode(into: &buffer)
 ```
+
+Error policy differs by family on purpose. A malformed text line is consumed and reported
+as `IRCMessage.IgnoredLine` (the next newline resynchronises the stream). A malformed
+binary frame throws and should close the connection (there is no delimiter to resync on).
+All binary lengths are bounded before allocation.
+
+## Choosing a decoder per socket
+
+`IRCFrameDecoder.BinaryFraming` controls which binary families a socket will recognise.
+Anything not enabled is framed as text:
+
+```swift
+// Server client listener: routes IRCBinaryMessage, must never interpret 0...4 as DCC.
+let server = IRCFrameDecoder.serverIRC()
+
+// Client pipelines: talk to the server and may open DCC.
+let client = IRCFrameDecoder.withBinaryFrames(maxBinaryFrameLength: 8 * 1024 * 1024)
+
+// Pure text sockets (SFU signaling, mock servers).
+let textOnly = IRCFrameDecoder.lineBasedIRC()
+```
+
+`IRCBinaryMessage` carries the same envelope as a `PRIVMSG` (`origin`, `recipients`,
+`tags`) so the server routes it with the same logic, plus an opaque `payload`, an optional
+`contentType` hint, and an optional `sequence` for payloads split across frames.
 
 ## Line length and interoperability
 

@@ -39,7 +39,7 @@ public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
         _ messageGenerator: IRCMessageGenerator,
         executor: any AnyExecutor,
         logger: NeedleTailLogger,
-        writer: NIOAsyncChannelOutboundWriter<IRCPayload>,
+        writer: NIOAsyncChannelOutboundWriter<IRCFrame>,
         origin: String,
         command: IRCCommand,
         tags: [IRCTag]?,
@@ -70,7 +70,7 @@ extension NeedleTailWriterDelegate {
     ///   - messageGenerator: An instance of `IRCMessageGenerator` that generates messages to be sent.
     ///   - executor: An optional executor of type `AnyExecutor` for managing task execution.
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes. Defaults to a logger with a specific label.
-    ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCPayload>` used to write the messages.
+    ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCFrame>` used to write the messages.
     ///   - origin: A `String` representing the origin of the messages. Defaults to an empty string.
     ///   - command: An instance of `IRCCommand` representing the command associated with the messages.
     ///   - tags: An optional array of `IRCTag` representing any tags associated with the messages.
@@ -80,7 +80,7 @@ extension NeedleTailWriterDelegate {
         _ messageGenerator: IRCMessageGenerator,
         executor: any AnyExecutor,
         logger: NeedleTailLogger = NeedleTailLogger("[ com.needletails.writer.delegate ]"),
-        writer: NIOAsyncChannelOutboundWriter<IRCPayload>,
+        writer: NIOAsyncChannelOutboundWriter<IRCFrame>,
         origin: String = "",
         command: IRCCommand,
         tags: [IRCTag]? = nil,
@@ -110,7 +110,7 @@ extension NeedleTailWriterDelegate {
         messages: AsyncThrowingStream<IRCMessage, Error>,
         executor: any AnyExecutor,
         logger: NeedleTailLogger = NeedleTailLogger("[ com.needletails.writer.delegate ]"),
-        writer: NIOAsyncChannelOutboundWriter<IRCPayload>
+        writer: NIOAsyncChannelOutboundWriter<IRCFrame>
     ) async throws {
         var writtenFrames = 0
         for try await message in messages {
@@ -118,7 +118,7 @@ extension NeedleTailWriterDelegate {
                 executor: executor,
                 logger: logger,
                 writer: writer,
-                message: .irc(message))
+                message: .text(message))
             writtenFrames += 1
         }
         guard writtenFrames > 0 else {

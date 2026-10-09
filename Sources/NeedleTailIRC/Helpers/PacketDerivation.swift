@@ -220,52 +220,6 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
     }
 }
 
-struct NIODecodeError: Error, CustomStringConvertible {
-    enum Kind: Equatable {
-        case incomplete
-        case malformed
-    }
-
-    let kind: Kind
-    let message: String
-    var description: String { message }
-
-    static func incomplete(_ message: String) -> NIODecodeError {
-        NIODecodeError(kind: .incomplete, message: message)
-    }
-
-    static func malformed(_ message: String) -> NIODecodeError {
-        NIODecodeError(kind: .malformed, message: message)
-    }
-}
-
-private extension ByteBuffer {
-    mutating func writeLengthPrefixedUTF8(_ value: String) throws {
-        let bytes = value.utf8
-        guard bytes.count <= Int(UInt32.max) else {
-            throw NIODecodeError.malformed("UTF-8 field is too large to encode")
-        }
-        writeInteger(UInt32(bytes.count))
-        writeString(value)
-    }
-
-    mutating func readLengthPrefixedUTF8(
-        field: String,
-        maxLength: Int
-    ) throws -> String {
-        guard let encodedLength = readInteger(as: UInt32.self) else {
-            throw NIODecodeError.incomplete("Missing \(field) length")
-        }
-        guard Int(encodedLength) <= maxLength else {
-            throw NIODecodeError.malformed("\(field) exceeds configured limit")
-        }
-        guard let value = readString(length: Int(encodedLength)) else {
-            throw NIODecodeError.incomplete("Incomplete \(field)")
-        }
-        return value
-    }
-}
-
 /// A utility for breaking down large messages and data into smaller packets for IRC transmission.
 ///
 /// `PacketDerivation` handles the process of splitting large content into smaller chunks

@@ -33,8 +33,8 @@ let messages = await generator.createMessages(
 )
 
 for try await message in messages {
-    // Send via your NIO pipeline using IRCPayloadEncoder
-    // try await writer.write(.irc(message))
+    // Send via your NIO pipeline using IRCFrameEncoder
+    // try await writer.write(.text(message))
 }
 ```
 
@@ -96,9 +96,13 @@ let stream = await packetDerivation.calculateAndDispense(
 - Keeps only the newest N packets in the stream
 - Does not change how source text is chunked
 
-## Binary DirectMessage framing
+## Binary DCCMessage framing
 
-Peer connections that carry `DirectMessage` values use `IRCPayloadDecoder.withBinaryFrames()`. Multipart `groupId` and message fields are UInt32 length-prefixed UTF-8. Discriminators `0`, `3`, and `4` keep their existing layouts.
+Peer connections that carry `DCCMessage` values use `IRCFrameDecoder.withBinaryFrames()`. Every variable-length field — `serviceName` (discriminator `0`), multipart `groupId`/message strings, and `blob` (`3`) — is UInt32 length-prefixed, so each frame is self-delimiting and survives TCP coalescing and fragmentation. `close` (`4`) is the bare discriminator.
+
+> Wire change: `serviceName` was previously written as raw bytes to end-of-buffer. Peers running the old layout cannot exchange `serviceName` frames with peers running this one; both ends of a DCC/Bonjour connection must be updated together.
+
+For server-routed binary (no peer socket), use `IRCBinaryMessage` instead; see <doc:TransportLayer>.
 
 ## Binary Data Support
 

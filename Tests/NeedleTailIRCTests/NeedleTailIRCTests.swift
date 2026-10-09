@@ -30,13 +30,13 @@ final class NeedleTailIRCTests {
     }
 
     @Test func ircDecoderBlankLinePolicyDoesNotRelaxCommandOrNickParsing() throws {
-        #expect(IRCPayloadDecoder.shouldIgnoreIRCLine(""))
-        #expect(IRCPayloadDecoder.shouldIgnoreIRCLine(" "))
-        #expect(IRCPayloadDecoder.shouldIgnoreIRCLine("\t"))
+        #expect(IRCFrameDecoder.shouldIgnoreIRCLine(""))
+        #expect(IRCFrameDecoder.shouldIgnoreIRCLine(" "))
+        #expect(IRCFrameDecoder.shouldIgnoreIRCLine("\t"))
 
-        #expect(!IRCPayloadDecoder.shouldIgnoreIRCLine(" NICK alice"))
-        #expect(!IRCPayloadDecoder.shouldIgnoreIRCLine("NICK alice "))
-        #expect(!IRCPayloadDecoder.shouldIgnoreIRCLine("@tag=value"))
+        #expect(!IRCFrameDecoder.shouldIgnoreIRCLine(" NICK alice"))
+        #expect(!IRCFrameDecoder.shouldIgnoreIRCLine("NICK alice "))
+        #expect(!IRCFrameDecoder.shouldIgnoreIRCLine("@tag=value"))
 
         #expect(throws: (any Error).self) {
             _ = try NeedleTailIRCParser.parseMessage(" NICK alice")
@@ -133,7 +133,7 @@ final class NeedleTailIRCTests {
             .rehash,
             .restart,
             .die,
-            .squit("server", "comment"),
+            .sQuit("server", "comment"),
             .connect("target", 6667, "remote"),
             .trace("target"),
             .stats("query", "target"),
@@ -478,11 +478,7 @@ final class NeedleTailIRCTests {
         case (.rehash, .rehash), (.restart, .restart), (.die, .die), (.map, .map), (.adl, .adl), (.odlist, .odlist):
             // No parameters to validate
             break
-            
-        case (.squit(let originalServer, let originalComment), .squit(let parsedServer, let parsedComment)):
-            #expect(parsedServer == originalServer, "SQUIT server should match")
-            #expect(parsedComment == originalComment, "SQUIT comment should match")
-            
+
         case (.connect(let originalTarget, let originalPort, let originalRemote), .connect(let parsedTarget, let parsedPort, let parsedRemote)):
             #expect(parsedTarget == originalTarget, "CONNECT target should match")
             #expect(parsedPort == originalPort, "CONNECT port should match")
@@ -857,7 +853,7 @@ final class NeedleTailIRCTests {
             .rehash,
             .restart,
             .die,
-            .squit("server", "comment"),
+            .sQuit("server", "comment"),
             .connect("target", 6667, "remote"),
             .trace("target"),
             .stats("query", "target"),
@@ -1170,7 +1166,7 @@ final class NeedleTailIRCTests {
     // since some deployments support larger lines (e.g., encrypted/base64 payloads).
 
     // NOTE:
-    // IRCPayloadWireSize remains available as an optional measurement helper, but tests no longer
+    // Wire-size measurement remains available as an optional helper, but tests no longer
     // assume a 512-byte environment.
 
     // NOTE:

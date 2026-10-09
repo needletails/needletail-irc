@@ -22,7 +22,26 @@ let message = IRCMessage(
 )
 
 print(message.description)
-// Output: <IRCProtocolMessage: from=alice command=PRIVMSG #general :Hello, world!>
+// Output: <IRCMessage: from=alice command=PRIVMSG #general :Hello, world!>
+```
+
+## Frames on the socket
+
+A NeedleTail socket carries ``IRCFrame`` values, not bare strings. The leading byte selects the family. See <doc:TransportLayer>.
+
+```swift
+import NIOCore
+
+// Text stays an RFC 1459 line.
+var buffer = ByteBuffer()
+try IRCFrame.text(message).encode(into: &buffer)
+
+// Opaque application bytes are a length-prefixed binary frame.
+let binary = IRCBinaryMessage(
+    recipients: [.channel(NeedleTailChannel("#general")!)],
+    payload: Data([0x01, 0x02])
+)
+try IRCFrame.binary(binary).encode(into: &buffer)
 ```
 
 ## Parse IRC Messages

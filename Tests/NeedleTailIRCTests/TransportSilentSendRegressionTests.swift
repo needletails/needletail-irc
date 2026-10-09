@@ -32,7 +32,7 @@ struct TransportSilentSendRegressionTests {
     @Test func testTransportMessageThrowsWhenGeneratorYieldsZeroFrames() async throws {
         let executor = TestableExecutor(queue: DispatchQueue.global())
         let delegate = CountingWriterDelegate()
-        let (writer, _) = NIOAsyncChannelOutboundWriter<IRCPayload>.makeTestingWriter()
+        let (writer, _) = NIOAsyncChannelOutboundWriter<IRCFrame>.makeTestingWriter()
         let empty = AsyncThrowingStream<IRCMessage, Error> { continuation in
             continuation.finish()
         }
