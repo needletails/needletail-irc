@@ -22,7 +22,7 @@ private struct AuthFailingBinaryEncoder: BinaryEncoding {
 struct GeneratorFailureTests {
     @Test("The throwing payload encoder rejects empty command targets")
     func payloadEncoderRejectsEmptyTargets() {
-        let encoder = IRCPayloadEncoder()
+        let encoder = IRCFrameEncoder()
         let messages = [
             IRCMessage(command: .join(channels: [], keys: nil)),
             IRCMessage(command: .privMsg([], "hello")),
@@ -32,7 +32,7 @@ struct GeneratorFailureTests {
         for message in messages {
             #expect(throws: IRCMessageGeneratorError.emptyCommandRejected) {
                 var output = ByteBuffer()
-                try encoder.encode(data: .irc(message), out: &output)
+                try encoder.encode(data: .text(message), out: &output)
             }
         }
     }

@@ -307,8 +307,6 @@ public struct NeedleTailIRCEncoder: Sendable {
         case .die:
             // No additional parameters
             break
-        case .squit(let serverName, let comment):
-            components.append("\(serverName)\(Constants.space.rawValue)\(Constants.colon.rawValue)\(comment)")
         case .connect(let targetServer, let port, let remoteServer):
             components.append("\(targetServer)\(Constants.space.rawValue)\(port)")
             if let remoteServer = remoteServer {

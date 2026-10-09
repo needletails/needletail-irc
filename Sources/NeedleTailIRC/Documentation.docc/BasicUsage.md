@@ -8,6 +8,18 @@ This guide covers the core concepts and common patterns you'll use when working 
 
 ## Core Concepts
 
+### Socket frames
+
+Everything read from or written to a NeedleTail IRC socket is an ``IRCFrame``:
+
+| Case | Payload | When |
+|---|---|---|
+| `.text` | ``IRCMessage`` | RFC 1459 lines: registration, membership, notices, server numerics |
+| `.binary` | ``IRCBinaryMessage`` | Opaque bytes routed by the server (application payloads) |
+| `.dcc` | ``DCCMessage`` | Peer-to-peer DCC frames |
+
+Text and binary share the server connection. DCC is a separate peer socket. Pick the decoder with `IRCFrameDecoder.lineBasedIRC()`, `.serverIRC()`, or `.withBinaryFrames()`.
+
 ### IRC Messages
 
 An IRC message consists of several components:

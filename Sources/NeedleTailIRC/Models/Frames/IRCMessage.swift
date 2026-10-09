@@ -95,7 +95,7 @@ public struct IRCMessage: Codable, Sendable {
 
     /// A string representation of the message for logging and debugging.
     public var description: String {
-        var output = "<IRCProtocolMessage:"
+        var output = "<IRCMessage:"
         if let tags = tags {
             output += tags.map { "@\($0.key)=\($0.value)" }.joined(separator: "; ")
         }

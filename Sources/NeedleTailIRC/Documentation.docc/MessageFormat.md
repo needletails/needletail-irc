@@ -4,7 +4,7 @@ Learn about IRC message structure and formatting according to RFC 2812 and RFC 1
 
 ## Overview
 
-IRC messages follow a specific format defined by the IRC protocol standards. NeedleTailIRC provides type-safe representations for parsing and encoding wire-format messages.
+IRC messages follow a specific format defined by the IRC protocol standards. NeedleTailIRC provides type-safe representations for parsing and encoding wire-format messages. A text line is one case of ``IRCFrame``. Binary application payloads and DCC peer frames use their own layouts, documented in <doc:TransportLayer>.
 
 ## Message Structure
 

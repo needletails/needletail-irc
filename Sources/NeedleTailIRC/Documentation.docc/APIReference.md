@@ -386,7 +386,7 @@ protocol NeedleTailWriterDelegate: AnyObject, Sendable {
         _ messageGenerator: IRCMessageGenerator,
         executor: any AnyExecutor,
         logger: NeedleTailLogger,
-        writer: NIOAsyncChannelOutboundWriter<IRCPayload>,
+        writer: NIOAsyncChannelOutboundWriter<IRCFrame>,
         origin: String,
         command: IRCCommand,
         tags: [IRCTag]?,
@@ -483,22 +483,69 @@ actor PacketBuilder {
 }
 ```
 
-### DirectMessage
+### IRCFrame
 
-DCC-style direct message envelope (encode/decode only — not a socket file-transfer client).
+The unit read from or written to a socket. Every payload conforms to `IRCWireEncodable`.
+
+```swift
+enum IRCFrame: IRCWireEncodable {
+    case text(IRCMessage)          // CRLF line
+    case binary(IRCBinaryMessage)  // 0xFF-discriminated, length-prefixed
+    case dcc(DCCMessage)           // 0...4-discriminated peer frame
+}
+
+protocol IRCWireEncodable: Sendable {
+    func encode(into buffer: inout ByteBuffer) throws
+}
+```
+
+### IRCBinaryMessage
+
+Server-routed binary sibling of `IRCMessage`. Same envelope, opaque body.
+
+```swift
+struct IRCBinaryMessage: IRCWireEncodable {
+    static let discriminator: UInt8 = 0xFF
+    static let wireVersion: UInt8 = 1
+
+    var id: UUID
+    var origin: String?
+    var recipients: [IRCMessageRecipient]
+    var tags: [IRCTag]?
+    var contentType: String?
+    var sequence: Sequence?        // groupId, partNumber, totalParts
+    var payload: Data
+}
+```
+
+### DCCMessage
+
+DCC-style peer frame (encode/decode only — not a socket file-transfer client).
 
 Multipart packet strings use UInt32 length-prefixed UTF-8 fields so frames can be
 decoded incrementally and independently. Configure binary size limits with
-`IRCPayloadDecoder.withBinaryFrames(maxBinaryFrameLength:)`.
+`IRCFrameDecoder.withBinaryFrames(maxBinaryFrameLength:)`.
 
 ```swift
-enum DirectMessage {
+enum DCCMessage: IRCWireEncodable {
     case serviceName(String)
     case message(MultipartPacket)
     case multipart(MultipartPacket)
     case blob(Data)
     case close
 }
+```
+
+### IRCFrameDecoder.BinaryFraming
+
+Per-socket gate for which binary families the decoder recognises.
+
+```swift
+struct BinaryFraming: OptionSet { static let dcc, ircBinary, none, all }
+
+IRCFrameDecoder.lineBasedIRC()      // none
+IRCFrameDecoder.serverIRC()         // .ircBinary
+IRCFrameDecoder.withBinaryFrames()  // .all
 ```
 
 ### Constants

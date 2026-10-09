@@ -8,26 +8,31 @@ NeedleTailIRC provides specific error types for different failure scenarios. Und
 
 ## Key Errors You Should Handle
 
-- **`IRCPayloadDecoder.DecoderError.lineTooLong`**: Raised when an IRC buffer exceeds its configured limit without a newline.
+- **`IRCMessage.LineError.lineTooLong`** (aliased as `IRCFrameDecoder.DecoderError`): Raised when pending IRC bytes exceed the configured line limit, with or without a newline.
 - **`MessageParsingErrors`**: Raised when parsing a single IRC line fails (invalid tags/arguments/etc).
 - **`IRCMessageGeneratorError`**: Raised for empty outbound commands and authentication or packet-metadata encoding failures.
 
 ## Outbound (encoding) limits
 
 ```swift
-// IRCPayloadEncoder is the mandatory outbound encoding boundary.
+// IRCFrameEncoder is the mandatory outbound encoding boundary; it delegates to
+// IRCWireEncodable.encode(into:) on each payload type.
 // This SDK does not enforce a hard IRC line length limit at the encoder boundary by default,
 // because some deployments support/require larger-than-512 lines.
-// Commands with empty required channels or recipients throw emptyCommandRejected.
+// IRCMessage: empty required channels/recipients throw emptyCommandRejected; embedded
+//             CR/LF are stripped at the scalar level so a line can never contain its own terminator.
+// IRCBinaryMessage: empty recipients throw emptyCommandRejected; payload > UInt32.max is malformed.
 ```
 
 ## Inbound (decoding) limits
 
 ```swift
-// IRCPayloadDecoder enforces safety limits:
+// IRCFrameDecoder enforces safety limits:
 // - Oversize IRC lines are treated as protocol violations (error + close by default).
 // - If the buffer grows beyond the configured max without a newline, it errors + closes.
-// - Binary frame lengths are validated before their payload is consumed.
+// - Unparsable or blank text lines are consumed and skipped (IRCMessage.IgnoredLine), not thrown.
+// - Binary frame lengths are validated before their payload is consumed; a malformed
+//   binary frame throws because there is no delimiter to resynchronise on.
 ```
 
 ## Basic Error Handling
@@ -110,7 +115,7 @@ do {
         logger: logger
     )
     for try await message in stream {
-        try await writer.write(.irc(message))
+        try await writer.write(.text(message))
     }
 } catch IRCMessageGeneratorError.authPacketEncodeFailed {
     // Authentication metadata was not sent; no frame was yielded.

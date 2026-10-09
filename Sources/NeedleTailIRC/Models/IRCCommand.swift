@@ -190,9 +190,6 @@ public enum IRCCommand: Codable, Sendable {
     case restart // RESTART command
     /// Shuts down the IRC server.
     case die // DIE command
-    /// Disconnects a server from the network.
-    @available(*, deprecated, renamed: "sQuit")
-    case squit(String, String) // SQUIT command (server, comment)
     /// Connects to another server.
     case connect(String, Int, String?) // CONNECT command (target server, port, remote server)
     /// Traces the server connection path.
@@ -347,7 +344,6 @@ public enum IRCCommand: Codable, Sendable {
         case .rehash: return Constants.rehash.rawValue
         case .restart: return Constants.restart.rawValue
         case .die: return Constants.die.rawValue
-        case .squit: return Constants.sQuit.rawValue
         case .connect: return Constants.connect.rawValue
         case .trace: return Constants.trace.rawValue
         case .stats: return Constants.stats.rawValue
@@ -484,7 +480,6 @@ public enum IRCCommand: Codable, Sendable {
         case .rehash: return []
         case .restart: return []
         case .die: return []
-        case .squit(let serverName, let comment): return [serverName, comment]
         case .connect(let targetServer, let port, let remoteServer): return [targetServer, String(port), remoteServer ?? ""]
         case .trace(let target): return target != nil ? [target!] : []
         case .stats(let query, let target): return [query ?? "", target ?? ""]
@@ -510,7 +505,8 @@ public enum IRCCommand: Codable, Sendable {
     
     // MARK: - CustomStringConvertible Conformance
     
-    /// Provides a string representation of the IRCMessage.
+    /// Command name, plus arguments for the cases that carry them.
+    /// Every command has a name; nothing falls through to a placeholder.
     public var description: String {
         switch self {
         case .ping(let server, let server2):
@@ -523,10 +519,10 @@ public enum IRCCommand: Codable, Sendable {
         case .kick(let channels, let users, let comments):
             return "\(Constants.kick.rawValue) '\(channels.map { $0.stringValue }.joined(separator: Constants.comma.rawValue))' '\(users.map { $0.stringValue }.joined(separator: Constants.comma.rawValue))' '\(comments.joined(separator: Constants.comma.rawValue))'"
         case .kill(let nick, let comment): return "\(Constants.kill.rawValue) '\(nick.stringValue)' '\(comment)'"
-        case .otherCommand(let cmd, let args): return "<IRCMessage: \(cmd) args=\(args.joined(separator: Constants.comma.rawValue))>"
-        case .otherNumeric(let cmd, let args): return "<IRCMessage: \(cmd) args=\(args.joined(separator: Constants.comma.rawValue))>"
-        case .numeric(let cmd, let args): return "<IRCMessage: \(cmd.rawValue) args=\(args.joined(separator: Constants.comma.rawValue))>"
-        default: return "<Unknown Command>"
+        case .otherCommand(let cmd, let args): return "<IRCCommand: \(cmd) args=\(args.joined(separator: Constants.comma.rawValue))>"
+        case .otherNumeric(let cmd, let args): return "<IRCCommand: \(cmd) args=\(args.joined(separator: Constants.comma.rawValue))>"
+        case .numeric(let cmd, let args): return "<IRCCommand: \(cmd.rawValue) args=\(args.joined(separator: Constants.comma.rawValue))>"
+        default: return commandAsString
         }
     }
 }

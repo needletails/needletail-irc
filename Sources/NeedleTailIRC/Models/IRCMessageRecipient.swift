@@ -47,9 +47,9 @@ public enum IRCMessageRecipient: Codable, Hashable, Sendable {
 }
 
 public extension IRCMessageRecipient {
-    /// Initializes an `IRCPayloadRecipient` from a string.
+    /// Initializes an `IRCMessageRecipient` from a string.
     /// - Parameter string: The string representation of the recipient.
-    /// - Returns: An optional `IRCPayloadRecipient`. Returns `nil` if parsing fails.
+    /// - Returns: An optional `IRCMessageRecipient`. Returns `nil` if parsing fails.
     init?(_ string: String) {
         if string == Constants.star.rawValue {
             self = .all

@@ -53,33 +53,53 @@ struct IRCCriticalBugRegressionTests {
 
     // MARK: - Decoder
 
-    /// PIN / defensive: NIO `getString` lossy-decodes invalid UTF-8 (never nil), so the
+    /// PIN / defensive: NIO `readString` lossy-decodes invalid UTF-8 (never nil), so the
     /// historic "needMoreData after consume" stall is not reachable via bad UTF-8 alone.
     /// Still require the next valid line to decode; GREEN keeps `.continue` if string decode fails.
+    ///
+    /// Uses `lineBasedIRC()` because `0xFF` is the `IRCBinaryMessage` discriminator on
+    /// sockets that enable binary framing (covered by the next test).
     @Test func testDecoderInvalidUTF8LineDoesNotBlockNextLine() throws {
-        let channel = EmbeddedChannel(handler: ByteToMessageHandler(IRCPayloadDecoder()))
+        let channel = EmbeddedChannel(handler: ByteToMessageHandler(IRCFrameDecoder.lineBasedIRC()))
         defer { _ = try? channel.finish() }
 
         var buffer = channel.allocator.buffer(capacity: 64)
-        buffer.writeBytes([0xFF, 0xFE]) // invalid UTF-8 (lossy → U+FFFD under NIO getString)
+        buffer.writeBytes([0xFF, 0xFE]) // invalid UTF-8 (lossy → U+FFFD under NIO readString)
         buffer.writeString("\r\n")
         buffer.writeString("PRIVMSG #x :ok\r\n")
 
         try channel.writeInbound(buffer)
 
         var sawOK = false
-        while let payload = try channel.readInbound(as: IRCPayload.self) {
-            if case .irc(let msg) = payload, case .privMsg(_, let body) = msg.command, body == "ok" {
+        while let payload = try channel.readInbound(as: IRCFrame.self) {
+            if case .text(let msg) = payload, case .privMsg(_, let body) = msg.command, body == "ok" {
                 sawOK = true
             }
         }
         #expect(sawOK, "Valid PRIVMSG after invalid UTF-8 line must still decode")
     }
 
+    /// With binary framing enabled, a leading `0xFF` is a binary frame, never text. A bogus
+    /// one must fail fast (malformed length) rather than be mis-parsed as an IRC line.
+    @Test func testDecoderWithBinaryFramingTreatsFFAsBinaryDiscriminator() throws {
+        let channel = EmbeddedChannel(
+            handler: ByteToMessageHandler(IRCFrameDecoder.withBinaryFrames(maxBinaryFrameLength: 1024))
+        )
+        defer { _ = try? channel.finish() }
+
+        var buffer = channel.allocator.buffer(capacity: 64)
+        buffer.writeBytes([0xFF, 0xFE])
+        buffer.writeString("\r\nPRIVMSG #x :ok\r\n") // bytes after 0xFF read as a huge frame length
+
+        #expect(throws: (any Error).self) {
+            try channel.writeInbound(buffer)
+        }
+    }
+
     @Test func testDecoderRejectsOversizedLineWithoutNewline() throws {
         let maxLen = 1024
         let channel = EmbeddedChannel(
-            handler: ByteToMessageHandler(IRCPayloadDecoder.withBinaryFrames(maxLineLength: maxLen))
+            handler: ByteToMessageHandler(IRCFrameDecoder.withBinaryFrames(maxLineLength: maxLen))
         )
         defer { _ = try? channel.finish() }
 
@@ -97,7 +117,7 @@ struct IRCCriticalBugRegressionTests {
 
     @Test func testDecoderLineBasedIRCTreatsLowBytesAsIRC() throws {
         let channel = EmbeddedChannel(
-            handler: ByteToMessageHandler(IRCPayloadDecoder.lineBasedIRC())
+            handler: ByteToMessageHandler(IRCFrameDecoder.lineBasedIRC())
         )
         defer { _ = try? channel.finish() }
 
@@ -110,8 +130,8 @@ struct IRCCriticalBugRegressionTests {
         try channel.writeInbound(buffer)
 
         var sawIRC = false
-        while let payload = try channel.readInbound(as: IRCPayload.self) {
-            if case .irc = payload {
+        while let payload = try channel.readInbound(as: IRCFrame.self) {
+            if case .text = payload {
                 sawIRC = true
             }
             if case .dcc = payload {
@@ -124,8 +144,8 @@ struct IRCCriticalBugRegressionTests {
         var follow = channel.allocator.buffer(capacity: 32)
         follow.writeString("PRIVMSG #x :ok2\r\n")
         try channel.writeInbound(follow)
-        while let payload = try channel.readInbound(as: IRCPayload.self) {
-            if case .irc(let msg) = payload, case .privMsg(_, let body) = msg.command, body == "ok2" {
+        while let payload = try channel.readInbound(as: IRCFrame.self) {
+            if case .text(let msg) = payload, case .privMsg(_, let body) = msg.command, body == "ok2" {
                 sawIRC = true
             }
         }
@@ -142,9 +162,9 @@ struct IRCCriticalBugRegressionTests {
         let message = IRCMessage(
             command: .privMsg([.channel(channel)], "line1\nline2")
         )
-        let encoder = IRCPayloadEncoder()
+        let encoder = IRCFrameEncoder()
         var out = ByteBufferAllocator().buffer(capacity: 128)
-        try encoder.encode(data: .irc(message), out: &out)
+        try encoder.encode(data: .text(message), out: &out)
 
         guard let written = out.getString(at: out.readerIndex, length: out.readableBytes) else {
             Issue.record("Expected encoded string")
