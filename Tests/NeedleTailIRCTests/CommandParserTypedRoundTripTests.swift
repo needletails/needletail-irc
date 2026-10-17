@@ -4,33 +4,69 @@ import Testing
 
 @Suite(.serialized)
 struct CommandParserTypedRoundTripTests {
-    @Test("Commands without a typed case arrive as otherCommand with RFC parameters")
-    func untypedCommandsRoundTripAsOtherCommand() throws {
+    @Test("Known commands decode to their typed IRCCommand cases")
+    func knownCommandsRemainTyped() throws {
+        let channel = try #require(NeedleTailChannel("#general"))
+        let nick = try #require(NeedleTailNick(name: "alice", deviceId: UUID()))
         let commands: [IRCCommand] = [
-            .otherCommand("TOPIC", ["#general", "Topic text"]),
-            .otherCommand("INVITE", ["alice", "#general"]),
-            .otherCommand("AWAY", ["gone for lunch"]),
-            .otherCommand("WHOWAS", ["bob", "5"]),
-            .otherCommand("MOTD", []),
+            .oper("operator", "password"),
+            .knock(channel, "invite please"),
+            .silence("mask!*@*"),
+            .invite(nick, channel),
+            .topic(channel, "Topic"),
+            .names(channel),
+            .clearmode(channel, "nt"),
+            .rehash,
+            .restart,
+            .die,
+            .connect("irc.example.com", 6697, "hub.example.com"),
+            .trace("irc.example.com"),
+            .stats("u", "irc.example.com"),
+            .admin("irc.example.com"),
+            .info("irc.example.com"),
+            .version("irc.example.com"),
+            .time("irc.example.com"),
+            .lusers("*", "irc.example.com"),
+            .motd("irc.example.com"),
+            .rules("irc.example.com"),
+            .map,
+            .users("irc.example.com"),
+            .wallops("message"),
+            .globops("message"),
+            .locops("message"),
         ]
 
         for original in commands {
             let wire = NeedleTailIRCEncoder.encode(value: IRCMessage(command: original))
             let parsed = try NeedleTailIRCParser.parseMessage(wire).command
-            guard case .otherCommand(let name, let arguments) = parsed else {
-                Issue.record("Expected otherCommand, got \(parsed)")
-                continue
-            }
-            #expect(name == original.commandAsString)
-            #expect(arguments == original.arguments)
+            #expect(
+                supplementalKind(parsed) == supplementalKind(original),
+                "Expected \(supplementalKind(original)), got \(parsed)"
+            )
+            #expect(parsed.arguments == original.arguments)
         }
     }
 
     @Test("Optional command forms remain typed")
     func optionalFormsRemainTyped() throws {
+        let channel = try #require(NeedleTailChannel("#general"))
         let commands: [IRCCommand] = [
             .quit(nil),
             .links(nil),
+            .knock(channel, nil),
+            .topic(channel, nil),
+            .names(nil),
+            .connect("irc.example.com", 6697, nil),
+            .trace(nil),
+            .stats(nil, nil),
+            .admin(nil),
+            .info(nil),
+            .version(nil),
+            .time(nil),
+            .lusers(nil, nil),
+            .motd(nil),
+            .rules(nil),
+            .users(nil),
             .cap(.end, []),
         ]
 
@@ -60,6 +96,24 @@ struct CommandParserTypedRoundTripTests {
         }
     }
 
+    @Test("Commands that don't fit their typed case arrive as otherCommand")
+    func untypedFormsFallBackToOtherCommand() throws {
+        let lines: [(String, [String])] = [
+            ("CONNECT", ["server", "port"]),
+            ("NAMES", ["#a,#b"]),
+            ("WHOWAS", ["bob", "5"]),
+        ]
+        for (command, arguments) in lines {
+            let parsed = try NeedleTailIRCCommandParser.parse(command: command, arguments: arguments)
+            guard case .otherCommand(let name, let parsedArguments) = parsed else {
+                Issue.record("Expected otherCommand for \(command), got \(parsed)")
+                continue
+            }
+            #expect(name == command)
+            #expect(parsedArguments == arguments)
+        }
+    }
+
     @Test("PRIVMSG rejects a target that cannot be parsed")
     func invalidRecipientThrows() {
         #expect(throws: (any Error).self) {
@@ -76,6 +130,31 @@ private func supplementalKind(_ command: IRCCommand) -> String {
     case .quit: "quit"
     case .links: "links"
     case .cap: "cap"
+    case .oper: "oper"
+    case .knock: "knock"
+    case .silence: "silence"
+    case .invite: "invite"
+    case .topic: "topic"
+    case .names: "names"
+    case .clearmode: "clearmode"
+    case .rehash: "rehash"
+    case .restart: "restart"
+    case .die: "die"
+    case .connect: "connect"
+    case .trace: "trace"
+    case .stats: "stats"
+    case .admin: "admin"
+    case .info: "info"
+    case .version: "version"
+    case .time: "time"
+    case .lusers: "lusers"
+    case .motd: "motd"
+    case .rules: "rules"
+    case .map: "map"
+    case .users: "users"
+    case .wallops: "wallops"
+    case .globops: "globops"
+    case .locops: "locops"
     default: "unexpected"
     }
 }

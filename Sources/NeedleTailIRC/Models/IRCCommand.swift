@@ -131,6 +131,62 @@ public enum IRCCommand: Codable, Sendable {
     case sdccSend(NeedleTailNick, String, Int, String, Int)
     case sdccResume(NeedleTailNick, String, Int, String, Int, Int)
     
+    // MARK: - Additional IRC Commands for 100% Conformance (RFC 2812, RFC 1459, IRCv3)
+    // These are added for protocol completeness. Implementation may be stubbed/TODO.
+    /// Sets or removes the away status for a user.
+    case away(String?) // AWAY command
+    /// Authenticates a user as an IRC operator.
+    case oper(String, String) // OPER command (username, password)
+    /// Requests an invite to an invite-only channel.
+    case knock(NeedleTailChannel, String?) // KNOCK command (channel, optional message)
+    /// Sets or removes a silence mask for ignoring users.
+    case silence(String) // SILENCE command (mask)
+    /// Invites a user to a channel.
+    case invite(NeedleTailNick, NeedleTailChannel) // INVITE command
+    /// Sets or gets the topic for a channel.
+    case topic(NeedleTailChannel, String?) // TOPIC command (channel, optional topic)
+    /// Lists users in a channel or all channels.
+    case names(NeedleTailChannel?) // NAMES command (optional channel)
+    /// Clears all modes from a channel.
+    case clearmode(NeedleTailChannel, String) // CLEARMODE command (channel, mode)
+    // MARK: - Administrative/Server Commands
+    /// Reloads server configuration files.
+    case rehash // REHASH command
+    /// Restarts the IRC server.
+    case restart // RESTART command
+    /// Shuts down the IRC server.
+    case die // DIE command
+    /// Connects to another server.
+    case connect(String, Int, String?) // CONNECT command (target server, port, remote server)
+    /// Traces the server connection path.
+    case trace(String?) // TRACE command (optional target)
+    /// Requests server statistics.
+    case stats(String?, String?) // STATS command (optional query, optional target)
+    /// Requests server administrator information.
+    case admin(String?) // ADMIN command (optional target)
+    /// Requests server information.
+    case info(String?) // INFO command (optional target)
+    /// Requests server version.
+    case version(String?) // VERSION command (optional target)
+    /// Requests server time.
+    case time(String?) // TIME command (optional target)
+    /// Requests user statistics.
+    case lusers(String?, String?) // LUSERS command (optional mask, optional target)
+    /// Requests the message of the day.
+    case motd(String?) // MOTD command (optional target)
+    /// Requests server rules.
+    case rules(String?) // RULES command (optional target)
+    /// Requests the server network map.
+    case map // MAP command
+    /// Requests a list of users.
+    case users(String?) // USERS command (optional target)
+    /// Sends a wallops message to all operators.
+    case wallops(String) // WALLOPS command
+    /// Sends a global operator message.
+    case globops(String) // GLOBOPS command
+    /// Sends a local operator message.
+    case locops(String) // LOCOPS command
+    
     // MARK: - Computed Properties
     
     /// Returns the string representation of the command.
@@ -216,6 +272,33 @@ public enum IRCCommand: Codable, Sendable {
             let s = String(cmd.rawValue)
             if s.count >= 3 { return s }
             return String(repeating: "0", count: 3 - s.count) + s
+        // Add cases for new commands in commandAsString
+        case .away: return Constants.away.rawValue
+        case .oper: return Constants.oper.rawValue
+        case .knock: return Constants.knock.rawValue
+        case .silence: return Constants.silence.rawValue
+        case .invite: return Constants.invite.rawValue
+        case .topic: return Constants.topic.rawValue
+        case .names: return Constants.names.rawValue
+        case .clearmode: return Constants.clearmode.rawValue
+        case .rehash: return Constants.rehash.rawValue
+        case .restart: return Constants.restart.rawValue
+        case .die: return Constants.die.rawValue
+        case .connect: return Constants.connect.rawValue
+        case .trace: return Constants.trace.rawValue
+        case .stats: return Constants.stats.rawValue
+        case .admin: return Constants.admin.rawValue
+        case .info: return Constants.info.rawValue
+        case .version: return Constants.version.rawValue
+        case .time: return Constants.time.rawValue
+        case .lusers: return Constants.lusers.rawValue
+        case .motd: return Constants.motd.rawValue
+        case .rules: return Constants.rules.rawValue
+        case .map: return Constants.map.rawValue
+        case .users: return Constants.users.rawValue
+        case .wallops: return Constants.wallops.rawValue
+        case .globops: return Constants.globops.rawValue
+        case .locops: return Constants.locops.rawValue
         }
     }
     
@@ -305,6 +388,32 @@ public enum IRCCommand: Codable, Sendable {
             var args = ["CAP", subCommand.rawValue]
             args.append(contentsOf: parameters)
             return args
+        case .away(let message): return message != nil ? [message!] : []
+        case .oper(let username, let password): return [username, password]
+        case .knock(let channel, let message): return [channel.stringValue, message ?? ""]
+        case .silence(let mask): return [mask]
+        case .invite(let nickname, let channel): return [nickname.stringValue, channel.stringValue]
+        case .topic(let channel, let topic): return [channel.stringValue, topic ?? ""]
+        case .names(let channel): return channel != nil ? [channel!.stringValue] : []
+        case .clearmode(let channel, let mode): return [channel.stringValue, mode]
+        case .rehash: return []
+        case .restart: return []
+        case .die: return []
+        case .connect(let targetServer, let port, let remoteServer): return [targetServer, String(port), remoteServer ?? ""]
+        case .trace(let target): return target != nil ? [target!] : []
+        case .stats(let query, let target): return [query ?? "", target ?? ""]
+        case .admin(let target): return target != nil ? [target!] : []
+        case .info(let target): return target != nil ? [target!] : []
+        case .version(let target): return target != nil ? [target!] : []
+        case .time(let target): return target != nil ? [target!] : []
+        case .lusers(let mask, let target): return [mask ?? "", target ?? ""]
+        case .motd(let target): return target != nil ? [target!] : []
+        case .rules(let target): return target != nil ? [target!] : []
+        case .map: return []
+        case .users(let target): return target != nil ? [target!] : []
+        case .wallops(let message): return [message]
+        case .globops(let message): return [message]
+        case .locops(let message): return [message]
         }
     }
 

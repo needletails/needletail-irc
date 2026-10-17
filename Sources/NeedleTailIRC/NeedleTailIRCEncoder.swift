@@ -244,6 +244,102 @@ public struct NeedleTailIRCEncoder: Sendable {
             if let mask = mask {
                 components.append("\(mask)")
             }
+        // Add cases for new commands
+        case .away(let message):
+            if let message = message {
+                components.append("\(Constants.colon.rawValue)\(message)")
+            }
+        case .oper(let username, let password):
+            components.append("\(username)\(Constants.space.rawValue)\(password)")
+        case .knock(let channel, let message):
+            components.append("\(channel.stringValue)")
+            if let message = message {
+                components.append("\(Constants.space.rawValue)\(Constants.colon.rawValue)\(message)")
+            }
+        case .silence(let mask):
+            components.append("\(mask)")
+        case .invite(let nickname, let channel):
+            components.append("\(nickname.stringValue)\(Constants.space.rawValue)\(channel.stringValue)")
+        case .topic(let channel, let topic):
+            components.append("\(channel.stringValue)")
+            if let topic = topic {
+                components.append("\(Constants.space.rawValue)\(Constants.colon.rawValue)\(topic)")
+            }
+        case .names(let channel):
+            if let channel = channel {
+                components.append("\(channel.stringValue)")
+            }
+        case .clearmode(let channel, let mode):
+            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(mode)")
+        case .rehash:
+            // No additional parameters
+            break
+        case .restart:
+            // No additional parameters
+            break
+        case .die:
+            // No additional parameters
+            break
+        case .connect(let targetServer, let port, let remoteServer):
+            components.append("\(targetServer)\(Constants.space.rawValue)\(port)")
+            if let remoteServer = remoteServer {
+                components.append("\(Constants.space.rawValue)\(remoteServer)")
+            }
+        case .trace(let target):
+            if let target = target {
+                components.append("\(target)")
+            }
+        case .stats(let query, let target):
+            if let query = query {
+                components.append("\(query)")
+            }
+            if let target = target {
+                components.append("\(Constants.space.rawValue)\(target)")
+            }
+        case .admin(let target):
+            if let target = target {
+                components.append("\(target)")
+            }
+        case .info(let target):
+            if let target = target {
+                components.append("\(target)")
+            }
+        case .version(let target):
+            if let target = target {
+                components.append("\(target)")
+            }
+        case .time(let target):
+            if let target = target {
+                components.append("\(target)")
+            }
+        case .lusers(let mask, let target):
+            if let mask = mask {
+                components.append("\(mask)")
+            }
+            if let target = target {
+                components.append("\(Constants.space.rawValue)\(target)")
+            }
+        case .motd(let target):
+            if let target = target {
+                components.append("\(target)")
+            }
+        case .rules(let target):
+            if let target = target {
+                components.append("\(target)")
+            }
+        case .map:
+            // No additional parameters
+            break
+        case .users(let target):
+            if let target = target {
+                components.append("\(target)")
+            }
+        case .wallops(let message):
+            components.append("\(Constants.colon.rawValue)\(message)")
+        case .globops(let message):
+            components.append("\(Constants.colon.rawValue)\(message)")
+        case .locops(let message):
+            components.append("\(Constants.colon.rawValue)\(message)")
         }
         // Join all components and trim any trailing whitespace
         return components.joined().trimmingCharacters(in: .whitespaces)

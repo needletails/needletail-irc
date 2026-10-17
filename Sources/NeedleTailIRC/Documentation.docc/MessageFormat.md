@@ -158,7 +158,7 @@ let nickInUse = IRCMessage(
 // Information messages
 let topic = IRCMessage(
     origin: "alice!alice@localhost",
-    command: .otherCommand("TOPIC", ["#general", "Channel topic"])
+    command: .topic(NeedleTailChannel("#general")!, "Channel topic")
 )
 ```
 
