@@ -105,54 +105,7 @@ final class NeedleTailIRCTests {
             .otherCommand("FOO", ["bar"]),
             .otherNumeric(999, ["foo"]),
             .cap(.ls, ["multi-prefix"]),
-            .away("gone"),
-            .oper("user", "pass"),
-            .knock(channel, "let me in"),
-            .silence("mask!*@*"),
-            .invite(nick, channel),
-            .topic(channel, "topic"),
-            .names(channel),
-            .ban(channel, "mask!*@*"),
-            .unban(channel, "mask!*@*"),
-            .kickban(channel, nick, "reason"),
-            .clearmode(channel, "modes"),
-            .except(channel, "mask!*@*"),
-            .unexcept(channel, "mask!*@*"),
-            .inviteExcept(channel, "mask!*@*"),
-            .uninviteExcept(channel, "mask!*@*"),
-            .quiet(channel, "mask!*@*"),
-            .unquiet(channel, "mask!*@*"),
-            .voice(channel, nick),
-            .devoice(channel, nick),
-            .halfop(channel, nick),
-            .dehalfop(channel, nick),
-            .protect(channel, nick),
-            .deprotect(channel, nick),
-            .owner(channel, nick),
-            .deowner(channel, nick),
-            .rehash,
-            .restart,
-            .die,
             .sQuit("server", "comment"),
-            .connect("target", 6667, "remote"),
-            .trace("target"),
-            .stats("query", "target"),
-            .admin("target"),
-            .info("target"),
-            .version("target"),
-            .time("target"),
-            .lusers("mask", "target"),
-            .motd("target"),
-            .rules("target"),
-            .map,
-            .users("target"),
-            .wallops("msg"),
-            .globops("msg"),
-            .locops("msg"),
-            .adl,
-            .odlist,
-            .ctcp(nick, "VERSION", nil),
-            .ctcpreply(nick, "VERSION", "reply")
         ]
         
         for command in commands {
@@ -372,159 +325,6 @@ final class NeedleTailIRCTests {
                 #expect(parsedCapabilities[index] == originalCap, "CAP capability should match")
             }
             
-        case (.away(let originalMessage), .away(let parsedMessage)):
-            #expect(parsedMessage == originalMessage, "AWAY message should match")
-            
-        case (.oper(let originalUsername, let originalPassword), .otherCommand(let parsedName, let parsedArgs)) where parsedName == "OPER":
-            #expect(parsedArgs.count == 2, "OPER otherCommand should have 2 args")
-            #expect(parsedArgs[0] == originalUsername, "OPER username should match")
-            #expect(parsedArgs[1] == originalPassword, "OPER password should match")
-        case (.otherCommand(let originalName, let originalArgs), .oper(let parsedUser, let parsedPass)) where originalName == "OPER":
-            #expect(originalArgs.count == 2, "OPER otherCommand should have 2 args")
-            #expect(originalArgs[0] == parsedUser, "OPER username should match")
-            #expect(originalArgs[1] == parsedPass, "OPER password should match")
-            
-        case (.knock(let originalChannel, let originalMessage), .knock(let parsedChannel, let parsedMessage)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "KNOCK channel should match")
-            #expect(parsedMessage == originalMessage, "KNOCK message should match")
-            
-        case (.silence(let originalMask), .silence(let parsedMask)):
-            #expect(parsedMask == originalMask, "SILENCE mask should match")
-            
-        case (.invite(let originalNick, let originalChannel), .invite(let parsedNick, let parsedChannel)):
-            #expect(parsedNick.stringValue == originalNick.stringValue, "INVITE nick should match")
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "INVITE channel should match")
-            
-        case (.topic(let originalChannel, let originalTopic), .topic(let parsedChannel, let parsedTopic)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "TOPIC channel should match")
-            #expect(parsedTopic == originalTopic, "TOPIC topic should match")
-            
-        case (.names(let originalChannel), .names(let parsedChannel)):
-            #expect(parsedChannel?.stringValue == originalChannel?.stringValue, "NAMES channel should match")
-            
-        case (.ban(let originalChannel, let originalMask), .ban(let parsedChannel, let parsedMask)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "BAN channel should match")
-            #expect(parsedMask == originalMask, "BAN mask should match")
-            
-        case (.unban(let originalChannel, let originalMask), .unban(let parsedChannel, let parsedMask)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "UNBAN channel should match")
-            #expect(parsedMask == originalMask, "UNBAN mask should match")
-            
-        case (.kickban(let originalChannel, let originalNick, let originalReason), .kickban(let parsedChannel, let parsedNick, let parsedReason)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "KICKBAN channel should match")
-            #expect(parsedNick.stringValue == originalNick.stringValue, "KICKBAN nick should match")
-            #expect(parsedReason == originalReason, "KICKBAN reason should match")
-            
-        case (.clearmode(let originalChannel, let originalMode), .clearmode(let parsedChannel, let parsedMode)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "CLEARMODE channel should match")
-            #expect(parsedMode == originalMode, "CLEARMODE mode should match")
-            
-        case (.except(let originalChannel, let originalMask), .except(let parsedChannel, let parsedMask)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "EXCEPT channel should match")
-            #expect(parsedMask == originalMask, "EXCEPT mask should match")
-            
-        case (.unexcept(let originalChannel, let originalMask), .unexcept(let parsedChannel, let parsedMask)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "UNEXCEPT channel should match")
-            #expect(parsedMask == originalMask, "UNEXCEPT mask should match")
-            
-        case (.inviteExcept(let originalChannel, let originalMask), .inviteExcept(let parsedChannel, let parsedMask)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "INVITEEXCEPT channel should match")
-            #expect(parsedMask == originalMask, "INVITEEXCEPT mask should match")
-            
-        case (.uninviteExcept(let originalChannel, let originalMask), .uninviteExcept(let parsedChannel, let parsedMask)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "UNINVITEEXCEPT channel should match")
-            #expect(parsedMask == originalMask, "UNINVITEEXCEPT mask should match")
-            
-        case (.quiet(let originalChannel, let originalMask), .quiet(let parsedChannel, let parsedMask)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "QUIET channel should match")
-            #expect(parsedMask == originalMask, "QUIET mask should match")
-            
-        case (.unquiet(let originalChannel, let originalMask), .unquiet(let parsedChannel, let parsedMask)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "UNQUIET channel should match")
-            #expect(parsedMask == originalMask, "UNQUIET mask should match")
-            
-        case (.voice(let originalChannel, let originalNick), .voice(let parsedChannel, let parsedNick)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "VOICE channel should match")
-            #expect(parsedNick.stringValue == originalNick.stringValue, "VOICE nick should match")
-            
-        case (.devoice(let originalChannel, let originalNick), .devoice(let parsedChannel, let parsedNick)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "DEVOICE channel should match")
-            #expect(parsedNick.stringValue == originalNick.stringValue, "DEVOICE nick should match")
-            
-        case (.halfop(let originalChannel, let originalNick), .halfop(let parsedChannel, let parsedNick)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "HALFOP channel should match")
-            #expect(parsedNick.stringValue == originalNick.stringValue, "HALFOP nick should match")
-            
-        case (.dehalfop(let originalChannel, let originalNick), .dehalfop(let parsedChannel, let parsedNick)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "DEHALFOP channel should match")
-            #expect(parsedNick.stringValue == originalNick.stringValue, "DEHALFOP nick should match")
-            
-        case (.protect(let originalChannel, let originalNick), .protect(let parsedChannel, let parsedNick)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "PROTECT channel should match")
-            #expect(parsedNick.stringValue == originalNick.stringValue, "PROTECT nick should match")
-            
-        case (.deprotect(let originalChannel, let originalNick), .deprotect(let parsedChannel, let parsedNick)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "DEPROTECT channel should match")
-            #expect(parsedNick.stringValue == originalNick.stringValue, "DEPROTECT nick should match")
-            
-        case (.owner(let originalChannel, let originalNick), .owner(let parsedChannel, let parsedNick)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "OWNER channel should match")
-            #expect(parsedNick.stringValue == originalNick.stringValue, "OWNER nick should match")
-            
-        case (.deowner(let originalChannel, let originalNick), .deowner(let parsedChannel, let parsedNick)):
-            #expect(parsedChannel.stringValue == originalChannel.stringValue, "DEOWNER channel should match")
-            #expect(parsedNick.stringValue == originalNick.stringValue, "DEOWNER nick should match")
-            
-        case (.rehash, .rehash), (.restart, .restart), (.die, .die), (.map, .map), (.adl, .adl), (.odlist, .odlist):
-            // No parameters to validate
-            break
-
-        case (.connect(let originalTarget, let originalPort, let originalRemote), .connect(let parsedTarget, let parsedPort, let parsedRemote)):
-            #expect(parsedTarget == originalTarget, "CONNECT target should match")
-            #expect(parsedPort == originalPort, "CONNECT port should match")
-            #expect(parsedRemote == originalRemote, "CONNECT remote should match")
-            
-        case (.trace(let originalTarget), .trace(let parsedTarget)):
-            #expect(parsedTarget == originalTarget, "TRACE target should match")
-            
-        case (.stats(let originalQuery, let originalTarget), .stats(let parsedQuery, let parsedTarget)):
-            #expect(parsedQuery == originalQuery, "STATS query should match")
-            #expect(parsedTarget == originalTarget, "STATS target should match")
-            
-        case (.admin(let originalTarget), .admin(let parsedTarget)):
-            #expect(parsedTarget == originalTarget, "ADMIN target should match")
-            
-        case (.info(let originalTarget), .info(let parsedTarget)):
-            #expect(parsedTarget == originalTarget, "INFO target should match")
-            
-        case (.version(let originalTarget), .version(let parsedTarget)):
-            #expect(parsedTarget == originalTarget, "VERSION target should match")
-            
-        case (.time(let originalTarget), .time(let parsedTarget)):
-            #expect(parsedTarget == originalTarget, "TIME target should match")
-            
-        case (.lusers(let originalMask, let originalTarget), .lusers(let parsedMask, let parsedTarget)):
-            #expect(parsedMask == originalMask, "LUSERS mask should match")
-            #expect(parsedTarget == originalTarget, "LUSERS target should match")
-            
-        case (.motd(let originalTarget), .motd(let parsedTarget)):
-            #expect(parsedTarget == originalTarget, "MOTD target should match")
-            
-        case (.rules(let originalTarget), .rules(let parsedTarget)):
-            #expect(parsedTarget == originalTarget, "RULES target should match")
-            
-        case (.users(let originalTarget), .users(let parsedTarget)):
-            #expect(parsedTarget == originalTarget, "USERS target should match")
-            
-        case (.wallops(let originalMessage), .wallops(let parsedMessage)):
-            #expect(parsedMessage == originalMessage, "WALLOPS message should match")
-            
-        case (.globops(let originalMessage), .globops(let parsedMessage)):
-            #expect(parsedMessage == originalMessage, "GLOBOPS message should match")
-            
-        case (.locops(let originalMessage), .locops(let parsedMessage)):
-            #expect(parsedMessage == originalMessage, "LOCOPS message should match")
-            
         case (.dccChat(let originalNick, let originalAddress, let originalPort), .dccChat(let parsedNick, let parsedAddress, let parsedPort)):
             #expect(parsedNick.stringValue == originalNick.stringValue, "DCCCHAT nick should match")
             #expect(parsedAddress == originalAddress, "DCCCHAT address should match")
@@ -569,16 +369,6 @@ final class NeedleTailIRCTests {
             #expect(parsedPort == originalPort, "SDCCRESUME port should match")
             #expect(parsedOffset == originalOffset, "SDCCRESUME offset should match")
             
-        case (.ctcp(let originalTarget, let originalCommand, let originalArgument), .ctcp(let parsedTarget, let parsedCommand, let parsedArgument)):
-            #expect(parsedTarget.stringValue == originalTarget.stringValue, "CTCP target should match")
-            #expect(parsedCommand == originalCommand, "CTCP command should match")
-            #expect(parsedArgument == originalArgument, "CTCP argument should match")
-            
-        case (.ctcpreply(let originalTarget, let originalCommand, let originalArgument), .ctcpreply(let parsedTarget, let parsedCommand, let parsedArgument)):
-            #expect(parsedTarget.stringValue == originalTarget.stringValue, "CTCPREPLY target should match")
-            #expect(parsedCommand == originalCommand, "CTCPREPLY command should match")
-            #expect(parsedArgument == originalArgument, "CTCPREPLY argument should match")
-            
         // Generalized equivalence: known command vs otherCommand with same name and args
         case let (known, .otherCommand(parsedName, parsedArgs)):
             if known.commandAsString.uppercased() == parsedName.uppercased() {
@@ -613,11 +403,11 @@ final class NeedleTailIRCTests {
         }
     }
     
-    @Test func testReadKeyBundle() async throws  {
+    @Test func testOtherCommandMultipartRoundTrip() async throws  {
         let base64 = try! BinaryEncoder().encode(Base64Struct(string:TestableConstants.longMessage.rawValue)).base64EncodedString()
         let messages = await generator.createMessages(
             origin: TestableConstants.origin.rawValue,
-            command: IRCCommand.otherCommand(Constants.readPublishedBlob.rawValue,
+            command: IRCCommand.otherCommand(Constants.multipartMediaDownload.rawValue,
                                              [base64]),
             logger: NeedleTailLogger())
         
@@ -815,132 +605,14 @@ final class NeedleTailIRCTests {
         #expect(parsedSChat.command.commandAsString == "SDCCCHAT")
     }
     
-    @Test func testCTCPCommands() async throws {
-        let nick = NeedleTailNick(name: "testnick", deviceId: UUID())!
-        
-        // Test CTCP command
-        let ctcp = IRCMessage(
-            origin: "origin",
-            command: .ctcp(nick, "VERSION", nil)
-        )
-        let encoded = NeedleTailIRCEncoder.encode(value: ctcp)
-        let parsed = try NeedleTailIRCParser.parseMessage(encoded)
-        #expect(parsed.command.commandAsString == "CTCP")
-        
-        // Test CTCP with argument
-        let ctcpWithArg = IRCMessage(
-            origin: "origin",
-            command: .ctcp(nick, "PING", "123456")
-        )
-        let encodedWithArg = NeedleTailIRCEncoder.encode(value: ctcpWithArg)
-        let parsedWithArg = try NeedleTailIRCParser.parseMessage(encodedWithArg)
-        #expect(parsedWithArg.command.commandAsString == "CTCP")
-        
-        // Test CTCP reply
-        let ctcpreply = IRCMessage(
-            origin: "origin",
-            command: .ctcpreply(nick, "VERSION", "NeedleTailIRC 1.0")
-        )
-        let encodedReply = NeedleTailIRCEncoder.encode(value: ctcpreply)
-        let parsedReply = try NeedleTailIRCParser.parseMessage(encodedReply)
-        #expect(parsedReply.command.commandAsString == "CTCPREPLY")
-    }
-    
     @Test func testServerAdminCommands() async throws {
         
         // Test server administration commands
         let commands: [IRCCommand] = [
-            .rehash,
-            .restart,
-            .die,
             .sQuit("server", "comment"),
-            .connect("target", 6667, "remote"),
-            .trace("target"),
-            .stats("query", "target"),
-            .admin("target"),
-            .info("target"),
-            .version("target"),
-            .time("target"),
-            .lusers("mask", "target"),
-            .motd("target"),
-            .rules("target"),
-            .map,
-            .users("target"),
-            .wallops("msg"),
-            .globops("msg"),
-            .locops("msg"),
-            .adl,
-            .odlist
         ]
         
         for command in commands {
-            let msg = IRCMessage(origin: "origin", command: command)
-            let encoded = NeedleTailIRCEncoder.encode(value: msg)
-            let parsed = try NeedleTailIRCParser.parseMessage(encoded)
-            #expect(parsed.command.commandAsString == command.commandAsString)
-        }
-    }
-    
-    @Test func testChannelManagementCommands() async throws {
-        let channel = NeedleTailChannel("#testchannel")!
-        let nick = NeedleTailNick(name: "testnick", deviceId: UUID())!
-        
-        // Test user status commands
-        let userCommands: [IRCCommand] = [
-            .away("gone"),
-            .away(nil), // Remove away status
-            .oper("user", "pass"),
-            .knock(channel, "let me in"),
-            .knock(channel, nil), // No message
-            .silence("mask!*@*"),
-            .invite(nick, channel),
-            .topic(channel, "new topic"),
-            .topic(channel, nil), // Get topic
-            .names(channel),
-            .names(nil) // All channels
-        ]
-        
-        for command in userCommands {
-            let msg = IRCMessage(origin: "origin", command: command)
-            let encoded = NeedleTailIRCEncoder.encode(value: msg)
-            let parsed = try NeedleTailIRCParser.parseMessage(encoded)
-            #expect(parsed.command.commandAsString == command.commandAsString)
-        }
-        
-        // Test channel moderation commands
-        let moderationCommands: [IRCCommand] = [
-            .ban(channel, "mask!*@*"),
-            .unban(channel, "mask!*@*"),
-            .kickban(channel, nick, "reason"),
-            .clearmode(channel, "modes"),
-            .except(channel, "mask!*@*"),
-            .unexcept(channel, "mask!*@*"),
-            .inviteExcept(channel, "mask!*@*"),
-            .uninviteExcept(channel, "mask!*@*"),
-            .quiet(channel, "mask!*@*"),
-            .unquiet(channel, "mask!*@*")
-        ]
-        
-        for command in moderationCommands {
-            let msg = IRCMessage(origin: "origin", command: command)
-            let encoded = NeedleTailIRCEncoder.encode(value: msg)
-            let parsed = try NeedleTailIRCParser.parseMessage(encoded)
-            #expect(parsed.command.commandAsString == command.commandAsString)
-        }
-        
-        // Test user permission commands
-        let permissionCommands: [IRCCommand] = [
-            .voice(channel, nick),
-            .devoice(channel, nick),
-            .halfop(channel, nick),
-            .dehalfop(channel, nick),
-            .protect(channel, nick),
-            .deprotect(channel, nick),
-            .owner(channel, nick),
-            .deowner(channel, nick)
-        ]
-        
-        for command in permissionCommands {
             let msg = IRCMessage(origin: "origin", command: command)
             let encoded = NeedleTailIRCEncoder.encode(value: msg)
             let parsed = try NeedleTailIRCParser.parseMessage(encoded)
@@ -1552,18 +1224,6 @@ func createIRCMessages() async -> [IRCMessage] {
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
             command: .cap(.req, [TestableConstants.target.rawValue]),
-            tags: [])
-    )
-    messages.append(
-        IRCMessage(
-            origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.registryRequest.rawValue, [TestableConstants.longMessage.rawValue]),
-            tags: [])
-    )
-    messages.append(
-        IRCMessage(
-            origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.newDevice.rawValue, [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(

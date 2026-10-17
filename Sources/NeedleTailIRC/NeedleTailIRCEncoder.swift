@@ -126,9 +126,10 @@ public struct NeedleTailIRCEncoder: Sendable {
         // Append the command to the components
         components.append(command)
         
-        // Encode the target of the message (only for numeric responses)
-        // According to IRC protocol: numeric replies SHOULD contain the target as the first parameter
-        if let target = value.target, case .numeric = value.command {
+        // Encode the target of the message (numeric replies and server CAP replies).
+        // RFC 2812 §2.4: a numeric reply consists of the prefix, the numeric and the target.
+        // IRCv3: a server's CAP reply carries the client's nick, or `*`.
+        if let target = value.target, carriesTarget(value.command) {
             components.append("\(Constants.space.rawValue)\(target)\(Constants.space.rawValue)")
         } else {
             components.append("\(Constants.space.rawValue)")
@@ -147,10 +148,7 @@ public struct NeedleTailIRCEncoder: Sendable {
                 components.append("\(Constants.colon.rawValue)\(value)")
             }
         case .ping(let server, let server2):
-            let params = [server, server2].compactMap { $0 }
-            if !params.isEmpty {
-                components.append(" " + params.joined(separator: " "))
-            }
+            components.append(parameters([server, server2].compactMap { $0 }))
         case .join(let channels, let keys):
             // Prevent emitting JOIN with zero channels
             guard !channels.isEmpty else {
@@ -183,12 +181,13 @@ public struct NeedleTailIRCEncoder: Sendable {
                 components.append("\(Constants.space.rawValue)\(arguments(removes))")
             }
         case .channelMode(let channel, addMode: let add, addParameters: let addParameters, removeMode: let remove, removeParameters: let removeParameters):
+            // RFC 2812 §3.2.3: each `+`/`-` group is followed by its own parameters, one per mode.
             components.append("\(channel.stringValue)")
-            if let adds = add?.stringValue.map({ "\(Constants.plus.rawValue)\($0)" }) {
-                components.append("\(Constants.space.rawValue)\(arguments(adds))" + "\(Constants.space.rawValue)\(addParameters?.joined(separator: Constants.comma.rawValue) ?? "")")
+            if let adds = add?.stringValue, !adds.isEmpty {
+                components.append(modeGroup(Constants.plus.rawValue, adds, addParameters ?? [], adding: true))
             }
-            if let removes = remove?.stringValue.map({ "\(Constants.minus.rawValue)\($0)" }) {
-                components.append("\(Constants.space.rawValue)\(arguments(removes))"  + "\(Constants.space.rawValue)\(removeParameters?.joined(separator: Constants.comma.rawValue) ?? "")")
+            if let removes = remove?.stringValue, !removes.isEmpty {
+                components.append(modeGroup(Constants.minus.rawValue, removes, removeParameters ?? [], adding: false))
             }
         case .channelModeGet(let value):
             components.append("\(value.stringValue)")
@@ -218,15 +217,23 @@ public struct NeedleTailIRCEncoder: Sendable {
             components.append("\(nickname.stringValue)\(Constants.space.rawValue)\(filename)\(Constants.space.rawValue)\(filesize)\(Constants.space.rawValue)\(address)\(Constants.space.rawValue)\(port)")
         case .dccResume(let nickname, let filename, let filesize, let address, let port, let offset), .sdccResume(let nickname, let filename, let filesize, let address, let port, let offset):
             components.append("\(nickname.stringValue)\(Constants.space.rawValue)\(filename)\(Constants.space.rawValue)\(filesize)\(Constants.space.rawValue)\(address)\(Constants.space.rawValue)\(port)\(Constants.space.rawValue)\(offset)")
-        case .numeric(_, let args), .otherCommand(_, let args), .otherNumeric(_, let args):
-            components.append(create(arguments: args, buildWithColon: true, buildWithComma: true))
+        case .numeric(_, let args), .otherNumeric(_, let args):
+            if value.target != nil {
+                // RFC 2812 form: `<numeric> <target> <param> ... [:<trailing>]`.
+                components.append(parameters(args))
+            } else {
+                // Legacy NeedleTail form, no target: `<numeric> :<arg>, <arg>`. The parser still
+                // reads it, so clients built before targets were sent keep working.
+                components.append(create(arguments: args, buildWithColon: true, buildWithComma: true))
+            }
+        case .otherCommand(_, let args):
+            // One argument stays `CMD :value`. Several are separate RFC parameters, which
+            // older NeedleTail parsers also read correctly.
+            components.append(args.count > 1 ? parameters(args) : create(arguments: args, buildWithColon: true, buildWithComma: true))
         case .cap(let subCommand, let capabilityIds):
             components.append("\(subCommand.commandAsString)\(Constants.space.rawValue)\(Constants.colon.rawValue)\(capabilityIds.joined(separator: Constants.space.rawValue))")
         case .pong(server: let server, server2: let server2):
-            let params = [server, server2].compactMap { $0 }
-            if !params.isEmpty {
-                components.append(" " + params.joined(separator: " "))
-            }
+            components.append(parameters([server, server2].compactMap { $0 }))
         case .join0:
             components.append("0")
         case .sQuit(let serverName, let reason):
@@ -237,155 +244,43 @@ public struct NeedleTailIRCEncoder: Sendable {
             if let mask = mask {
                 components.append("\(mask)")
             }
-        // Add cases for new commands
-        case .away(let message):
-            if let message = message {
-                components.append("\(Constants.colon.rawValue)\(message)")
-            }
-        case .oper(let username, let password):
-            components.append("\(username)\(Constants.space.rawValue)\(password)")
-        case .knock(let channel, let message):
-            components.append("\(channel.stringValue)")
-            if let message = message {
-                components.append("\(Constants.space.rawValue)\(Constants.colon.rawValue)\(message)")
-            }
-        case .silence(let mask):
-            components.append("\(mask)")
-        case .invite(let nickname, let channel):
-            components.append("\(nickname.stringValue)\(Constants.space.rawValue)\(channel.stringValue)")
-        case .topic(let channel, let topic):
-            components.append("\(channel.stringValue)")
-            if let topic = topic {
-                components.append("\(Constants.space.rawValue)\(Constants.colon.rawValue)\(topic)")
-            }
-        case .names(let channel):
-            if let channel = channel {
-                components.append("\(channel.stringValue)")
-            }
-        case .ban(let channel, let mask):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(mask)")
-        case .unban(let channel, let mask):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(mask)")
-        case .kickban(let channel, let nick, let reason):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(nick.stringValue)\(Constants.space.rawValue)\(Constants.colon.rawValue)\(reason)")
-        case .clearmode(let channel, let mode):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(mode)")
-        case .except(let channel, let mask):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(mask)")
-        case .unexcept(let channel, let mask):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(mask)")
-        case .inviteExcept(let channel, let mask):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(mask)")
-        case .uninviteExcept(let channel, let mask):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(mask)")
-        case .quiet(let channel, let mask):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(mask)")
-        case .unquiet(let channel, let mask):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(mask)")
-        case .voice(let channel, let nick):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(nick.stringValue)")
-        case .devoice(let channel, let nick):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(nick.stringValue)")
-        case .halfop(let channel, let nick):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(nick.stringValue)")
-        case .dehalfop(let channel, let nick):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(nick.stringValue)")
-        case .protect(let channel, let nick):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(nick.stringValue)")
-        case .deprotect(let channel, let nick):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(nick.stringValue)")
-        case .owner(let channel, let nick):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(nick.stringValue)")
-        case .deowner(let channel, let nick):
-            components.append("\(channel.stringValue)\(Constants.space.rawValue)\(nick.stringValue)")
-        case .rehash:
-            // No additional parameters
-            break
-        case .restart:
-            // No additional parameters
-            break
-        case .die:
-            // No additional parameters
-            break
-        case .connect(let targetServer, let port, let remoteServer):
-            components.append("\(targetServer)\(Constants.space.rawValue)\(port)")
-            if let remoteServer = remoteServer {
-                components.append("\(Constants.space.rawValue)\(remoteServer)")
-            }
-        case .trace(let target):
-            if let target = target {
-                components.append("\(target)")
-            }
-        case .stats(let query, let target):
-            if let query = query {
-                components.append("\(query)")
-            }
-            if let target = target {
-                components.append("\(Constants.space.rawValue)\(target)")
-            }
-        case .admin(let target):
-            if let target = target {
-                components.append("\(target)")
-            }
-        case .info(let target):
-            if let target = target {
-                components.append("\(target)")
-            }
-        case .version(let target):
-            if let target = target {
-                components.append("\(target)")
-            }
-        case .time(let target):
-            if let target = target {
-                components.append("\(target)")
-            }
-        case .lusers(let mask, let target):
-            if let mask = mask {
-                components.append("\(mask)")
-            }
-            if let target = target {
-                components.append("\(Constants.space.rawValue)\(target)")
-            }
-        case .motd(let target):
-            if let target = target {
-                components.append("\(target)")
-            }
-        case .rules(let target):
-            if let target = target {
-                components.append("\(target)")
-            }
-        case .map:
-            // No additional parameters
-            break
-        case .users(let target):
-            if let target = target {
-                components.append("\(target)")
-            }
-        case .wallops(let message):
-            components.append("\(Constants.colon.rawValue)\(message)")
-        case .globops(let message):
-            components.append("\(Constants.colon.rawValue)\(message)")
-        case .locops(let message):
-            components.append("\(Constants.colon.rawValue)\(message)")
-        case .adl:
-            // No additional parameters
-            break
-        case .odlist:
-            // No additional parameters
-            break
-        case .ctcp(let target, let command, let argument):
-            components.append("\(target.stringValue)\(Constants.space.rawValue)\(command)")
-            if let argument = argument {
-                components.append("\(Constants.space.rawValue)\(Constants.colon.rawValue)\(argument)")
-            }
-        case .ctcpreply(let target, let command, let argument):
-            components.append("\(target.stringValue)\(Constants.space.rawValue)\(command)\(Constants.space.rawValue)\(Constants.colon.rawValue)\(argument)")
         }
         // Join all components and trim any trailing whitespace
         return components.joined().trimmingCharacters(in: .whitespaces)
     }
     
     // MARK: - Helper Methods
+    
+    /// Commands whose `IRCMessage.target` is written as their first parameter.
+    static func carriesTarget(_ command: IRCCommand) -> Bool {
+        switch command {
+        case .numeric, .otherNumeric, .cap:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// One `+`/`-` group and its parameters. Each parameter needs its own mode letter, so a
+    /// list mode with several parameters is repeated: `+b` with two masks is `+bb mask1 mask2`.
+    static func modeGroup(_ sign: String, _ letters: String, _ parameters: [String], adding: Bool) -> String {
+        var modes = letters
+        let takers = letters.filter { NeedleTailIRCCommandParser.channelModeTakesParameter($0, adding: adding) }
+        if let last = takers.last, parameters.count > takers.count {
+            modes += String(repeating: last, count: parameters.count - takers.count)
+        }
+        return ([sign + modes] + parameters).map { " \($0)" }.joined()
+    }
+    
+    /// RFC 2812 §2.3.1 parameters: space-separated middles, and a `:` on the last one only
+    /// when it is empty, contains a space or starts with `:`.
+    static func parameters(_ values: [String]) -> String {
+        values.enumerated().map { index, value in
+            let isLast = index == values.count - 1
+            let needsTrailing = value.isEmpty || value.contains(Constants.space.rawValue) || value.hasPrefix(Constants.colon.rawValue)
+            return isLast && needsTrailing ? "\(Constants.colon.rawValue)\(value)" : value
+        }.joined(separator: Constants.space.rawValue)
+    }
     
     /// Creates a string from an array of arguments, with options for formatting.
     ///

@@ -65,8 +65,8 @@ struct ModelCodableRegressionTests {
         #expect(identifier.stringValue == "alice_\(deviceID.uuidString)\(suffix)")
     }
 
-    @Test("Channel packets and blobs retain bot message templates")
-    func channelPacketAndBlobRoundTrip() throws {
+    @Test("Channel packets retain bot message templates")
+    func channelPacketRoundTrip() throws {
         let channel = try #require(NeedleTailChannel("#general"))
         let templates = ChannelBotMessageTemplates(
             memberWelcome: "Welcome",
@@ -81,16 +81,10 @@ struct ModelCodableRegressionTests {
             enabledBots: [.chanBot],
             botMessages: templates
         )
-        let original = IRCChannelBlob(metadata: packet, blob: ["payload"])
+        let data = try JSONEncoder().encode(packet)
+        let decoded = try JSONDecoder().decode(NeedleTailChannelPacket.self, from: data)
 
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(
-            IRCChannelBlob<[String]>.self,
-            from: data
-        )
-
-        #expect(decoded.metadata.botMessages == templates)
-        #expect(decoded.blob == ["payload"])
+        #expect(decoded.botMessages == templates)
     }
 
     @Test("AuthPacket Codable preserves required values")

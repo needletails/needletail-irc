@@ -161,31 +161,12 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     ///   - sender: The Sender
     func doDCCResume(with packet: DCCMetadata, sender: String) async throws
     
-    /// Disconnects a DCC session with a specified recipient.
-    func doDCCDisconnect() async throws
-    
     // MARK: - Additional Methods
-    
-    /// Publishes a key bundle.
-    ///- Parameter packet: A packet as an Array
-    func doPublishUserConfiguration(packet: [String]) async throws
-    
-    /// Reads a key bundle.
-    ///- Parameter packet: A packet as an Array
-    func doFindUserConfiguration(packet: [String]) async throws
-    
-    /// Registers an APN token for push notifications.
-    /// - Parameter token: An array containing the APN token.
-    func doRegisterAPN(token: [String]) async throws
     
     /// Sets a password for the user.
     /// - Parameter password: An array containing the password.
     ///- Parameter associatedTags: IRCTags associated with the password command
     func doPassword(password: [String], associatedTags: [IRCTag]) async throws
-    
-    /// Registers a new device.
-    /// - Parameter info: An array containing device information.
-    func doNewDevice(info: [String]) async throws
     
     /// Publishes a blob of data.
     ///- Parameter packet: A packet as an Array
@@ -227,14 +208,6 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     /// Updates the badge count for notifications.
     /// - Parameter count: The new badge count.
     func badgeCountUpdate(count: Int) async throws
-    
-    /// Notifies that a user is typing.
-    /// - Parameter packet: An array containing typing notification data.
-    func doIsTyping(packet: [String]) async throws
-    
-    /// Destroys a user account or session.
-    /// - Parameter packet: An array containing the data needed to destroy the user.
-    func doDestroyUser(packet: [String]) async throws
 }
 
 public extension IRCEventProtocol {
@@ -261,12 +234,7 @@ public extension IRCEventProtocol {
     func doDCCSend(with packet: DCCMetadata, sender: String) async throws {}
     func doDCCChat(with packet: DCCMetadata, sender: String) async throws {}
     func doDCCResume(with packet: DCCMetadata, sender: String) async throws {}
-    func doDCCDisconnect() async throws {}
-    func doPublishUserConfiguration(packet: [String]) async throws {}
-    func doFindUserConfiguration(packet: [String]) async throws {}
-    func doRegisterAPN(token: [String]) async throws {}
     func doPassword(password: [String], associatedTags: [IRCTag]) async throws {}
-    func doNewDevice(info: [String]) async throws {}
     func doPublishBlob(packet: [String]) async throws {}
     func doReadBlob(packet: [String]) async throws {}
     func doOfflineMessages(for nick: NeedleTailNick) async throws {}
@@ -276,6 +244,4 @@ public extension IRCEventProtocol {
     func doMultipartMessageDownload(packet: [String]) async {}
     func doMultipartMessageUpload(packet: [String]) async {}
     func badgeCountUpdate(count: Int) async throws {}
-    func doIsTyping(packet: [String]) async throws {}
-    func doDestroyUser(packet: [String]) async throws {}
 }

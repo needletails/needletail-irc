@@ -865,6 +865,7 @@ public actor IRCMessageGenerator: Sendable {
     func createIRCMessage(
         for command: IRCCommand,
         origin: String,
+        target: String? = nil,
         tags: [IRCTag]? = nil,
         authPacket: AuthPacket? = nil,
         logger: NeedleTailLogger,
@@ -921,6 +922,7 @@ public actor IRCMessageGenerator: Sendable {
         
         let message = IRCMessage(
             origin: origin,
+            target: target,
             command: modifiedCommand,
             tags: mutableTags)
         
@@ -985,6 +987,8 @@ public actor IRCMessageGenerator: Sendable {
     ///
     /// - Parameters:
     ///   - origin: The origin of the messages.
+    ///   - target: The recipient's nick, written as the first parameter of numeric and CAP
+    ///     replies (RFC 2812 §2.4). `nil` keeps the target-less NeedleTail form.
     ///   - command: The IRC command to create messages for.
     ///   - tags: Optional IRCv3 tags to include in messages.
     ///   - authPacket: Optional authentication packet for JWT-based auth.
@@ -992,6 +996,7 @@ public actor IRCMessageGenerator: Sendable {
     /// - Returns: A throwing async stream that yields `IRCMessage` instances.
     public func createMessages(
         origin: String,
+        target: String? = nil,
         command: IRCCommand,
         tags: [IRCTag]? = nil,
         authPacket: AuthPacket? = nil,
@@ -1010,6 +1015,7 @@ public actor IRCMessageGenerator: Sendable {
             _ = await createIRCMessage(
                 for: command,
                 origin: origin,
+                target: target,
                 tags: tags,
                 authPacket: authPacket,
                 logger: logger,
@@ -1027,6 +1033,7 @@ public actor IRCMessageGenerator: Sendable {
                 let succeeded = await createIRCMessage(
                     for: command,
                     origin: origin,
+                    target: target,
                     tags: tags,
                     authPacket: authPacket,
                     logger: logger,

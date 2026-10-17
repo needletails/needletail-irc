@@ -32,7 +32,7 @@ Add NeedleTailIRC to your project using Swift Package Manager:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/needletails/needletail-irc.git", from: "2.0.0")
+    .package(url: "https://github.com/needletails/needletail-irc.git", from: "3.0.0")
 ]
 ```
 
@@ -223,6 +223,8 @@ NeedleTailIRC pulls in:
 - Every variable-length `DCCMessage` field, including `serviceName`, is `UInt32` length-prefixed. `serviceName` changed in 2.0.0; both ends of a DCC connection must update together.
 - Choose a decoder per socket: `lineBasedIRC()` (text only), `serverIRC()` (text plus binary, no DCC), `withBinaryFrames()` (all three).
 - `createMessages` still chunks large text into base64 `packet-metadata` tags. Application payloads that should avoid that overhead belong in `IRCBinaryMessage`.
+- Lines split by RFC 2812: single-word middle parameters, then one trailing parameter kept verbatim. A command without a typed `IRCCommand` case arrives as `.otherCommand(name, parameters)`, and any command can be sent the same way.
+- A numeric with `target` set is written in RFC form (`:srv 433 alice bob :Nickname is already in use`). Without a target it keeps the NeedleTail form (`465 :DEVICE_REVOKED, <uuid>`), which the parser still splits on commas. `transportMessage` and `createMessages` take an optional `target`.
 - `IRCEventProtocol` supplies no-op defaults for every callback. Override every event your integration needs.
 
 ## Installation
@@ -231,7 +233,7 @@ NeedleTailIRC pulls in:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/needletails/needletail-irc.git", from: "2.0.0")
+    .package(url: "https://github.com/needletails/needletail-irc.git", from: "3.0.0")
 ]
 ```
 

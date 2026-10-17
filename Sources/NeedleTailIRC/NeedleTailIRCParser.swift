@@ -154,7 +154,6 @@ public struct NeedleTailIRCParser: Sendable {
         var origin: String?
         var tags: [String] = []
         var command = ""
-        var argumentString = ""
         var taglessMessage = ""
         
         // 1. Separate Tags (only if the message starts with '@')
@@ -174,35 +173,22 @@ public struct NeedleTailIRCParser: Sendable {
             taglessMessage = message
         }
         
-        // 3. Split the tagless message into components
-        let messageComponents = taglessMessage.components(separatedBy: Constants.space.rawValue).map { $0.trimmingCharacters(in: .whitespaces) }
-        
-        // 4. Extract Origin and Command
-        if let firstComponent = messageComponents.first, firstComponent.hasPrefix(Constants.colon.rawValue) {
-            guard messageComponents.count >= 2 else {
-                throw MessageParsingErrors.invalidArguments("Prefix-only line missing command.")
-            }
-            origin = String(firstComponent.dropFirst())
-            command = messageComponents[1].uppercased()
-            // Extract message and non-message parts
-            let messagePart = extractMessage(from: Array(messageComponents.dropFirst(2))).joined(separator: Constants.space.rawValue)
-            let nonMessages = extractNonMessages(from: Array(messageComponents.dropFirst(2)))
-            argumentString = nonMessages.joined(separator: Constants.space.rawValue) + (messagePart.isEmpty ? "" : " " + messagePart)
-        } else {
-            guard !messageComponents.isEmpty else {
-                throw MessageParsingErrors.invalidArguments("Empty message.")
-            }
-            command = messageComponents[0].uppercased()
-            argumentString = messageComponents.dropFirst().joined(separator: Constants.space.rawValue)
-        }
-        
+        // 3. Split into source, command and parameters (RFC 2812 §2.3.1)
+        let line = try tokenize(taglessMessage)
+        origin = line.origin
+        command = line.command
+
         // 5. Parse Tags
         let parsedTags = !tags.isEmpty
             ? try parseTags(tags: tags[0], limits: limits)
             : nil
         
         // 6. Parse Arguments
-        let (arguments, target) = try parseArgument(command: command, argumentString: argumentString)
+        let (arguments, target) = try parseArgument(
+            command: command,
+            parameters: line.parameters,
+            hasTrailing: line.hasTrailing
+        )
         
         // 7. Create IRCCommand
         let builtCommand: IRCCommand
@@ -228,26 +214,65 @@ public struct NeedleTailIRCParser: Sendable {
     }
     
     
-    /// Extracts the message part from the given array of strings.
-    /// - Parameter array: The array of strings to search for the message part.
-    /// - Returns: An array containing the message part.
-    private static func extractMessage(from array: [String]) -> [String] {
-        // Find the index of the last colon
-        if let lastColonIndex = array.lastIndex(where: { $0.hasPrefix(":") }) {
-            return Array(array[lastColonIndex...])
-        }
-        return []
+    /// One line split per RFC 2812 §2.3.1: middles, then at most one trailing parameter.
+    struct TokenizedLine {
+        var origin: String?
+        var command: String
+        var parameters: [String]
+        /// `true` when the last parameter was written as `:trailing`.
+        var hasTrailing: Bool
     }
-    
-    /// Extracts non-message parts from the given array of strings.
-    /// - Parameter array: The array of strings to search for non-message parts.
-    /// - Returns: An array containing the non-message parts.
-    private static func extractNonMessages(from array: [String]) -> [String] {
-        // Find the index of the last colon
-        if let lastColonIndex = array.lastIndex(where: { $0.hasPrefix(":") }) {
-            return Array(array[0..<lastColonIndex])
+
+    /// Splits a tag-free line into source, command and parameters.
+    ///
+    /// The trailing parameter is kept verbatim (spaces, colons and commas included).
+    /// Repeated spaces between parameters are tolerated.
+    static func tokenize(_ line: String) throws -> TokenizedLine {
+        var rest = Substring(line)
+        func skipSpaces() {
+            while rest.first == " " { rest.removeFirst() }
         }
-        return array
+        func nextToken() -> Substring {
+            let end = rest.firstIndex(of: " ") ?? rest.endIndex
+            let token = rest[..<end]
+            rest = rest[end...]
+            return token
+        }
+
+        // A line starts with its prefix or its command; a leading space is malformed.
+        guard rest.first != " " else {
+            throw MessageParsingErrors.invalidArguments("Line starts with a space.")
+        }
+        var origin: String?
+        if rest.first == ":" {
+            let token = nextToken().dropFirst()
+            guard !token.isEmpty else {
+                throw MessageParsingErrors.invalidArguments("Empty prefix.")
+            }
+            origin = String(token)
+            skipSpaces()
+            guard !rest.isEmpty else {
+                throw MessageParsingErrors.invalidArguments("Prefix-only line missing command.")
+            }
+        }
+        guard !rest.isEmpty else {
+            throw MessageParsingErrors.invalidArguments("Empty message.")
+        }
+        let command = String(nextToken()).uppercased()
+
+        var parameters: [String] = []
+        var hasTrailing = false
+        while true {
+            skipSpaces()
+            guard !rest.isEmpty else { break }
+            if rest.first == ":" {
+                parameters.append(String(rest.dropFirst()))
+                hasTrailing = true
+                break
+            }
+            parameters.append(String(nextToken()))
+        }
+        return TokenizedLine(origin: origin, command: command, parameters: parameters, hasTrailing: hasTrailing)
     }
     
     /// Parses IRC tags from a given tag string.
@@ -299,132 +324,37 @@ public struct NeedleTailIRCParser: Sendable {
         return tagArray
     }
     
-    /// Parses command arguments based on the command type.
-    /// - Parameters:
-    ///   - command: The command string.
-    ///   - argumentString: The arguments string.
-    /// - Throws: `MessageParsingErrors` for invalid argument formats.
-    /// - Returns: A tuple containing an array of arguments and an optional target string.
-    static func parseArgument(command: String, argumentString: String) throws -> ([String], String?) {
-        var arguments: [String] = []
-        var target: String? = nil
-        
-        /// Splits the argument string at the first occurrence of a colon.
-        /// - Parameter argumentString: The string to split.
-        /// - Returns: A tuple containing the part before the colon and the part after the colon (including the colon).
-        func splitArguments(_ argumentString: String) -> (String, String) {
-            // Trailing starts only at string start or after a space (" :"), not mid-token (e.g. "1:2").
-            let trailingStart: String.Index?
-            if argumentString.hasPrefix(":") {
-                trailingStart = argumentString.startIndex
-            } else if let spaced = argumentString.range(of: " :") {
-                // Point at ':' (skip the preceding space)
-                trailingStart = argumentString.index(after: spaced.lowerBound)
-            } else {
-                trailingStart = nil
-            }
-            if let colonIndex = trailingStart {
-                let beforeColon = String(argumentString[..<colonIndex]).trimmingCharacters(in: .whitespaces)
-                let afterColon = String(argumentString[colonIndex...]).trimmingCharacters(in: .whitespaces)
-                return (beforeColon, afterColon)
-            } else {
-                return (argumentString.trimmingCharacters(in: .whitespaces), "")
-            }
-        }
-        
-        // Parse the command
+    /// Maps RFC parameters onto command arguments and an optional target.
+    ///
+    /// - Numerics: the first parameter is the target (RFC 2812 §2.4) and the rest are the
+    ///   arguments, verbatim. A numeric whose only parameter is a trailing one (`465 :a, b`)
+    ///   is the legacy NeedleTail form, which has no target and joins its arguments with
+    ///   commas; it is split on commas as before.
+    /// - `CAP` replies from a server (`CAP <nick|*> <subcommand> ...`): the first parameter
+    ///   is the target.
+    /// - Everything else: the parameters are the arguments.
+    static func parseArgument(command: String, parameters: [String], hasTrailing: Bool) throws -> ([String], String?) {
         switch try parseCommand(command: command) {
+        case .int:
+            if parameters.count == 1, hasTrailing {
+                let legacy = parameters[0]
+                    .components(separatedBy: Constants.comma.rawValue)
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                return (legacy, nil)
+            }
+            guard let target = parameters.first else { return ([], nil) }
+            return (Array(parameters.dropFirst()), target)
         case .string(let cmd):
-            switch cmd {
-            case Constants.nick.rawValue:
-                // For the NICK command, according to IRC protocol: NICK <nickname>
-                // The entire argument string is the nickname
-                arguments.append(argumentString)
-            case Constants.user.rawValue:
-                // For the USER command, split the arguments based on the colon
-                let components = argumentString.components(separatedBy: Constants.colon.rawValue)
-                guard let initialArgs = components.first?.components(separatedBy: Constants.space.rawValue) else {
-                    throw MessageParsingErrors.invalidArguments("Invalid arguments for user command.")
-                }
-                // Append non-empty initial arguments
-                arguments.append(contentsOf: initialArgs.filter { !$0.isEmpty })
-                // Append the real name if present
-                if let realName = components.last {
-                    arguments.append(realName)
-                }
-            case Constants.join.rawValue:
-                // Special handling for JOIN 0 (leave all channels)
-                let parts = argumentString.split(separator: " ").map { String($0) }.filter { !$0.isEmpty }
-                if parts.count == 1 && parts[0].trimmingCharacters(in: .whitespacesAndNewlines) == "0" {
-                    // Add "0" as argument for join0
-                    arguments.append("0")
-                } else {
-                    // Normal JOIN: parse channels and keys
-                    arguments.append(contentsOf: parts)
-                }
-            case Constants.ping.rawValue, Constants.pong.rawValue:
-                // PING and PONG: split by spaces, up to 2 parameters
-                let params = argumentString.split(separator: " ", maxSplits: 1).map { String($0) }
-                if !params.isEmpty {
-                    arguments.append(params[0])
-                }
-                if params.count > 1 {
-                    arguments.append(params[1])
-                }
-            default:
-                // Trailing param only when ':' is at start or after a space — not mid-token ("1:2").
-                let hasTrailingMarker = argumentString.hasPrefix(Constants.colon.rawValue)
-                    || argumentString.contains(" \(Constants.colon.rawValue)")
-                if hasTrailingMarker {
-                    var splitArgs = splitArguments(argumentString)
-                    // Split the part before the colon into space-separated arguments
-                    let initialArgs = splitArgs.0.components(separatedBy: Constants.space.rawValue)
-                    arguments.append(contentsOf: initialArgs.filter { !$0.isEmpty }.map { $0.trimmingCharacters(in: .whitespaces) }) // Filter out empty strings and trim whitespace
-                    // Append the part after the colon
-                    if splitArgs.1.first == Constants.colon.rawValue.first {
-                        splitArgs.1.removeFirst()
-                    }
-                    arguments.append(splitArgs.1.trimmingCharacters(in: .whitespaces))
-                } else {
-                    // No trailing marker: split by spaces (mid-token colons stay inside tokens)
-                    arguments.append(contentsOf: argumentString.components(separatedBy: Constants.space.rawValue).filter { !$0.isEmpty }.map { $0.trimmingCharacters(in: .whitespaces) })
-                }
-                if let firstArgument = arguments.first, !firstArgument.isEmpty {
-                    // Check if the first character of the first argument matches the constant
-                    if firstArgument.first == Constants.colon.rawValue.first {
-                        var firstItem = arguments[0]
-                        if firstItem.count > 0 {
-                            firstItem.remove(at: firstItem.startIndex)
-                            arguments[0] = firstItem
-                        }
-                    }
-                }
+            if cmd == Constants.cap.rawValue,
+               parameters.count >= 2,
+               IRCCommand.CAPSubCommand(rawValue: parameters[0].uppercased()) == nil,
+               (IRCCommand.CAPSubCommand(rawValue: parameters[1].uppercased()) != nil
+                   || ["NEW", "DEL"].contains(parameters[1].uppercased())) {
+                return (Array(parameters.dropFirst()), parameters[0])
             }
-        case .int(_):
-            // For numeric commands, handle the target and arguments according to IRC protocol
-            // Numeric replies SHOULD contain the target as the first parameter
-            let trimmedArg = argumentString.trimmingCharacters(in: .whitespaces)
-            if trimmedArg.hasPrefix(Constants.colon.rawValue) {
-                // No target, just message
-                let message = String(trimmedArg.dropFirst())
-                arguments.append(contentsOf: message.components(separatedBy: Constants.comma.rawValue).filter { !$0.isEmpty }.map { $0.trimmingCharacters(in: .whitespaces) })
-            } else {
-                // Target is the first space-separated part
-                let spaceSeparated = trimmedArg.components(separatedBy: Constants.space.rawValue).filter { !$0.isEmpty }
-                if !spaceSeparated.isEmpty {
-                    target = spaceSeparated[0]
-                    // The rest is the argument string
-                    let rest = spaceSeparated.dropFirst().joined(separator: Constants.space.rawValue)
-                    if rest.hasPrefix(Constants.colon.rawValue) {
-                        let message = String(rest.dropFirst())
-                        arguments.append(contentsOf: message.components(separatedBy: Constants.comma.rawValue).filter { !$0.isEmpty }.map { $0.trimmingCharacters(in: .whitespaces) })
-                    } else if !rest.isEmpty {
-                        arguments.append(contentsOf: rest.components(separatedBy: Constants.space.rawValue).filter { !$0.isEmpty }.map { $0.trimmingCharacters(in: .whitespaces) })
-                    }
-                }
-            }
+            return (parameters, nil)
         }
-        return (arguments, target)
     }
     
     /// Parses the command into a numeric or string key.

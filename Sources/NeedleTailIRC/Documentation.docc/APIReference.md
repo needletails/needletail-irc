@@ -26,7 +26,7 @@ struct IRCMessage {
 
 **Properties:**
 - `origin`: The message origin/source (optional)
-- `target`: Numeric response target (optional)
+- `target`: The recipient's nick for numeric and CAP replies (optional; RFC 2812 §2.4)
 - `command`: The IRC command or numeric response
 - `tags`: IRCv3 message tags (optional)
 
@@ -388,6 +388,7 @@ protocol NeedleTailWriterDelegate: AnyObject, Sendable {
         logger: NeedleTailLogger,
         writer: NIOAsyncChannelOutboundWriter<IRCFrame>,
         origin: String,
+        target: String?,
         command: IRCCommand,
         tags: [IRCTag]?,
         authPacket: AuthPacket?
@@ -468,7 +469,7 @@ Actor that creates outbound IRC messages and reassembles multipart inbound chunk
 
 ```swift
 actor IRCMessageGenerator {
-    func createMessages(origin: String, command: IRCCommand, tags: [IRCTag]?, authPacket: AuthPacket?, logger: NeedleTailLogger) async -> AsyncThrowingStream<IRCMessage, Error>
+    func createMessages(origin: String, target: String?, command: IRCCommand, tags: [IRCTag]?, authPacket: AuthPacket?, logger: NeedleTailLogger) async -> AsyncThrowingStream<IRCMessage, Error>
     func messageReassembler(ircMessage: IRCMessage) async throws -> IRCMessage?
 }
 ```
@@ -557,7 +558,7 @@ enum Constants: String {
     case privMsg = "PRIVMSG"
     case nick = "NICK"
     case join = "JOIN"
-    case publishBlob = "PUBLISHBLOB"
+    case pass = "PASS"
     // ...
 }
 ```

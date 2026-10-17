@@ -151,13 +151,14 @@ let welcome = IRCMessage(
 // Error messages
 let nickInUse = IRCMessage(
     origin: "server.example.com",
-    command: .numeric(.errNicknameInUse, ["alice", "Nickname is already in use"])
+    target: "*",
+    command: .numeric(.errorNicknameInUse, ["alice", "Nickname is already in use"])
 )
 
 // Information messages
 let topic = IRCMessage(
     origin: "alice!alice@localhost",
-    command: .topic(NeedleTailChannel("#general")!, "Channel topic")
+    command: .otherCommand("TOPIC", ["#general", "Channel topic"])
 )
 ```
 
