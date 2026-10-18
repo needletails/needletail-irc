@@ -39,8 +39,9 @@ public struct NeedleTailNick: Codable, Hashable, Equatable, CustomStringConverti
         hasher.combine(deviceId)
     }
     
+    /// Nicks compare without case, using RFC 2812 §2.2 mapping (`[]\~` are the uppercase of `{}|^`).
     public static func ==(lhs: NeedleTailNick, rhs: NeedleTailNick) -> Bool {
-        return lhs.deviceId == rhs.deviceId && lhs.name == rhs.name
+        return lhs.deviceId == rhs.deviceId && lhs.name.ircLowercased == rhs.name.ircLowercased
     }
     
     public enum ValidatedNameStatus {
@@ -128,6 +129,9 @@ public struct NeedleTailNick: Codable, Hashable, Equatable, CustomStringConverti
     }
 
     /// Creates a nickname from either a standard IRC nick or NeedleTail's `name_UUID` form.
+    ///
+    /// A standard nick keeps the case it was sent with, as IRC servers do. A `name_UUID` nick is a
+    /// NeedleTail account identity, so its name is lowercased.
     public init?(wireValue: String) {
         if let separator = wireValue.lastIndex(of: "_") {
             let name = String(wireValue[..<separator])
@@ -138,7 +142,7 @@ public struct NeedleTailNick: Codable, Hashable, Equatable, CustomStringConverti
                 return
             }
         }
-        self.init(name: wireValue.lowercased(), deviceId: nil, nameRules: .wire)
+        self.init(name: wireValue, deviceId: nil, nameRules: .wire)
     }
 }
 

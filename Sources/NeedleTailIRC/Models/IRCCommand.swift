@@ -73,6 +73,8 @@ public enum IRCCommand: Codable, Sendable {
     case join0
     /// The PART command indicates a user's intention to leave a channel.
     case part(channels: [NeedleTailChannel])
+    /// PART with a part message: `PART <channel> *( "," <channel> ) :<message>` (RFC 2812 §3.2.2).
+    case partMessage(channels: [NeedleTailChannel], message: String)
     /// The LIST command helps users discover channels of interest.
     case list(channels: [NeedleTailChannel]?, target: String?)
     /// PRIVMSG is used for chat messages and conversations.
@@ -200,7 +202,7 @@ public enum IRCCommand: Codable, Sendable {
         case .pong: return Constants.pong.rawValue
         case .join: return Constants.join.rawValue
         case .join0: return Constants.join.rawValue
-        case .part: return Constants.part.rawValue
+        case .part, .partMessage: return Constants.part.rawValue
         case .list: return Constants.list.rawValue
         case .privMsg: return Constants.privMsg.rawValue
         case .notice: return Constants.notice.rawValue
@@ -334,6 +336,8 @@ public enum IRCCommand: Codable, Sendable {
             return ["0"]
         case .part(let channels):
             return [channels.map { $0.stringValue }.joined(separator: Constants.comma.rawValue)]
+        case .partMessage(let channels, let message):
+            return [channels.map { $0.stringValue }.joined(separator: Constants.comma.rawValue), message]
         case .list(let channels, let target):
             let joinedChannels = channels?.map { $0.stringValue }.joined(separator: Constants.comma.rawValue) ?? ""
             return target != nil ? [joinedChannels, target!] : [joinedChannels]

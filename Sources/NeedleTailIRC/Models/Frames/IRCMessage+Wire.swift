@@ -26,7 +26,7 @@ extension IRCMessage: IRCWireEncodable {
     /// The validated, single-line wire form of this message, **without** the terminator.
     ///
     /// Rules enforced here, so every caller (NIO codec, tests, diagnostics) gets the same bytes:
-    /// - The message must pass ``validateWireLine()``.
+    /// - The message must pass ``validateWireLine(limits:)``.
     /// - An encoder result that is empty is rejected with
     ///   ``IRCMessageGeneratorError/emptyCommandRejected``.
     /// - Embedded NUL, `\r` and `\n` are removed. A line may not contain them; stripping is
@@ -36,13 +36,19 @@ extension IRCMessage: IRCWireEncodable {
     public func wireLine() throws -> String {
         try validateWireLine()
 
-        var line = NeedleTailIRCEncoder.encode(value: self)
+        let line = Self.removingForbiddenScalars(NeedleTailIRCEncoder.encode(value: self))
         guard !line.isEmpty else {
             throw IRCMessageGeneratorError.emptyCommandRejected
         }
+        return line
+    }
+
+    /// Removes NUL, CR and LF, which a line may not contain.
+    static func removingForbiddenScalars(_ line: String) -> String {
         // Operate on scalars, not Characters: "\r\n" is a single grapheme cluster and would
         // slip past a Character-level comparison, leaving a terminator inside the line
         // (i.e. an IRC command injection vector).
+        var line = line
         line.unicodeScalars.removeAll { $0 == "\0" || $0 == "\r" || $0 == "\n" }
         return line
     }
@@ -59,10 +65,14 @@ extension IRCMessage: IRCWireEncodable {
     /// - Every parameter before the last is one non-empty word that doesn't start with `:`:
     ///   ``IRCMessageGeneratorError/invalidParameter``.
     /// - At most ``maxParameters`` parameters: ``IRCMessageGeneratorError/tooManyParameters``.
-    public func validateWireLine() throws {
+    /// - Message targets are channels, nicks or RFC 2812 masks: ``IRCMessageGeneratorError/invalidParameter``.
+    /// - With `limits`, the line and its tags fit: ``IRCMessageGeneratorError/lineTooLong`` and
+    ///   ``IRCMessageGeneratorError/tagsTooLong``. Without them, length isn't checked.
+    public func validateWireLine(limits: IRCLineLimits? = nil) throws {
         switch command {
         case .join(let channels, _) where channels.isEmpty,
-             .part(let channels) where channels.isEmpty:
+             .part(let channels) where channels.isEmpty,
+             .partMessage(let channels, _) where channels.isEmpty:
             throw IRCMessageGeneratorError.emptyCommandRejected
         case .privMsg(let recipients, _) where recipients.isEmpty,
              .notice(let recipients, _) where recipients.isEmpty:
@@ -84,6 +94,14 @@ extension IRCMessage: IRCWireEncodable {
         for tag in tags ?? [] where !IRCTag.isValidIRCv3Key(tag.key) {
             throw IRCMessageGeneratorError.invalidTagKey
         }
+        switch command {
+        case .privMsg(let recipients, _), .notice(let recipients, _):
+            for case .mask(let mask) in recipients where !IRCMessageRecipient.isMask(mask) {
+                throw IRCMessageGeneratorError.invalidParameter
+            }
+        default:
+            break
+        }
         for middle in Self.middleParameters(of: self) {
             guard !middle.isEmpty,
                   !middle.contains(Constants.space.rawValue),
@@ -99,6 +117,18 @@ extension IRCMessage: IRCWireEncodable {
         }
         guard line.parameters.count <= Self.maxParameters else {
             throw IRCMessageGeneratorError.tooManyParameters
+        }
+        if let limits {
+            let full = Self.removingForbiddenScalars(NeedleTailIRCEncoder.encode(value: self))
+            let untagged = Self.removingForbiddenScalars(
+                NeedleTailIRCEncoder.encode(value: IRCMessage(origin: origin, target: target, command: command))
+            )
+            guard untagged.utf8.count + Self.lineTerminator.utf8.count <= limits.maxLineBytes else {
+                throw IRCMessageGeneratorError.lineTooLong
+            }
+            guard full.utf8.count - untagged.utf8.count <= limits.maxTagBytes else {
+                throw IRCMessageGeneratorError.tagsTooLong
+            }
         }
     }
 
@@ -138,8 +168,8 @@ extension IRCMessage: IRCWireEncodable {
             middles.append(serverName)
         case .server(let serverName, let version, _, _):
             middles += [serverName, version]
-        case .oper(let username, let password):
-            middles += [username, password]
+        case .oper(let username, _):
+            middles.append(username)
         case .silence(let mask), .clearmode(_, let mask):
             middles.append(mask)
         case .connect(let targetServer, _, let remoteServer):

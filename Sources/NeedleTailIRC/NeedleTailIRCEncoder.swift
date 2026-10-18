@@ -172,6 +172,9 @@ public struct NeedleTailIRCEncoder: Sendable {
             }
         case .part(let channels):
             components.append(create(arguments: channels.lazy.map { $0.stringValue }, buildWithComma: true))
+        case .partMessage(let channels, let message):
+            components.append(create(arguments: channels.lazy.map { $0.stringValue }, buildWithComma: true))
+            components.append("\(Constants.space.rawValue)\(Constants.colon.rawValue)\(message)")
         case .list(let channels, let target):
             // A bare `LIST` asks for every channel. `*` only stands in when a target must follow.
             if let channels = channels, !channels.isEmpty {
@@ -244,6 +247,10 @@ public struct NeedleTailIRCEncoder: Sendable {
                 // reads it, so clients built before targets were sent keep working.
                 components.append(create(arguments: args, buildWithColon: true, buildWithComma: true))
             }
+        case .otherCommand(let name, let args) where isCapReply(name, value.target):
+            // CAP replies the `.cap` case can't hold (`LS *` continuations, `NEW`, `DEL`): the
+            // capability list is always the trailing parameter, as `.cap` writes it.
+            components.append(parameters(Array(args.dropLast())) + (args.count > 1 ? Constants.space.rawValue : "") + "\(Constants.colon.rawValue)\(args.last ?? "")")
         case .otherCommand(_, let args):
             // One argument stays `CMD :value`. Several are separate RFC parameters, which
             // older NeedleTail parsers also read correctly.
@@ -268,7 +275,8 @@ public struct NeedleTailIRCEncoder: Sendable {
                 components.append("\(Constants.colon.rawValue)\(message)")
             }
         case .oper(let username, let password):
-            components.append("\(username)\(Constants.space.rawValue)\(password)")
+            // The password is the last parameter, so it may hold spaces as a trailing one.
+            components.append(parameters([username, password]))
         case .knock(let channel, let message):
             components.append("\(channel.stringValue)")
             if let message = message {
@@ -380,9 +388,16 @@ public struct NeedleTailIRCEncoder: Sendable {
         switch command {
         case .numeric, .otherNumeric, .cap:
             return true
+        case .otherCommand(let name, _):
+            return name.uppercased() == Constants.cap.rawValue
         default:
             return false
         }
+    }
+    
+    /// A server CAP reply that arrived as `.otherCommand` because `.cap` has no form for it.
+    static func isCapReply(_ name: String, _ target: String?) -> Bool {
+        target != nil && name.uppercased() == Constants.cap.rawValue
     }
     
     /// One `+`/`-` group and its parameters. Each parameter needs its own mode letter, so a

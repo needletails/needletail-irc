@@ -28,4 +28,8 @@ public enum IRCMessageGeneratorError: Error, Sendable, Equatable {
     case invalidParameter
     /// The line would carry more than ``IRCMessage/maxParameters`` parameters.
     case tooManyParameters
+    /// The line without its tags is longer than ``IRCLineLimits/maxLineBytes``.
+    case lineTooLong
+    /// The tag section is longer than ``IRCLineLimits/maxTagBytes``.
+    case tagsTooLong
 }

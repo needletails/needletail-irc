@@ -397,7 +397,10 @@ public struct NeedleTailIRCCommandParser: Sendable {
         guard (1...2).contains(arguments.count) else {
             throw CommandParserErrors.unexpectedArguments("Expected between 1 and 2 arguments \(arguments.count)")
         }
-        let (channels, _, _) = try getChannels(arguments)
+        let (channels, _, _) = try getChannels([arguments[0]])
+        if arguments.count == 2 {
+            return .partMessage(channels: channels, message: arguments[1])
+        }
         return .part(channels: channels)
     }
     
@@ -411,7 +414,7 @@ public struct NeedleTailIRCCommandParser: Sendable {
             return try parseChannelMode(arguments, channelName: channelName.stringValue)
         case .nick(let nick):
             return try parseNickMode(arguments, nick: nick)
-        case .all:
+        case .all, .mask:
             throw CommandParserErrors.invalidMessageTarget(arguments.first ?? "")
         }
     }

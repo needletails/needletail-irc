@@ -120,7 +120,63 @@ import Testing
         #expect(try flags("12") == [.invisible, .wallOps])
     }
 
+    @Test func c18_nickCaseIsKept() throws {                   // RFC 2812 §2.2: compare without case, keep it
+        for line in [":NeedleBot!bot@host PRIVMSG Bob :hi", ":NeedleBot!bot@host NICK Robo[t]", "ISON Alice Bob"] {
+            #expect(try p(line).wireLine() == line)
+        }
+        #expect(NeedleTailNick(wireValue: "Bob") == NeedleTailNick(wireValue: "bob"))
+        #expect(NeedleTailNick(wireValue: "Robo[t]") == NeedleTailNick(wireValue: "robo{t}"))
+        #expect(NeedleTailNick(wireValue: "Bob") != NeedleTailNick(wireValue: "Rob"))
+        // A NeedleTail `name_UUID` nick is an account identity and stays lowercased.
+        #expect(NeedleTailNick(wireValue: "Alice_12345678-1234-1234-1234-123456789ABC")?.name == "alice")
+    }
+    @Test func c19_partMessageIsKept() throws {                // PART <channel> *( "," <channel> ) [ <Part Message> ]
+        let line = ":alice!a@h PART #room,#ops :see you later"
+        let m = try p(line)
+        guard case .partMessage(let channels, let message) = m.command else { Issue.record("\(m.command)"); return }
+        #expect(channels.map(\.stringValue) == ["#room", "#ops"])
+        #expect(message == "see you later")
+        #expect(try m.wireLine() == line)
+        guard case .part(let bare) = try p("PART #room").command else { Issue.record("bare part"); return }
+        #expect(bare.map(\.stringValue) == ["#room"])
+    }
+    @Test func c20_capRepliesKeepTheirTarget() throws {        // IRCv3: CAP <nick|*> <sub> [*] :<caps>
+        for line in [":srv CAP * LS * :multi-prefix sasl", ":srv CAP alice NEW :batch", ":srv CAP alice DEL :sasl away-notify", ":srv CAP * LS :sasl"] {
+            #expect(try p(line).wireLine() == line)
+        }
+    }
+
+    @Test func c21_maskAndAddressTargets() throws {            // RFC 2812 §3.3.1 msgto
+        let targets = ["$*.example.net", "bob!bob@example.com", "bob%example.com@irc.example.net", "bob%example.com", "bob@irc.example.net"]
+        for target in targets {
+            let line = ":oper!o@host NOTICE \(target) :Server restarting"
+            let m = try p(line)
+            guard case .notice(let recipients, _) = m.command else { Issue.record("\(m.command)"); continue }
+            #expect(recipients == [.mask(target)])
+            #expect(try m.wireLine() == line)
+        }
+        guard case .privMsg(let mixed, _) = try p("PRIVMSG #room,bob,$*.fi :hi").command else { Issue.record("mixed"); return }
+        #expect(mixed.map(\.stringValue) == ["#room", "bob", "$*.fi"])
+        for notAnAddress in ["@#room", "$", "bob!", "bob!@host", "bob!user@", "%host", "user@"] {
+            #expect(IRCMessageRecipient(notAnAddress) == nil, "\(notAnAddress)")
+        }
+        #expect(throws: (any Error).self) { try p("MODE $*.fi +i") }
+    }
+
     // MARK: Outbound
+    @Test func o12_maskTargetsAreSingleWords() throws {
+        for bad in ["", "a b", "a,b", ":a"] {
+            #expect(throws: IRCMessageGeneratorError.invalidParameter) { try wire(.privMsg([.mask(bad)], "x")) }
+        }
+        #expect(try wire(.notice([.mask("$*.example.net")], "Maintenance")) == "NOTICE $*.example.net :Maintenance")
+    }
+    @Test func o11_lastParameterMayHoldSpaces() throws {      // the last param can always be trailing
+        #expect(try wire(.oper("boss", "correct horse")) == "OPER boss :correct horse")
+        #expect(try wire(.oper("boss", "pw")) == "OPER boss pw")
+        guard case .oper(_, let password) = try p("OPER boss :correct horse").command else { Issue.record("oper"); return }
+        #expect(password == "correct horse")
+        #expect(throws: IRCMessageGeneratorError.emptyCommandRejected) { try wire(.partMessage(channels: [], message: "bye")) }
+    }
     @Test func o01_pongSingleSpace() throws {                 // SPACE = %x20 (one)
         #expect(try wire(.pong(server: "irc.example.net", server2: nil)) == "PONG irc.example.net")
     }

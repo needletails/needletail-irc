@@ -23,7 +23,7 @@ struct IRCMessage {
     init(origin: String? = nil, target: String? = nil, command: IRCCommand, tags: [IRCTag]? = nil)
 
     static let maxParameters: Int // 15
-    func validateWireLine() throws
+    func validateWireLine(limits: IRCLineLimits? = nil) throws
     func wireLine() throws -> String
 }
 ```
@@ -42,8 +42,24 @@ struct IRCMessage {
 - Every tag key is `[+][vendor/]name`.
 - Every parameter before the last is one non-empty word that doesn't start with `:`.
 - There are at most 15 parameters.
+- Every `.mask` message target is an RFC 2812 mask or user address.
+- With `limits`, the line and its tags fit them. Without limits, length isn't checked.
 
-`wireLine()` and `sendAndFlushMessage` both call it. `wireLine()` also strips NUL, CR and LF.
+`wireLine()` and `sendAndFlushMessage` both call it. `sendAndFlushMessage` passes the delegate's `outboundLineLimits`. `wireLine()` also strips NUL, CR and LF.
+
+### IRCLineLimits
+
+Opt-in outbound size limits for a standard IRC connection. Sizes are UTF-8 bytes.
+
+```swift
+struct IRCLineLimits: Sendable, Equatable {
+    var maxLineBytes: Int   // the line without its tags, CRLF included (RFC 2812: 512)
+    var maxTagBytes: Int    // the tag section, '@' and the space after it included
+
+    static let standardClient: IRCLineLimits  // 512 and 4096 (IRCv3: 4094 bytes of client tag data)
+    static let standardServer: IRCLineLimits  // 512 and 8191
+}
+```
 
 **Example:**
 ```swift
@@ -70,6 +86,7 @@ enum IRCCommand {
     // Channel commands
     case join(channels: [NeedleTailChannel], keys: [String]?)
     case part(channels: [NeedleTailChannel])
+    case partMessage(channels: [NeedleTailChannel], message: String)
     case list(channels: [NeedleTailChannel]?, target: String?)
     case channelModeGet(NeedleTailChannel)
     case channelMode(NeedleTailChannel, addMode: IRCChannelPermissions?, addParameters: [String]?, removeMode: IRCChannelPermissions?, removeParameters: [String]?)
@@ -146,8 +163,11 @@ enum IRCMessageRecipient {
     case channel(NeedleTailChannel)
     case nick(NeedleTailNick)
     case all
+    case mask(String)  // $*.example.net, nick!user@host, user%host@server, user%host, user@server
 }
 ```
+
+`mask` holds the RFC 2812 §3.3.1 targets that are neither a channel nor a nick, written as sent. They are valid PRIVMSG and NOTICE targets, but not MODE targets.
 
 ### NeedleTailChannel
 
@@ -193,6 +213,8 @@ struct NeedleTailNick {
 - `deviceId`: Optional NeedleTail device identifier
 
 `stringValue` emits `name_UUID` when `deviceId` is present and a standard `name` otherwise.
+
+`init?(name:deviceId:)` lowercases the name. `init?(wireValue:)`, which the parser uses, keeps a standard nick's case, as IRC servers do, and lowercases the name of a NeedleTail `name_UUID` nick, which is an account identity. Nicks compare without case using RFC 2812 §2.2 mapping, so `Bob == bob` and `Robo[t] == robo{t}`.
 
 **Example:**
 ```swift
@@ -427,6 +449,8 @@ Protocol for message transport delegation.
 
 ```swift
 protocol NeedleTailWriterDelegate: AnyObject, Sendable {
+    var outboundLineLimits: IRCLineLimits? { get }  // default nil: no length check
+
     func transportMessage(
         _ messageGenerator: IRCMessageGenerator,
         executor: any AnyExecutor,
@@ -450,7 +474,7 @@ protocol NeedleTailWriterDelegate: AnyObject, Sendable {
 
 **Methods:**
 - `transportMessage(...)`: Generate multipart messages and write each through `sendAndFlushMessage`
-- `sendAndFlushMessage(...)`: Write a single outbound payload to the NIO writer. A text line is checked with `validateWireLine()` first, so an invalid one throws to the caller and never reaches the pipeline. A throw inside `IRCFrameEncoder` would fail every later write on that channel.
+- `sendAndFlushMessage(...)`: Write a single outbound payload to the NIO writer. A text line is checked with `validateWireLine(limits: outboundLineLimits)` first, so an invalid one throws to the caller and never reaches the pipeline. A throw inside `IRCFrameEncoder` would fail every later write on that channel.
 
 See <doc:TransportLayer> for integration guidance. This package does not provide socket or TLS connectivity.
 
@@ -504,6 +528,8 @@ enum IRCMessageGeneratorError: Error, Sendable, Equatable {
     case invalidTagKey              // not [+][vendor/]name
     case invalidParameter           // a parameter before the last is empty, has a space or starts with ':'
     case tooManyParameters          // more than 15
+    case lineTooLong                // over IRCLineLimits.maxLineBytes
+    case tagsTooLong                // over IRCLineLimits.maxTagBytes
 }
 ```
 

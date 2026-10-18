@@ -112,6 +112,9 @@ let partCommand = IRCCommand.part(channels: [
     NeedleTailChannel("#help")!
 ])
 
+// Part with a message: PART #general :see you later
+let partWithMessage = IRCCommand.partMessage(channels: [NeedleTailChannel("#general")!], message: "see you later")
+
 // Create message
 let message = IRCMessage(command: partCommand)
 ```
