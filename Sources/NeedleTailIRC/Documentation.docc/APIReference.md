@@ -74,6 +74,7 @@ enum IRCCommand {
     case list(channels: [NeedleTailChannel]?, target: String?)
     case channelModeGet(NeedleTailChannel)
     case channelMode(NeedleTailChannel, addMode: IRCChannelPermissions?, addParameters: [String]?, removeMode: IRCChannelPermissions?, removeParameters: [String]?)
+    case channelModeChanges(NeedleTailChannel, [IRCChannelModeChange])  // every change in order
     
     // Messaging commands
     case privMsg([IRCMessageRecipient], String)
@@ -147,6 +148,22 @@ default:
     break
 }
 ```
+
+### Channel MODE pairing
+
+RFC 2812 §3.2.3 pairs each parameter with the next mode letter that takes one. In `.channelMode`, each sign's modes are a set, so parameters pair with the modes that take one in `IRCChannelPermissions.stringValue` order (`o` before `v`, `l` before `k`), and extra parameters go to the last such mode. The parser stores them that way: `MODE #room +vo alice bob` parses as `addMode: [.channelOperator, .voice], addParameters: ["bob", "alice"]` and is written back as `MODE #room +ov bob alice`, which means the same thing.
+
+A line the set can't express, such as `+oov alice bob carol`, parses as `.channelModeChanges`, which keeps each change in order:
+
+```swift
+struct IRCChannelModeChange: Codable, Hashable, Sendable {
+    var adding: Bool                  // + or -
+    var mode: IRCChannelPermissions   // exactly one mode
+    var parameter: String?
+}
+```
+
+Both are written as one mode string followed by the parameters (`MODE #room +v-o alice bob`).
 
 ### IRCMessageRecipient
 

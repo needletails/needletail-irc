@@ -474,14 +474,14 @@ public struct NeedleTailIRCCommandParser: Sendable {
     private static func parseChannelMode(_ arguments: [String], channelName: String) throws -> IRCCommand {
         guard let channelName = channelName.constructedChannel else { throw CommandParserErrors.invalidChannelName(channelName) }
         guard arguments.count > 1 else { return .channelModeGet(channelName) }
-        
-        var add = IRCChannelPermissions()
-        var remove = IRCChannelPermissions()
-        var addParameters = [String]()
-        var removeParameters = [String]()
-        var waitingForParameter: [Bool] = [] // `true` = an added mode, in order
+
+        // Read the line the RFC way: each parameter belongs to the next mode that takes one.
+        var changes: [IRCChannelModeChange] = []
+        var letters: [Character] = []
+        var waiting: [Int] = []
+        var orphans: [Bool: [String]] = [true: [], false: []]
         var adding = true
-        
+
         for token in arguments.dropFirst() {
             if let first = token.first, first == Character(Constants.plus.rawValue) || first == Character(Constants.minus.rawValue) {
                 for character in token {
@@ -494,27 +494,56 @@ public struct NeedleTailIRCCommandParser: Sendable {
                         guard let permission = IRCChannelPermissions(String(character)) else {
                             throw CommandParserErrors.invalidArgument(token)
                         }
-                        if adding { add.insert(permission) } else { remove.insert(permission) }
+                        changes.append(IRCChannelModeChange(adding: adding, mode: permission))
+                        letters.append(character)
                         if channelModeTakesParameter(character, adding: adding) {
-                            waitingForParameter.append(adding)
+                            waiting.append(changes.count - 1)
                         }
                     }
                 }
+            } else if !waiting.isEmpty {
+                changes[waiting.removeFirst()].parameter = token
             } else {
-                // A parameter no mode asked for goes to the current group, as before.
-                if waitingForParameter.isEmpty ? adding : waitingForParameter.removeFirst() {
-                    addParameters.append(token)
-                } else {
-                    removeParameters.append(token)
-                }
+                // A parameter no mode asked for stays with the current group, as before.
+                orphans[adding, default: []].append(token)
             }
         }
-        
-        if add == .banMask && addParameters.isEmpty && remove.isEmpty {
+
+        func modes(_ sign: Bool) -> IRCChannelPermissions {
+            changes.filter { $0.adding == sign }.reduce(into: IRCChannelPermissions()) { $0.insert($1.mode) }
+        }
+        let add = modes(true), remove = modes(false)
+        let hasOrphans = !(orphans[true]?.isEmpty ?? true) || !(orphans[false]?.isEmpty ?? true)
+        if add == .banMask && remove.isEmpty && !hasOrphans && changes.allSatisfy({ $0.parameter == nil }) {
             return .channelModeGetBanMask(channelName)
-        } else {
+        }
+
+        // The set form pairs parameters with its modes in canonical letter order, extras on the
+        // last. Use it when that gives this line's pairing, and the ordered list when it can't.
+        let order = Array(IRCChannelPermissions(rawValue: .max).stringValue)
+        func rank(_ letter: Character) -> Int { order.firstIndex(of: letter) ?? order.count }
+        func setParameters(_ sign: Bool) -> [String]? {
+            let indices = changes.indices.filter { changes[$0].adding == sign }
+            let paired = indices.filter { changes[$0].parameter != nil }
+                .sorted { (rank(letters[$0]), $0) < (rank(letters[$1]), $1) }
+            var takers: [Character] = []
+            for index in indices where channelModeTakesParameter(letters[index], adding: sign) && !takers.contains(letters[index]) {
+                takers.append(letters[index])
+            }
+            takers.sort { rank($0) < rank($1) }
+            let encoderPairing = paired.indices.map { $0 < takers.count ? takers[$0] : takers[takers.count - 1] }
+            guard paired.map({ letters[$0] }) == encoderPairing else { return nil }
+            return paired.compactMap { changes[$0].parameter } + (orphans[sign] ?? [])
+        }
+        if let addParameters = setParameters(true), let removeParameters = setParameters(false) {
             return .channelMode(channelName, addMode: add, addParameters: addParameters, removeMode: remove, removeParameters: removeParameters)
         }
+        if hasOrphans {
+            // Keep the old lenient reading for lines with parameters no mode asked for.
+            return .channelMode(channelName, addMode: add, addParameters: changes.filter(\.adding).compactMap(\.parameter) + (orphans[true] ?? []),
+                                removeMode: remove, removeParameters: changes.filter { !$0.adding }.compactMap(\.parameter) + (orphans[false] ?? []))
+        }
+        return .channelModeChanges(channelName, changes)
     }
     
     private static func parseNickMode(_ arguments: [String], nick: NeedleTailNick) throws -> IRCCommand {

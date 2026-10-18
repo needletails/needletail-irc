@@ -85,8 +85,17 @@ public enum IRCCommand: Codable, Sendable {
     case mode(NeedleTailNick, add: IRCUserModeFlags?, remove: IRCUserModeFlags?)
     /// The MODEGET command retrieves the modes for a given nickname.
     case modeGet(NeedleTailNick)
-    /// CHANNELMODE sets specific modes for a channel.
+    /// `MODE <channel> +<modes> <parameters> -<modes> <parameters>` with each sign's modes as a set.
+    ///
+    /// The parameters pair with the modes that take one in ``IRCChannelPermissions/stringValue``
+    /// order (`o` before `v`, `l` before `k`), and extra parameters go to the last such mode, so
+    /// `addMode: [.voice, .channelOperator], addParameters: ["bob", "alice"]` ops bob and voices
+    /// alice. The parser stores parameters in that order. A line the set can't express, such as
+    /// `+oov alice bob carol`, parses as ``channelModeChanges(_:_:)`` instead.
     case channelMode(NeedleTailChannel, addMode: IRCChannelPermissions?, addParameters: [String]?, removeMode: IRCChannelPermissions?, removeParameters: [String]?)
+    /// `MODE <channel> <modestring> <parameters>` with every change kept in order
+    /// (RFC 2812 §3.2.3), each pairing one mode with its parameter.
+    case channelModeChanges(NeedleTailChannel, [IRCChannelModeChange])
     /// CHANNELMODE_GET retrieves the modes for a given channel.
     case channelModeGet(NeedleTailChannel)
     /// CHANNELMODE_GET_BANMASK retrieves banned users for a given channel.
@@ -230,7 +239,7 @@ public enum IRCCommand: Codable, Sendable {
         case .mode, .modeGet: return Constants.mode.rawValue
         case .whois: return Constants.whoIs.rawValue
         case .who: return Constants.who.rawValue
-        case .channelMode: return Constants.mode.rawValue
+        case .channelMode, .channelModeChanges: return Constants.mode.rawValue
         case .channelModeGet, .channelModeGetBanMask: return Constants.mode.rawValue
         case .kick: return Constants.kick.rawValue
         case .kill: return Constants.kill.rawValue
@@ -380,6 +389,8 @@ public enum IRCCommand: Codable, Sendable {
             let removeString = remove.map { "\(Constants.minus.rawValue)\($0.stringValue) " } ?? ""
             let paramsString = (addParameters ?? []).joined(separator: Constants.comma.rawValue) + " " + (removeParameters ?? []).joined(separator: Constants.comma.rawValue)
             return [name.stringValue, "\(addString)\(removeString)\(paramsString)".trimmingCharacters(in: .whitespaces)]
+        case .channelModeChanges(let channel, let changes):
+            return [channel.stringValue, NeedleTailIRCEncoder.modeString(changes)] + changes.compactMap(\.parameter)
         case .modeGet(let name):
             return [name.stringValue]
         case .channelModeGet(let name), .channelModeGetBanMask(let name):

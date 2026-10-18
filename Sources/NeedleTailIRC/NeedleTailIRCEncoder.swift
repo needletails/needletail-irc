@@ -202,14 +202,31 @@ public struct NeedleTailIRCEncoder: Sendable {
                 components.append("\(Constants.space.rawValue)\(modes)")
             }
         case .channelMode(let channel, addMode: let add, addParameters: let addParameters, removeMode: let remove, removeParameters: let removeParameters):
-            // RFC 2812 §3.2.3: each `+`/`-` group is followed by its own parameters, one per mode.
-            components.append("\(channel.stringValue)")
-            if let adds = add?.stringValue, !adds.isEmpty {
-                components.append(modeGroup(Constants.plus.rawValue, adds, addParameters ?? [], adding: true))
+            // One mode string, then every parameter in the same order (`+ov-k bob alice key`),
+            // the form RFC 1459 and RFC 2812 servers all read. Parameters for a sign with no mode
+            // that takes one would pair with the other sign's modes there, so such a line keeps
+            // each group's parameters after it (`+i param -b mask`), as RFC 2812's grammar allows.
+            let groups: [(sign: String, letters: String, parameters: [String], adding: Bool)] = [
+                (Constants.plus.rawValue, add?.stringValue ?? "", addParameters ?? [], true),
+                (Constants.minus.rawValue, remove?.stringValue ?? "", removeParameters ?? [], false),
+            ].filter { !$0.letters.isEmpty }
+            let orphaned = groups.contains { group in
+                !group.parameters.isEmpty && !group.letters.contains { NeedleTailIRCCommandParser.channelModeTakesParameter($0, adding: group.adding) }
             }
-            if let removes = remove?.stringValue, !removes.isEmpty {
-                components.append(modeGroup(Constants.minus.rawValue, removes, removeParameters ?? [], adding: false))
+            var words = [channel.stringValue]
+            if orphaned {
+                for group in groups {
+                    words.append(group.sign + modeGroup(group.letters, group.parameters, adding: group.adding))
+                    words += group.parameters
+                }
+            } else if !groups.isEmpty {
+                words.append(groups.map { $0.sign + modeGroup($0.letters, $0.parameters, adding: $0.adding) }.joined())
+                words += groups.flatMap(\.parameters)
             }
+            components.append(words.joined(separator: Constants.space.rawValue))
+        case .channelModeChanges(let channel, let changes):
+            // RFC 2812 §3.2.3: one mode string, then the parameters in the same order.
+            components.append(([channel.stringValue, modeString(changes)] + changes.compactMap(\.parameter)).joined(separator: Constants.space.rawValue))
         case .channelModeGet(let value):
             components.append("\(value.stringValue)")
         case .channelModeGetBanMask(let value):
@@ -428,15 +445,29 @@ public struct NeedleTailIRCEncoder: Sendable {
         target != nil && name.uppercased() == Constants.cap.rawValue
     }
     
-    /// One `+`/`-` group and its parameters. Each parameter needs its own mode letter, so a
-    /// list mode with several parameters is repeated: `+b` with two masks is `+bb mask1 mask2`.
-    static func modeGroup(_ sign: String, _ letters: String, _ parameters: [String], adding: Bool) -> String {
+    /// `+v-o+m`: a sign whenever it changes, then each change's mode letter, in order.
+    static func modeString(_ changes: [IRCChannelModeChange]) -> String {
+        var modes = ""
+        var adding: Bool?
+        for change in changes {
+            if change.adding != adding {
+                modes += change.adding ? Constants.plus.rawValue : Constants.minus.rawValue
+                adding = change.adding
+            }
+            modes += change.mode.stringValue
+        }
+        return modes
+    }
+
+    /// One sign's mode letters. Each parameter needs its own letter, so extra parameters repeat
+    /// the last mode that takes one: `+b` with two masks is `+bb mask1 mask2`.
+    static func modeGroup(_ letters: String, _ parameters: [String], adding: Bool) -> String {
         var modes = letters
         let takers = letters.filter { NeedleTailIRCCommandParser.channelModeTakesParameter($0, adding: adding) }
         if let last = takers.last, parameters.count > takers.count {
             modes += String(repeating: last, count: parameters.count - takers.count)
         }
-        return ([sign + modes] + parameters).map { " \($0)" }.joined()
+        return modes
     }
     
     /// RFC 2812 §2.3.1 parameters: space-separated middles, and a `:` on the last one only

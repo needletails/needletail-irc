@@ -78,7 +78,9 @@ public struct IRCUserIdentifier: Codable, Hashable, CustomStringConvertible, Sen
         } else {
             containsWireDeviceID = false
         }
-        let parsedNick = containsWireDeviceID
+        // A standard nick keeps its case and may hold `_` or be one character, as the parser
+        // reads it. An explicit device id builds a NeedleTail identity, lowercased.
+        let parsedNick = containsWireDeviceID || deviceId == nil
             ? NeedleTailNick(wireValue: nickValue)
             : NeedleTailNick(name: nickValue, deviceId: deviceId)
         guard let parsedNick else { return nil }

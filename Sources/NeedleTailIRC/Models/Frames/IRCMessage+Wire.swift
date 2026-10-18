@@ -104,6 +104,11 @@ extension IRCMessage: IRCWireEncodable {
             if nicks.isEmpty || (target != nil && count == nil) { throw IRCMessageGeneratorError.invalidParameter }
         case .summon(_, let target, let channel):
             if channel != nil && target == nil { throw IRCMessageGeneratorError.invalidParameter }
+        case .channelModeChanges(_, let changes):
+            // Each change is exactly one mode, so its parameter pairs with one letter.
+            if changes.isEmpty || changes.contains(where: { $0.mode.rawValue.nonzeroBitCount != 1 }) {
+                throw IRCMessageGeneratorError.invalidParameter
+            }
         case .userhost(let nicks):
             // RFC 2812 §4.8: one to five nicknames.
             if !(1...5).contains(nicks.count) { throw IRCMessageGeneratorError.invalidParameter }
@@ -152,6 +157,8 @@ extension IRCMessage: IRCWireEncodable {
         case .channelMode(_, let add, let addParameters, let remove, let removeParameters):
             if add?.stringValue.isEmpty == false { middles += addParameters ?? [] }
             if remove?.stringValue.isEmpty == false { middles += removeParameters ?? [] }
+        case .channelModeChanges(_, let changes):
+            middles += changes.compactMap(\.parameter)
         case .whois(let server, let usermasks):
             if let server { middles.append(server) }
             if !usermasks.isEmpty { middles.append(usermasks.joined(separator: Constants.comma.rawValue)) }

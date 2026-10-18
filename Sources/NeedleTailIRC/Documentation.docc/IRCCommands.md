@@ -171,6 +171,17 @@ let limitCommand = IRCCommand.channelMode(
 let message = IRCMessage(command: modeCommand)
 ```
 
+Parameters pair with the modes that take one in `IRCChannelPermissions.stringValue` order, so pass them in that order. To control the order, or to give the same mode several parameters next to another mode, list each change:
+
+```swift
+// MODE #general +oov alice bob carol: op alice and bob, voice carol
+let changes = IRCCommand.channelModeChanges(NeedleTailChannel("#general")!, [
+    IRCChannelModeChange(adding: true, mode: .channelOperator, parameter: "alice"),
+    IRCChannelModeChange(adding: true, mode: .channelOperator, parameter: "bob"),
+    IRCChannelModeChange(adding: true, mode: .voice, parameter: "carol"),
+])
+```
+
 ### Messaging Commands
 
 Commands for sending messages:
