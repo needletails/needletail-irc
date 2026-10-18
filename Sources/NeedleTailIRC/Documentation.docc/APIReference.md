@@ -101,6 +101,16 @@ enum IRCCommand {
     // Numeric responses
     case numeric(IRCCommandCode, [String])
     
+    // More RFC 2812 commands (the listing above is abridged; all 45 have cases)
+    case pass(String)
+    case service(nickname: String, distribution: String, type: String, info: String)
+    case servlist(mask: String?, type: String?)
+    case squery(serviceName: String, text: String)
+    case whowas([NeedleTailNick], count: Int?, target: String?)
+    case error(String)
+    case summon(user: String, target: String?, channel: NeedleTailChannel?)
+    case userhost([NeedleTailNick])
+
     // Other commands
     case otherCommand(String, [String])
 
@@ -173,7 +183,7 @@ final class NeedleTailChannel {
 **Example:**
 ```swift
 guard let channel = NeedleTailChannel("#general") else {
-    print("Invalid channel name")
+    print("Invalid channel name: \(name)")
     return
 }
 ```
@@ -264,59 +274,59 @@ enum IRCCommandCode {
     case replyMyInfo = 4
     
     // Error responses
-    case errNoSuchNick = 401
-    case errNoSuchServer = 402
-    case errNoSuchChannel = 403
-    case errCannotSendToChan = 404
-    case errTooManyChannels = 405
-    case errWasNoSuchNick = 406
-    case errTooManyTargets = 407
-    case errNoSuchService = 408
-    case errNoOrigin = 409
-    case errNoRecipient = 411
-    case errNoTextToSend = 412
-    case errNoTopLevel = 413
-    case errWildTopLevel = 414
-    case errBadMask = 415
-    case errUnknownCommand = 421
-    case errNoMotd = 422
-    case errNoAdminInfo = 423
-    case errFileError = 424
-    case errNoNicknameGiven = 431
-    case errErroneousNickname = 432
-    case errNicknameInUse = 433
-    case errNickCollision = 436
-    case errUnavailResource = 437
-    case errUserNotInChannel = 441
-    case errNotOnChannel = 442
-    case errUserOnChannel = 443
-    case errNoLogin = 444
-    case errSummonDisabled = 445
-    case errUsersDisabled = 446
-    case errNotRegistered = 451
-    case errNeedMoreParams = 461
-    case errAlreadyRegistered = 462
-    case errNoPermForHost = 463
-    case errPasswdMismatch = 464
-    case errYoureBannedCreep = 465
-    case errYouWillBeBanned = 466
-    case errKeySet = 467
-    case errChannelIsFull = 471
-    case errUnknownMode = 472
-    case errInviteOnlyChan = 473
-    case errBannedFromChan = 474
-    case errBadChannelKey = 475
-    case errBadChanMask = 476
-    case errNoChanModes = 477
-    case errBanListFull = 478
-    case errNoPrivileges = 481
-    case errChanOpPrivsNeeded = 482
-    case errCantKillServer = 483
-    case errRestricted = 484
-    case errUniqOpPrivsNeeded = 485
-    case errNoOperHost = 491
-    case errUModeUnknownFlag = 501
-    case errUsersDontMatch = 502
+    case errorNoSuchNick = 401
+    case errorNoSuchServer = 402
+    case errorNoSuchChannel = 403
+    case errorCannotSendToChain = 404
+    case errorTooManyChannels = 405
+    case errorWasNoSuchNick = 406
+    case errorTooManyTargets = 407
+    case errorNoSuchService = 408
+    case errorNoOrigin = 409
+    case errorNoRecipient = 411
+    case errorNoTextToSend = 412
+    case errorNoTopLevel = 413
+    case errorWildTopLevel = 414
+    case errorBadMask = 415
+    case errorUnknownCommand = 421
+    case errorNoMotD = 422
+    case errorNoAdminInfo = 423
+    case errorFileError = 424
+    case errorNoNickNameGiven = 431
+    case errorErroneousNickname = 432
+    case errorNicknameInUse = 433
+    case errorNickCollision = 436
+    case errorUnavailableResource = 437
+    case errorUserNotInChannel = 441
+    case errorNotOnChannel = 442
+    case errorUserOnChannel = 443
+    case errorNoLogin = 444
+    case errorSummonDisabled = 445
+    case errorUsersDisabled = 446
+    case errorNotRegistered = 451
+    case errorNeedMoreParams = 461
+    case errorAlreadyRegistered = 462
+    case errorNoPermForHost = 463
+    case errorPasswordMismatch = 464
+    case errorYouReBannedCreep = 465
+    case errorYouWillBeBanned = 466
+    case errorKeySet = 467
+    case errorChannelIsFull = 471
+    case errorUnknownMode = 472
+    case errorInviteOnlyChan = 473
+    case errorBannedFromChan = 474
+    case errorBadChannelKey = 475
+    case errorBadChannelMask = 476
+    case errorNoChannelModels = 477
+    case errorBanListFull = 478
+    case errorNoPrivileges = 481
+    case errorChanOPrivsNeeded = 482
+    case errorCantKillServer = 483
+    case errorRestricted = 484
+    case errorUniqOpPrivIsNeeded = 485
+    case errorNoOperHost = 491
+    case errorUModeUnknownFlag = 501
+    case errorUsersDontMatch = 502
 }
 ```
 
@@ -474,7 +484,6 @@ Validation errors for NeedleTailIRC models.
 
 ```swift
 enum NeedleTailError: String, Error, Sendable {
-    case invalidIRCChannelName
     case nilNickName
     case invalidUserId
     case deviceIdNil
@@ -538,14 +547,29 @@ Actor that creates outbound IRC messages and reassembles multipart inbound chunk
 
 ```swift
 actor IRCMessageGenerator {
-    init(executor: any AnyExecutor, binaryEncoder: any BinaryEncoding = BinaryEncoder())
+    init(executor: any AnyExecutor, binaryEncoder: any BinaryEncoding = BinaryEncoder(), version: IRCVersion = .v3)
+    private(set) var version: IRCVersion
+    func setVersion(_ version: IRCVersion)
 
     func createMessages(origin: String, target: String?, command: IRCCommand, tags: [IRCTag]?, authPacket: AuthPacket?, logger: NeedleTailLogger) async -> AsyncThrowingStream<IRCMessage, Error>
     func messageReassembler(ircMessage: IRCMessage) async throws -> IRCMessage?
 }
 ```
 
-Text is cut into pieces of at most 512 UTF-8 bytes, between Unicode scalars, and each piece travels in a base64 `packet-metadata` tag of about 800 bytes. This is NeedleTail's framing: standard IRC servers don't relay that tag. Send large payloads as `IRCBinaryMessage`.
+PRIVMSG and NOTICE text is cut into pieces sized so each relayed line fits RFC 2812's 512 bytes. Each piece travels in the line's body and in a base64 `packet-metadata` tag of about 800 bytes that also records its place in the group. Other commands are cut at 512 UTF-8 bytes and carried in the tag only. Send large payloads as `IRCBinaryMessage`.
+
+### IRCVersion
+
+The protocol level a connection speaks. It decides whether outgoing lines carry tags.
+
+```swift
+enum IRCVersion: Sendable, Equatable {
+    case v1  // RFC 1459 / RFC 2812: no tags
+    case v3  // IRCv3 with message-tags acknowledged: tags (the default)
+}
+```
+
+IRCv3 lets a client send tags only after the server acknowledges `message-tags`; a server without it reads `@...` as the command and answers 421. After CAP negotiation, call `generator.setVersion(acked.contains("message-tags") ? .v3 : .v1)`. With `.v1`, frames carry no tags and each PRIVMSG and NOTICE piece travels in the body only.
 
 ### PacketBuilder
 
@@ -754,8 +778,8 @@ let modeMessage = IRCMessage(
 do {
     let message = try NeedleTailIRCParser.parseMessage(rawMessage)
     // Process message
-} catch NeedleTailError.invalidIRCChannelName {
-    print("Invalid channel name")
+} catch NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(let name) {
+    print("Invalid channel name: \(name)")
 } catch NeedleTailError.nilNickName {
     print("Invalid nickname")
 } catch MessageParsingErrors.invalidArguments(let details) {
@@ -772,7 +796,7 @@ do {
 ```swift
 // Validate channel names
 guard let channel = NeedleTailChannel(channelName) else {
-    throw NeedleTailError.invalidIRCChannelName
+    throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
 }
 
 // Validate nicknames

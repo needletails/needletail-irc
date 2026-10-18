@@ -13,7 +13,7 @@ Channels are the primary way users communicate in IRC. NeedleTailIRC provides co
 ```swift
 // Create a channel with validation
 guard let channel = NeedleTailChannel("#general") else {
-    print("Invalid channel name")
+    print("Invalid channel name: \(name)")
     return
 }
 
@@ -59,7 +59,7 @@ let invalidChannels = [
 // Join a single channel
 func joinChannel(_ channelName: String) async throws {
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     
     let joinCommand = IRCCommand.join(channels: [channel], keys: nil)
@@ -71,7 +71,7 @@ func joinChannel(_ channelName: String) async throws {
 func joinChannels(_ channelNames: [String]) async throws {
     let channels = channelNames.compactMap { NeedleTailChannel($0) }
     guard !channels.isEmpty else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelNames.joined(separator: ","))
     }
     
     let joinCommand = IRCCommand.join(channels: channels, keys: nil)
@@ -82,7 +82,7 @@ func joinChannels(_ channelNames: [String]) async throws {
 // Join channel with key
 func joinChannel(_ channelName: String, key: String) async throws {
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     
     let joinCommand = IRCCommand.join(channels: [channel], keys: [key])
@@ -102,7 +102,7 @@ try await joinChannel("#secret", key: "password123")
 // Part from a single channel
 func partChannel(_ channelName: String, reason: String? = nil) async throws {
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     
     let partCommand = IRCCommand.part(channels: [channel])
@@ -114,7 +114,7 @@ func partChannel(_ channelName: String, reason: String? = nil) async throws {
 func partChannels(_ channelNames: [String]) async throws {
     let channels = channelNames.compactMap { NeedleTailChannel($0) }
     guard !channels.isEmpty else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelNames.joined(separator: ","))
     }
     
     let partCommand = IRCCommand.part(channels: channels)
@@ -167,7 +167,7 @@ try await listChannelsOnServer("server.example.com")
 // Get channel modes
 func getChannelModes(_ channelName: String) async throws {
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     
     let modeCommand = IRCCommand.channelModeGet(channel)
@@ -178,7 +178,7 @@ func getChannelModes(_ channelName: String) async throws {
 // Get channel ban list
 func getChannelBanList(_ channelName: String) async throws {
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     
     let banCommand = IRCCommand.channelModeGetBanMask(channel)
@@ -197,7 +197,7 @@ try await getChannelBanList("#general")
 // Set channel mode
 func setChannelMode(_ channelName: String, addMode: IRCChannelPermissions?, removeMode: IRCChannelPermissions?) async throws {
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     
     let modeCommand = IRCCommand.channelMode(
@@ -214,12 +214,12 @@ func setChannelMode(_ channelName: String, addMode: IRCChannelPermissions?, remo
 // Set channel limit
 func setChannelLimit(_ channelName: String, limit: Int) async throws {
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     
     let modeCommand = IRCCommand.channelMode(
         channel,
-        addMode: IRCChannelPermissions.limit,
+        addMode: IRCChannelPermissions.userLimit,
         addParameters: [String(limit)],
         removeMode: nil,
         removeParameters: nil
@@ -231,7 +231,7 @@ func setChannelLimit(_ channelName: String, limit: Int) async throws {
 // Set channel key
 func setChannelKey(_ channelName: String, key: String) async throws {
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     
     let modeCommand = IRCCommand.channelMode(
@@ -248,7 +248,7 @@ func setChannelKey(_ channelName: String, key: String) async throws {
 // Remove channel key
 func removeChannelKey(_ channelName: String) async throws {
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     
     let modeCommand = IRCCommand.channelMode(
@@ -276,25 +276,23 @@ try await removeChannelKey("#secret")
 NeedleTailIRC supports all standard IRC channel permissions:
 
 ```swift
-// Common channel permissions
+// Common channel permissions (RFC 2811 letters)
 let permissions: [IRCChannelPermissions] = [
-    .inviteOnly,      // +i - Only invited users can join
-    .moderated,       // +m - Only voiced users can speak
-    .noExternal,      // +n - No messages from outside the channel
-    .private,         // +p - Channel is private
-    .secret,          // +s - Channel is secret
-    .topicProtection, // +t - Only operators can change topic
-    .key,             // +k - Channel requires a key to join
-    .limit,           // +l - Channel has a user limit
-    .ban,             // +b - Ban mask
-    .exception,       // +e - Exception to ban mask
-    .inviteException, // +I - Invite exception
-    .quiet,           // +q - Quiet mask
-    .voice,           // +v - Give voice to user
-    .halfOperator,    // +h - Give half-operator to user
-    .operator,        // +o - Give operator to user
-    .protect,         // +a - Give protect to user
-    .owner            // +q - Give owner to user
+    .inviteOnly,          // +i - Only invited users can join
+    .moderated,           // +m - Only voiced users can speak
+    .noExternalMessages,  // +n - No messages from outside the channel
+    .private,             // +p - Channel is private
+    .secret,              // +s - Channel is secret
+    .topicProtection,     // +t - Only operators can change topic
+    .key,                 // +k - Channel requires a key to join
+    .userLimit,           // +l - Channel has a user limit
+    .banMask,             // +b - Ban mask
+    .exceptionList,       // +e - Exception to ban mask
+    .inviteExceptionList, // +I - Invite exception
+    .quietList,           // +q - Quiet mask
+    .voice,               // +v - Give voice to user
+    .channelOperator,     // +o - Give operator to user
+    .founder              // +O - Channel creator
 ]
 ```
 
@@ -304,7 +302,7 @@ let permissions: [IRCChannelPermissions] = [
 // Give operator to user
 func giveOperator(_ channelName: String, to nickname: String) async throws {
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     guard let nick = NeedleTailNick(name: nickname, deviceId: UUID()) else {
         throw NeedleTailError.nilNickName
@@ -312,7 +310,7 @@ func giveOperator(_ channelName: String, to nickname: String) async throws {
     
     let modeCommand = IRCCommand.channelMode(
         channel,
-        addMode: IRCChannelPermissions.operator,
+        addMode: IRCChannelPermissions.channelOperator,
         addParameters: [nickname],
         removeMode: nil,
         removeParameters: nil
@@ -324,7 +322,7 @@ func giveOperator(_ channelName: String, to nickname: String) async throws {
 // Remove operator from user
 func removeOperator(_ channelName: String, from nickname: String) async throws {
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     guard let nick = NeedleTailNick(name: nickname, deviceId: UUID()) else {
         throw NeedleTailError.nilNickName
@@ -334,7 +332,7 @@ func removeOperator(_ channelName: String, from nickname: String) async throws {
         channel,
         addMode: nil,
         addParameters: nil,
-        removeMode: IRCChannelPermissions.operator,
+        removeMode: IRCChannelPermissions.channelOperator,
         removeParameters: [nickname]
     )
     let message = IRCMessage(command: modeCommand)
@@ -344,7 +342,7 @@ func removeOperator(_ channelName: String, from nickname: String) async throws {
 // Give voice to user
 func giveVoice(_ channelName: String, to nickname: String) async throws {
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     guard let nick = NeedleTailNick(name: nickname, deviceId: UUID()) else {
         throw NeedleTailError.nilNickName

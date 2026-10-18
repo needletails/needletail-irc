@@ -366,6 +366,34 @@ public struct NeedleTailIRCEncoder: Sendable {
             components.append("\(Constants.colon.rawValue)\(message)")
         case .locops(let message):
             components.append("\(Constants.colon.rawValue)\(message)")
+        case .pass(let password):
+            components.append(parameters([password]))
+        case .service(let nickname, let distribution, let type, let info):
+            components.append("\(nickname)\(Constants.space.rawValue)\(Constants.star.rawValue)\(Constants.space.rawValue)\(distribution)\(Constants.space.rawValue)\(type)\(Constants.space.rawValue)0\(Constants.space.rawValue)\(Constants.colon.rawValue)\(info)")
+        case .servlist(let mask, let type):
+            // A type needs a mask in front of it; `*` matches every service.
+            let values = type.map { [mask ?? Constants.star.rawValue, $0] } ?? [mask].compactMap { $0 }
+            components.append(parameters(values))
+        case .squery(let serviceName, let text):
+            components.append("\(serviceName)\(Constants.space.rawValue)\(Constants.colon.rawValue)\(text)")
+        case .whowas(let nicks, let count, let target):
+            var values = [nicks.map { $0.stringValue }.joined(separator: Constants.comma.rawValue)]
+            if let count {
+                values.append(String(count))
+                if let target { values.append(target) }
+            }
+            components.append(parameters(values))
+        case .error(let message):
+            components.append("\(Constants.colon.rawValue)\(message)")
+        case .summon(let user, let target, let channel):
+            var values = [user]
+            if let target {
+                values.append(target)
+                if let channel { values.append(channel.stringValue) }
+            }
+            components.append(parameters(values))
+        case .userhost(let nicks):
+            components.append(arguments(nicks.map { $0.stringValue }))
         }
         // Drop the separator spaces a case leaves when it writes no parameters. A trailing
         // parameter ends the line and is kept verbatim, spaces included (RFC 2812 §2.3.1).

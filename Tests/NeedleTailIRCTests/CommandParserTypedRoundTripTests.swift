@@ -101,7 +101,7 @@ struct CommandParserTypedRoundTripTests {
         let lines: [(String, [String])] = [
             ("CONNECT", ["server", "port"]),
             ("NAMES", ["#a,#b"]),
-            ("WHOWAS", ["bob", "5"]),
+            ("WHOWAS", ["bob", "five"]),
         ]
         for (command, arguments) in lines {
             let parsed = try NeedleTailIRCCommandParser.parse(command: command, arguments: arguments)

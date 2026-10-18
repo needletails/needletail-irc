@@ -133,8 +133,7 @@ public enum IRCCommand: Codable, Sendable {
     case sdccSend(NeedleTailNick, String, Int, String, Int)
     case sdccResume(NeedleTailNick, String, Int, String, Int, Int)
     
-    // MARK: - Additional IRC Commands for 100% Conformance (RFC 2812, RFC 1459, IRCv3)
-    // These are added for protocol completeness. Implementation may be stubbed/TODO.
+    // MARK: - Other RFC 2812 commands and common server extensions
     /// Sets or removes the away status for a user.
     case away(String?) // AWAY command
     /// Authenticates a user as an IRC operator.
@@ -188,6 +187,27 @@ public enum IRCCommand: Codable, Sendable {
     case globops(String) // GLOBOPS command
     /// Sends a local operator message.
     case locops(String) // LOCOPS command
+    /// `PASS <password>`: the connection password, sent before NICK and USER (RFC 2812 §3.1.1).
+    case pass(String)
+    /// `SERVICE <nickname> <reserved> <distribution> <type> <reserved> <info>`: registers a
+    /// service (RFC 2812 §3.1.6). The reserved parameters are written as `*` and `0`.
+    case service(nickname: String, distribution: String, type: String, info: String)
+    /// `SERVLIST [ <mask> [ <type> ] ]`: lists the services on the network (RFC 2812 §3.5.1).
+    case servlist(mask: String?, type: String?)
+    /// `SQUERY <servicename> <text>`: a message to a service (RFC 2812 §3.5.2).
+    case squery(serviceName: String, text: String)
+    /// `WHOWAS <nickname> *( "," <nickname> ) [ <count> [ <target> ] ]`: nicknames that no
+    /// longer exist (RFC 2812 §3.6.3). A target needs a count.
+    case whowas([NeedleTailNick], count: Int?, target: String?)
+    /// `ERROR <error message>`: a server reports a serious error, usually before it closes the
+    /// link (RFC 2812 §3.7.4).
+    case error(String)
+    /// `SUMMON <user> [ <target> [ <channel> ] ]`: asks a user on a server host to join IRC
+    /// (RFC 2812 §4.5). A channel needs a target.
+    case summon(user: String, target: String?, channel: NeedleTailChannel?)
+    /// `USERHOST <nickname> *( SPACE <nickname> )`: up to five nicknames' user@host
+    /// (RFC 2812 §4.8).
+    case userhost([NeedleTailNick])
     
     // MARK: - Computed Properties
     
@@ -301,6 +321,14 @@ public enum IRCCommand: Codable, Sendable {
         case .wallops: return Constants.wallops.rawValue
         case .globops: return Constants.globops.rawValue
         case .locops: return Constants.locops.rawValue
+        case .pass: return Constants.pass.rawValue
+        case .service: return Constants.service.rawValue
+        case .servlist: return Constants.servlist.rawValue
+        case .squery: return Constants.squery.rawValue
+        case .whowas: return Constants.whowas.rawValue
+        case .error: return Constants.error.rawValue
+        case .summon: return Constants.summon.rawValue
+        case .userhost: return Constants.userhost.rawValue
         }
     }
     
@@ -418,6 +446,15 @@ public enum IRCCommand: Codable, Sendable {
         case .wallops(let message): return [message]
         case .globops(let message): return [message]
         case .locops(let message): return [message]
+        case .pass(let password): return [password]
+        case .service(let nickname, let distribution, let type, let info): return [nickname, "*", distribution, type, "0", info]
+        case .servlist(let mask, let type): return [mask, type].compactMap { $0 }
+        case .squery(let serviceName, let text): return [serviceName, text]
+        case .whowas(let nicks, let count, let target):
+            return [nicks.map { $0.stringValue }.joined(separator: Constants.comma.rawValue)] + [count.map(String.init), target].compactMap { $0 }
+        case .error(let message): return [message]
+        case .summon(let user, let target, let channel): return [user, target, channel?.stringValue].compactMap { $0 }
+        case .userhost(let nicks): return nicks.map { $0.stringValue }
         }
     }
 

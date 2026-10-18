@@ -14,6 +14,7 @@
 import Foundation
 import NeedleTailLogger
 import Testing
+import BinaryCodable
 @testable import NeedleTailIRC
 
 /// Multipart chunks are sized in UTF-8 bytes, so every generated frame has a known upper bound.
@@ -62,7 +63,7 @@ import Testing
     @Test func aChunkStartingWithAColonKeepsIt() async throws {
         let text = String(repeating: "a", count: 512) + ":kept"
         let result = try await roundTrip(.privMsg([.nick(Self.bob)], text))
-        #expect(result.frames == 2)
+        #expect(result.frames >= 2)
         guard case .privMsg(_, let rebuilt) = result.rebuilt?.command else { Issue.record("not rebuilt"); return }
         #expect(rebuilt == text)
     }
@@ -81,6 +82,66 @@ import Testing
             guard case .privMsg(_, let rebuilt) = result.rebuilt?.command else { Issue.record("not rebuilt"); continue }
             #expect(rebuilt == text)
         }
+    }
+
+    // A standard server answers an empty PRIVMSG with 412 and doesn't relay `packet-metadata`, so
+    // each frame carries its piece of text in the body too, sized for a relayed 512-byte line.
+    @Test func privMsgAndNoticeFramesCarryTheirTextInTheBody() async throws {
+        let alice = NeedleTailNick(name: "alice", deviceId: UUID())!
+        let text = String(repeating: "Hello, world! ", count: 100) + String(repeating: "👨‍👩‍👧‍👦", count: 40)
+        for command in [IRCCommand.privMsg([.nick(alice)], text), .notice([.nick(alice)], text)] {
+            var pieces: [String] = []
+            let result = try await roundTrip(command) { frame in
+                switch frame.command {
+                case .privMsg(_, let piece), .notice(_, let piece): pieces.append(piece)
+                default: Issue.record("\(frame.command)")
+                }
+                // Relayed as `:<nick!user@host> PRIVMSG <target> :<piece>\r\n`, prefix up to 106 bytes.
+                let line = try IRCMessage(command: frame.command).wireLine()
+                #expect(1 + 106 + 1 + line.utf8.count + 2 <= 512)
+            }
+            #expect(result.frames > 1)
+            #expect(!pieces.contains("") && pieces.joined() == text)
+            #expect(pieces.allSatisfy { $0.unicodeScalars.first.map { !(0x200D...0x200D).contains($0.value) } ?? true })
+            switch result.rebuilt?.command {
+            case .privMsg(_, let rebuilt), .notice(_, let rebuilt): #expect(rebuilt == text)
+            default: Issue.record("not rebuilt")
+            }
+        }
+    }
+
+    // IRCv3: a client sends no tags unless the server acknowledged `message-tags`. Without them,
+    // a server reads `@packet-metadata=...` as the command and answers 421.
+    @Test func v1FramesCarryNoTags() async throws {
+        let generator = IRCMessageGenerator(executor: TestableExecutor(queue: .init(label: "no-tags")))
+        #expect(await generator.version == .v3)
+        await generator.setVersion(.v1)
+        #expect(await IRCMessageGenerator(executor: TestableExecutor(queue: .init(label: "v1")), version: .v1).version == .v1)
+        let text = String(repeating: "plain line text ", count: 80)
+        var pieces: [String] = []
+        let auth = AuthPacket(jwt: "header.body.sig", nick: "alice")
+        for try await frame in await generator.createMessages(origin: "alice", command: .privMsg([.nick(Self.bob)], text), tags: [IRCTag(key: "+typing", value: "active")], authPacket: auth, logger: NeedleTailLogger()) {
+            #expect(frame.tags == nil)
+            #expect(!(try frame.wireLine()).hasPrefix("@"))
+            guard case .privMsg(_, let piece) = frame.command else { Issue.record("\(frame.command)"); continue }
+            pieces.append(piece)
+        }
+        #expect(pieces.count > 1 && pieces.joined() == text)
+    }
+
+    // Reassembly still works when only the body carries the text.
+    @Test func reassemblyReadsTheBodyWhenTheTagHasNoText() async throws {
+        let receiver = IRCMessageGenerator(executor: TestableExecutor(queue: .init(label: "body-only")))
+        let groupId = UUID().uuidString
+        var rebuilt: IRCMessage?
+        for (index, piece) in ["Hello, ", "world: ", "done "].enumerated() {
+            let packet = MultipartPacket(groupId: groupId, date: Date(), partNumber: index + 1, totalParts: 3, message: "")
+            let tag = IRCTag(key: "packet-metadata", value: try BinaryEncoder().encode(packet).base64EncodedString())
+            let line = try IRCMessage(origin: "alice", command: .privMsg([.nick(Self.bob)], piece), tags: [tag]).wireLine()
+            if let done = try await receiver.messageReassembler(ircMessage: NeedleTailIRCParser.parseMessage(line)) { rebuilt = done }
+        }
+        guard case .privMsg(_, let text) = rebuilt?.command else { Issue.record("not rebuilt"); return }
+        #expect(text == "Hello, world: done ")
     }
 
     @Test func customCommandPayloadsChunkLikeText() async throws {

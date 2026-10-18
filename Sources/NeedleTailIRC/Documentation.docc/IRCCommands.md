@@ -161,7 +161,7 @@ let modeCommand = IRCCommand.channelMode(
 // Set channel limit
 let limitCommand = IRCCommand.channelMode(
     NeedleTailChannel("#general")!,
-    addMode: IRCChannelPermissions.limit,
+    addMode: IRCChannelPermissions.userLimit,
     addParameters: ["50"],
     removeMode: nil,
     removeParameters: nil
@@ -341,11 +341,7 @@ let message = IRCMessage(command: kickCommand)
 #### SQUIT - Disconnect Server
 
 ```swift
-// Preferred spelling
 let quitServers = IRCCommand.sQuit("hub.example.com", "Maintenance")
-
-// Historical alias; still accepted inbound
-let legacy = IRCCommand.squit("hub.example.com", "Maintenance")
 ```
 
 #### KILL - Disconnect User
@@ -446,18 +442,37 @@ let welcomeCommand = IRCCommand.numeric(
 
 // Error responses
 let nickInUseCommand = IRCCommand.numeric(
-    .errNicknameInUse,
+    .errorNicknameInUse,
     ["nickname", "Nickname is already in use"]
 )
 
 let noSuchChannelCommand = IRCCommand.numeric(
-    .errNoSuchChannel,
+    .errorNoSuchChannel,
     ["#nonexistent", "No such channel"]
 )
 
 // Create messages
 let message = IRCMessage(command: welcomeCommand)
 ```
+
+### More RFC 2812 Commands
+
+Every RFC 2812 command has a typed case. The ones not shown above:
+
+```swift
+let pass = IRCCommand.pass("connectionvalue")                         // PASS connectionvalue
+let service = IRCCommand.service(nickname: "dict", distribution: "*.fr",
+                                 type: "0", info: "French Dictionary")  // SERVICE dict * *.fr 0 0 :French Dictionary
+let servlist = IRCCommand.servlist(mask: "*.fr", type: "0")             // SERVLIST *.fr 0
+let squery = IRCCommand.squery(serviceName: "irchelp", text: "HELP privmsg") // SQUERY irchelp :HELP privmsg
+let whowas = IRCCommand.whowas([NeedleTailNick(wireValue: "Trillian")!],
+                               count: 1, target: "*.edu")               // WHOWAS Trillian 1 *.edu
+let error = IRCCommand.error("Server *.fi already exists")              // ERROR :Server *.fi already exists
+let summon = IRCCommand.summon(user: "jto", target: "tolsun.oulu.fi", channel: nil) // SUMMON jto tolsun.oulu.fi
+let userhost = IRCCommand.userhost([NeedleTailNick(wireValue: "Wiz")!]) // USERHOST Wiz (up to five nicknames)
+```
+
+A WHOWAS target needs a count, and a SUMMON channel needs a target; `wireLine()` throws `invalidParameter` otherwise. Many servers don't implement SERVICE, SERVLIST, SQUERY or SUMMON and answer `421`.
 
 ### Custom Commands
 
@@ -645,7 +660,7 @@ do {
 ```swift
 // Good: Validate before creating commands
 guard let channel = NeedleTailChannel(channelName) else {
-    throw NeedleTailError.invalidIRCChannelName
+    throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
 }
 let command = IRCCommand.join(channels: [channel], keys: nil)
 
@@ -671,9 +686,9 @@ func handleNumericResponse(code: IRCCommandCode, parameters: [String]) async {
     switch code {
     case .replyWelcome:
         await onRegistrationComplete()
-    case .errNicknameInUse:
+    case .errorNicknameInUse:
         await tryAlternativeNickname()
-    case .errNoSuchChannel:
+    case .errorNoSuchChannel:
         await handleChannelNotFound()
     default:
         print("Unhandled response: \(code)")

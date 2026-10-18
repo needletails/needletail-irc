@@ -19,7 +19,7 @@ import NeedleTailLogger
 public enum MessageParsingErrors: Error, Sendable {
     /// Invalid arguments provided for a command.
     case invalidArguments(String)
-    /// Invalid CAP (capability) command format.
+    /// Invalid CAP (capability) command format. Thrown by servers built on this package.
     case invalidCAPCommand(String)
     /// Invalid message tag format.
     case invalidTag

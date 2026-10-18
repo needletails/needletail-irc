@@ -99,7 +99,7 @@ let nick = IRCCommand.nick(NeedleTailNick(name: "newNick", deviceId: UUID())!)
 
 // Numeric responses
 let welcome = IRCCommand.numeric(.replyWelcome, ["Welcome to the server!"])
-let error = IRCCommand.numeric(.errNicknameInUse, ["nickname", "Nickname is already in use"])
+let error = IRCCommand.numeric(.errorNicknameInUse, ["nickname", "Nickname is already in use"])
 ```
 
 ### Parameters
@@ -311,7 +311,7 @@ let welcome = IRCMessage(
 // Error responses
 let nickInUse = IRCMessage(
     origin: "server.example.com",
-    command: .numeric(.errNicknameInUse, ["nickname", "Nickname is already in use"])
+    command: .numeric(.errorNicknameInUse, ["nickname", "Nickname is already in use"])
 )
 ```
 
@@ -350,7 +350,7 @@ let dccSend = IRCMessage(
 ```swift
 // Good: Validate channel names
 guard let channel = NeedleTailChannel(channelName) else {
-    throw NeedleTailError.invalidIRCChannelName
+    throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
 }
 
 // Good: Validate nicknames

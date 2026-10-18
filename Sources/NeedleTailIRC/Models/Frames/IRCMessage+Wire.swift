@@ -40,8 +40,8 @@ extension IRCMessage: IRCWireEncodable {
     /// - At most ``maxParameters`` parameters: ``IRCMessageGeneratorError/tooManyParameters``.
     /// - An encoder result that is empty: ``IRCMessageGeneratorError/emptyCommandRejected``.
     ///
-    /// Line length is kept by the chunker, not checked here: `IRCMessageGenerator` cuts text into
-    /// 512-byte pieces carried in `packet-metadata`, so each frame's line stays short.
+    /// Line length is kept by the chunker, not checked here: `IRCMessageGenerator` sizes each
+    /// PRIVMSG and NOTICE piece so the relayed line fits RFC 2812's 512 bytes.
     /// - Embedded NUL, `\r` and `\n` are removed. A line may not contain them; stripping is
     ///   preferred over throwing so a stray newline in user text degrades the message rather
     ///   than dropping it. Callers that need to know this happened can compare `wireLine()`
@@ -99,6 +99,14 @@ extension IRCMessage: IRCWireEncodable {
             for case .mask(let mask) in recipients where !IRCMessageRecipient.isMask(mask) {
                 throw IRCMessageGeneratorError.invalidParameter
             }
+        case .whowas(let nicks, let count, let target):
+            // WHOWAS needs a nickname, and a target only follows a count.
+            if nicks.isEmpty || (target != nil && count == nil) { throw IRCMessageGeneratorError.invalidParameter }
+        case .summon(_, let target, let channel):
+            if channel != nil && target == nil { throw IRCMessageGeneratorError.invalidParameter }
+        case .userhost(let nicks):
+            // RFC 2812 §4.8: one to five nicknames.
+            if !(1...5).contains(nicks.count) { throw IRCMessageGeneratorError.invalidParameter }
         default:
             break
         }
@@ -165,6 +173,15 @@ extension IRCMessage: IRCWireEncodable {
             if let remoteServer { middles.append(remoteServer) }
         case .stats(let first, let second), .lusers(let first, let second):
             middles += [first, second].compactMap { $0 }
+        case .service(let nickname, let distribution, let type, _):
+            middles += [nickname, distribution, type]
+        case .servlist(let mask, let type):
+            if type != nil, let mask { middles.append(mask) }
+        case .squery(let serviceName, _):
+            middles.append(serviceName)
+        case .summon(let user, let target, let channel):
+            if target != nil { middles.append(user) }
+            if channel != nil, let target { middles.append(target) }
         case .numeric(_, let arguments), .otherNumeric(_, let arguments):
             // Without a target the arguments are one trailing parameter (NeedleTail form).
             if message.target != nil { middles += arguments.dropLast() }

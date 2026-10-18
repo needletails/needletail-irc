@@ -69,8 +69,6 @@ public struct NeedleTailIRCCommandParser: Sendable {
     public enum CommandParserErrors: Error, Sendable {
         /// Invalid nickname format or content.
         case invalidNick(String)
-        /// Invalid user information.
-        case invalidInfo
         /// Invalid argument format or content.
         case invalidArgument(String)
         /// Invalid channel name format.
@@ -329,6 +327,47 @@ public struct NeedleTailIRCCommandParser: Sendable {
         case Constants.locops.rawValue:
             try requireCount(1...1)
             return .locops(arguments[0])
+        case Constants.pass.rawValue:
+            // A bare PASS is NeedleTail's legacy form, with its value in packet-metadata; it
+            // stays `.otherCommand` so the reassembler can fill it in.
+            try requireCount(1...1)
+            return .pass(arguments[0])
+        case Constants.service.rawValue:
+            try requireCount(6...6)
+            return .service(nickname: arguments[0], distribution: arguments[2], type: arguments[3], info: arguments[5])
+        case Constants.servlist.rawValue:
+            try requireCount(0...2)
+            return .servlist(mask: arguments.first, type: arguments.count == 2 ? arguments[1] : nil)
+        case Constants.squery.rawValue:
+            try requireCount(2...2)
+            return .squery(serviceName: arguments[0], text: arguments[1])
+        case Constants.whowas.rawValue:
+            try requireCount(1...3)
+            let nicks = try arguments[0].split(separator: Character(Constants.comma.rawValue)).map { name in
+                guard let nick = NeedleTailNick(wireValue: String(name)) else { throw CommandParserErrors.invalidNick(String(name)) }
+                return nick
+            }
+            return .whowas(nicks, count: arguments.count >= 2 ? try integer(at: 1) : nil, target: arguments.count == 3 ? arguments[2] : nil)
+        case Constants.error.rawValue:
+            try requireCount(1...1)
+            return .error(arguments[0])
+        case Constants.summon.rawValue:
+            try requireCount(1...3)
+            return .summon(
+                user: arguments[0],
+                target: arguments.count >= 2 ? arguments[1] : nil,
+                channel: arguments.count == 3 ? try channel(at: 2) : nil
+            )
+        case Constants.userhost.rawValue:
+            // Clients also send the list as one trailing parameter (`USERHOST :a b`).
+            let names = arguments.flatMap { $0.split(separator: Character(Constants.space.rawValue)).map(String.init) }
+            guard (1...5).contains(names.count) else {
+                throw CommandParserErrors.unexpectedArguments("Expected 1...5, found \(names.count)")
+            }
+            return .userhost(try names.map { name in
+                guard let nick = NeedleTailNick(wireValue: name) else { throw CommandParserErrors.invalidNick(name) }
+                return nick
+            })
         default:
             return nil
         }
@@ -351,7 +390,7 @@ public struct NeedleTailIRCCommandParser: Sendable {
     
     /// Parses a USER command with the format: USER <username> <hostname> <servername> <realname>
     /// - Parameter arguments: Array containing username, hostname, servername, and realname.
-    /// - Throws: `CommandParserErrors.unexpectedArguments` or `CommandParserErrors.invalidInfo`.
+    /// - Throws: `CommandParserErrors.unexpectedArguments`.
     /// - Returns: An `IRCCommand.user` instance.
     private static func parseUserCommand(_ arguments: [String]) throws -> IRCCommand {
         guard arguments.count == 4 else {

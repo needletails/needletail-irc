@@ -4,9 +4,9 @@ Handle large messages that exceed IRC protocol limits by automatically chunking 
 
 ## Overview
 
-`IRCMessageGenerator` cuts text into pieces of at most 512 UTF-8 bytes, between Unicode scalars, and sends each piece in a base64 `packet-metadata` tag on its own frame. The receiving `IRCMessageGenerator` reassembles them. Because the text is in a tag, each frame's line stays short and its tags stay under IRCv3's 4096-byte client limit, whatever the text is made of.
+`IRCMessageGenerator` cuts PRIVMSG and NOTICE text into pieces, on Character boundaries where possible, and sends each piece on its own line: in the trailing parameter, sized so the line as a server relays it fits RFC 2812's 512 bytes, and in a base64 `packet-metadata` tag that records its place in the group. The receiving `IRCMessageGenerator` reassembles them from the tag, or from the bodies when the tag carries no text.
 
-This is NeedleTail framing between NeedleTail peers. A standard IRC server doesn't relay `packet-metadata`, so on a standard network split long text across several PRIVMSG lines instead.
+A standard IRC server relays each piece as an ordinary PRIVMSG, so other clients see the text as consecutive lines. Servers that support IRCv3 message-tags relay client tags only in their `+` form, which `messageReassembler` also accepts as `+packet-metadata`. On a server that didn't acknowledge `message-tags`, use `IRCVersion.v1` (`setVersion(.v1)`): frames then carry no tags, which such a server would reject with 421.
 
 ## Key Features
 

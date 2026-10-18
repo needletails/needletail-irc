@@ -29,9 +29,6 @@ public struct IRCUserDetails: Codable, Sendable, Equatable {
     /// The real name of the user, which may be a descriptive string.
     public let realname: String
     
-    public var userMask: String {
-          return "\(username)!\(username)@\(hostname ?? "unknown")"
-      }
     
     /// Initializes a new instance with a username and optional user mode.
     /// - Parameters:

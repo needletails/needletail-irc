@@ -13,25 +13,12 @@
 //  IRC protocol implementation and messaging capabilities.
 //
 
-/// Validation errors raised when building or reading NeedleTailIRC models.
+/// Validation errors for NeedleTailIRC models.
 ///
-/// ## Usage
-///
-/// ```swift
-/// do {
-///     let message = try NeedleTailIRCParser.parseMessage(line)
-///     handle(message)
-/// } catch NeedleTailError.nilNickName {
-///     print("The line names an invalid nickname")
-/// } catch NeedleTailError.invalidIRCChannelName {
-///     print("The line names an invalid channel")
-/// } catch {
-///     print("Other error: \(error)")
-/// }
-/// ```
+/// The parser throws ``nilNickName`` when a DCC line names an invalid nickname. The other cases
+/// are for applications validating their own users, devices and data. Line and command parsing
+/// errors are ``MessageParsingErrors`` and ``NeedleTailIRCCommandParser/CommandParserErrors``.
 public enum NeedleTailError: String, Error, Sendable {
-    /// The channel name is not a valid IRC channel name.
-    case invalidIRCChannelName
     /// The nickname is missing or not a valid IRC nickname.
     case nilNickName
     /// The user identifier is not valid.

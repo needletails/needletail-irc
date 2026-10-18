@@ -58,8 +58,7 @@ public enum Constants: String, Sendable {
     case server = "SERVER"
     case links = "LINKS"
     
-    // MARK: - Additional IRC Commands for 100% Conformance (RFC 2812, RFC 1459)
-    // These are added for protocol completeness. Implementation may be stubbed/TODO.
+    // MARK: - Other RFC 2812 commands and common server extensions
     case away = "AWAY"
     case oper = "OPER"
     case knock = "KNOCK"
@@ -86,4 +85,11 @@ public enum Constants: String, Sendable {
     case wallops = "WALLOPS"
     case globops = "GLOBOPS"
     case locops = "LOCOPS"
+    case service = "SERVICE"
+    case servlist = "SERVLIST"
+    case squery = "SQUERY"
+    case whowas = "WHOWAS"
+    case error = "ERROR"
+    case summon = "SUMMON"
+    case userhost = "USERHOST"
 }

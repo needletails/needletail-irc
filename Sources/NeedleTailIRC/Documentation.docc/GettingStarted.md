@@ -79,7 +79,7 @@ print(encodedString)
 ```swift
 // Create a channel with validation
 guard let channel = NeedleTailChannel("#general") else {
-    print("Invalid channel name")
+    print("Invalid channel name: \(name)")
     return
 }
 
@@ -143,8 +143,8 @@ let modeCommand = IRCCommand.mode(
 do {
     let message = try NeedleTailIRCParser.parseMessage(rawMessage)
     // Process the message
-} catch NeedleTailError.invalidIRCChannelName {
-    print("Invalid channel name format")
+} catch NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(let name) {
+    print("Invalid channel name: \(name)")
 } catch NeedleTailError.nilNickName {
     print("Nickname is required")
 } catch {

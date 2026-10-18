@@ -8,7 +8,7 @@ NeedleTailIRC provides specific error types for different failure scenarios. Und
 
 ## Key Errors You Should Handle
 
-- **`IRCMessage.LineError.lineTooLong`** (aliased as `IRCFrameDecoder.DecoderError`): Raised when pending IRC bytes exceed the configured line limit, with or without a newline.
+- **`IRCMessage.LineError.lineTooLong`**: Raised when pending IRC bytes exceed the configured line limit, with or without a newline.
 - **`MessageParsingErrors`**: Raised when parsing a single IRC line fails (invalid tags/arguments/etc).
 - **`IRCMessageGeneratorError`**: Raised for outbound lines that break RFC 2812 or IRCv3 tags, for empty outbound commands, and for authentication or packet-metadata encoding failures.
 
@@ -81,7 +81,7 @@ func connectToServer(host: String, port: Int) async {
 ```swift
 // Handle channel validation
 guard let channel = NeedleTailChannel("#general") else {
-    throw NeedleTailError.invalidIRCChannelName
+    throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName("#general")
 }
 ```
 

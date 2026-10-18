@@ -81,7 +81,8 @@ final class PacketDerivationTests {
         guard let message = generatedMessages.first else { return }
         if case .notice(let recipients, let payload) = message.command {
             #expect(recipients == [.all])
-            #expect(payload == "")
+            // The text rides in the body too, so a standard server doesn't answer 412.
+            #expect(payload == "Conference permissions updated")
         } else {
             Issue.record("Expected NOTICE command to be preserved")
         }

@@ -39,19 +39,6 @@ public enum NeedleTailChannelIdentity: Sendable {
             preferredPrefix: preferredPrefix)
     }
 
-    /// Builds and validates a `NeedleTailChannel` from a display title and room id.
-    public static func canonicalChannel(
-        fromDisplayName displayName: String,
-        roomId: UUID = UUID(),
-        preferredPrefix: Character = "#"
-    ) -> NeedleTailChannel? {
-        canonicalWireName(
-            fromDisplayName: displayName,
-            roomId: roomId,
-            preferredPrefix: preferredPrefix)
-            .flatMap(NeedleTailChannel.init)
-    }
-
     /// Extracts the UUID suffix from a canonical `#slug_uuid` channel wire name.
     public static func uuidString(fromWireName wireName: String) -> String? {
         var candidate = wireName.trimmingCharacters(in: .whitespacesAndNewlines)

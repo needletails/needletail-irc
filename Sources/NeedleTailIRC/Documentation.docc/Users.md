@@ -161,11 +161,11 @@ NeedleTailIRC supports all standard IRC user modes:
 let userModes: [IRCUserModeFlags] = [
     .away,           // a - User is away
     .invisible,      // i - User is invisible
-    .wallops,        // w - User receives wallops
+    .wallOps,        // w - User receives wallops
     .restricted,     // r - User is restricted
-    .operator,       // o - User is an IRC operator
+    .operatorMode,   // o - User is an IRC operator
     .localOperator,  // O - User is a local operator
-    .serverNotice    // s - User receives server notices
+    .serverNotices   // s - User receives server notices
 ]
 ```
 
@@ -232,7 +232,7 @@ func kickUser(_ nickname: String, from channelName: String, reason: String? = ni
         throw NeedleTailError.nilNickName
     }
     guard let channel = NeedleTailChannel(channelName) else {
-        throw NeedleTailError.invalidIRCChannelName
+        throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
     }
     
     let kickCommand = IRCCommand.kick([channel], [nick], [reason ?? "No reason given"])

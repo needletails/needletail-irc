@@ -180,7 +180,7 @@ public enum IRCCommandCode: Int, Codable, Sendable {
     
     case errorIllegalChannelName    = 479
     
-    // MARK: - Additional Numeric Replies for 100% Conformance (RFC 2812, RFC 1459)
+    // MARK: - Other RFC 2812 numeric replies
     // Only add cases not already present above. Do not duplicate raw values.
     case replyYourUniqueID = 42
     case replyTraceLink = 200
