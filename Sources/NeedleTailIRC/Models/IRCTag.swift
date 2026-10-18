@@ -136,6 +136,28 @@ public struct IRCTag: Hashable, Codable, Sendable {
         if key.utf8.contains(where: { $0 < 0x20 || $0 == 0x7F }) { return false }
         return true
     }
+
+    /// IRCv3 message-tags: `key = [ '+' ] [ vendor '/' ] 1*( ALPHA / DIGIT / '-' )`, where the
+    /// vendor is a host name. Checked before a tag is written; parsing stays lenient.
+    static func isValidIRCv3Key(_ key: String) -> Bool {
+        func isKeyName(_ part: Substring) -> Bool {
+            !part.isEmpty && part.unicodeScalars.allSatisfy {
+                ("A"..."Z").contains($0) || ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "-"
+            }
+        }
+        var rest = Substring(key)
+        if rest.first == "+" { rest = rest.dropFirst() }
+        let parts = rest.split(separator: "/", omittingEmptySubsequences: false)
+        switch parts.count {
+        case 1:
+            return isKeyName(parts[0])
+        case 2:
+            let vendor = parts[0].split(separator: ".", omittingEmptySubsequences: false)
+            return vendor.allSatisfy(isKeyName) && isKeyName(parts[1])
+        default:
+            return false
+        }
+    }
 }
 
 

@@ -140,13 +140,24 @@ extension NeedleTailWriterDelegate {
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes. Defaults to a logger with a specific label.
     ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCMessage>` used to write the message.
     ///   - message: An instance of `IRCMessage` representing the message to be sent.
-    /// - Throws: An error if sending or flushing the message fails.
+    /// - Throws: An error if sending or flushing the message fails, or the
+    ///   ``IRCMessageGeneratorError`` from ``IRCMessage/validateWireLine()`` before anything is
+    ///   written when a text line is invalid.
     public func sendAndFlushMessage<OutboundOut>(
         executor: (any AnyExecutor)? = nil,
         logger: NeedleTailLogger = NeedleTailLogger("[ com.needletails.writer.delegate ]"),
         writer: NIOAsyncChannelOutboundWriter<OutboundOut>,
         message: OutboundOut
     ) async throws {
+        // Reject an invalid line here: a throw inside the NIO encoder fails every later write.
+        switch message {
+        case let frame as IRCFrame:
+            if case .text(let line) = frame { try line.validateWireLine() }
+        case let line as IRCMessage:
+            try line.validateWireLine()
+        default:
+            break
+        }
         try await withThrowingDiscardingTaskGroup { group in
             if let executor {
                 group.addTask(executorPreference: executor) {

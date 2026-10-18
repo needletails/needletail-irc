@@ -125,7 +125,8 @@ public struct NeedleTailIRCEncoder: Sendable {
         
         // Append the command to the components
         components.append(command)
-        
+        let parametersStart = components.count
+
         // Encode the target of the message (numeric replies and server CAP replies).
         // RFC 2812 §2.4: a numeric reply consists of the prefix, the numeric and the target.
         // IRCv3: a server's CAP reply carries the client's nick, or `*`.
@@ -140,9 +141,20 @@ public struct NeedleTailIRCEncoder: Sendable {
         case .nick(let v), .modeGet(let v):
             components.append("\(v.stringValue)")
         case .user(let userInfo):
-            components.append("\(userInfo.username)\(Constants.space.rawValue)\(userInfo.hostname ?? "")\(Constants.space.rawValue)\(userInfo.servername ?? "*")\(Constants.space.rawValue)\(Constants.colon.rawValue)\(userInfo.realname)")
+            if let modes = userInfo.userModeFlags {
+                // RFC 2812 §3.1.3: `USER <user> <mode> <unused> <realname>`, mode bit 2 = w, bit 3 = i.
+                components.append("\(userInfo.username)\(Constants.space.rawValue)\(userModeBitmask(modes))\(Constants.space.rawValue)\(Constants.star.rawValue)\(Constants.space.rawValue)\(Constants.colon.rawValue)\(userInfo.realname)")
+            } else {
+                components.append("\(userInfo.username)\(Constants.space.rawValue)\(userInfo.hostname ?? "")\(Constants.space.rawValue)\(userInfo.servername ?? "*")\(Constants.space.rawValue)\(Constants.colon.rawValue)\(userInfo.realname)")
+            }
         case .isOn(let nicks):
-            components.append(arguments(nicks.lazy.map { $0.stringValue }))
+            // At most 15 parameters: past the 14th, the rest of the list is one trailing parameter.
+            let names = nicks.map { $0.stringValue }
+            if names.count > 15 {
+                components.append("\(arguments(Array(names.prefix(14))))\(Constants.space.rawValue)\(Constants.colon.rawValue)\(arguments(Array(names.dropFirst(14))))")
+            } else {
+                components.append(arguments(names))
+            }
         case .quit(let value):
             if let value = value {
                 components.append("\(Constants.colon.rawValue)\(value)")
@@ -161,9 +173,10 @@ public struct NeedleTailIRCEncoder: Sendable {
         case .part(let channels):
             components.append(create(arguments: channels.lazy.map { $0.stringValue }, buildWithComma: true))
         case .list(let channels, let target):
-            if let channels = channels {
+            // A bare `LIST` asks for every channel. `*` only stands in when a target must follow.
+            if let channels = channels, !channels.isEmpty {
                 components.append(create(arguments: channels.lazy.map { $0.stringValue }, buildWithComma: true))
-            } else {
+            } else if target != nil {
                 components.append("\(Constants.star.rawValue)")
             }
             if let target = target {
@@ -173,12 +186,17 @@ public struct NeedleTailIRCEncoder: Sendable {
             components.append(create(arguments: recipients.lazy.map { $0.stringValue }, buildWithComma: true))
             components.append("\(Constants.space.rawValue)\(Constants.colon.rawValue)\(message)")
         case .mode(let nick, add: let add, remove: let remove):
+            // RFC 2812 §3.1.5: one mode string, `+iw-o`.
             components.append("\(nick.stringValue)")
-            if let adds = add?.stringValue.map({ "\(Constants.plus.rawValue)\($0)" }) {
-                components.append("\(Constants.space.rawValue)\(arguments(adds))")
+            var modes = ""
+            if let adds = add?.stringValue, !adds.isEmpty {
+                modes += "\(Constants.plus.rawValue)\(adds)"
             }
-            if let removes = remove?.stringValue.map({ "\(Constants.minus.rawValue)\($0)" }) {
-                components.append("\(Constants.space.rawValue)\(arguments(removes))")
+            if let removes = remove?.stringValue, !removes.isEmpty {
+                modes += "\(Constants.minus.rawValue)\(removes)"
+            }
+            if !modes.isEmpty {
+                components.append("\(Constants.space.rawValue)\(modes)")
             }
         case .channelMode(let channel, addMode: let add, addParameters: let addParameters, removeMode: let remove, removeParameters: let removeParameters):
             // RFC 2812 §3.2.3: each `+`/`-` group is followed by its own parameters, one per mode.
@@ -341,8 +359,18 @@ public struct NeedleTailIRCEncoder: Sendable {
         case .locops(let message):
             components.append("\(Constants.colon.rawValue)\(message)")
         }
-        // Join all components and trim any trailing whitespace
-        return components.joined().trimmingCharacters(in: .whitespaces)
+        // Drop the separator spaces a case leaves when it writes no parameters. A trailing
+        // parameter ends the line and is kept verbatim, spaces included (RFC 2812 §2.3.1).
+        var line = components.joined()
+        if !components[parametersStart...].joined().contains("\(Constants.space.rawValue)\(Constants.colon.rawValue)") {
+            while line.last == Character(Constants.space.rawValue) { line.removeLast() }
+        }
+        return line
+    }
+
+    /// RFC 2812 §3.1.3 `USER` mode: bit 2 asks for `w`, bit 3 for `i`. Other modes can't be set here.
+    static func userModeBitmask(_ modes: IRCUserModeFlags) -> Int {
+        (modes.contains(.wallOps) ? 4 : 0) | (modes.contains(.invisible) ? 8 : 0)
     }
     
     // MARK: - Helper Methods

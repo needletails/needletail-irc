@@ -44,10 +44,14 @@ public enum Constants: String, Sendable {
     case sdccChat = "SDCCCHAT"
     case sdccSend = "SDCCSEND"
     case sdccResume = "SDCCRESUME"
+    @available(*, deprecated, message: "An application command. Declare it as an IRCCustomCommand in your app and send it with IRCCommand.custom(_:_:).")
     case offlineMessages = "OFFLINEMESSAGES"
+    @available(*, deprecated, message: "An application command. Declare it as an IRCCustomCommand in your app and send it with IRCCommand.custom(_:_:).")
     case deleteOfflineMessage = "DELETEOFFLINEMESSAGE"
     case pass = "PASS"
+    @available(*, deprecated, message: "An application command. Declare it as an IRCCustomCommand in your app and send it with IRCCommand.custom(_:_:).")
     case publishBlob = "PUBLISHBLOB"
+    @available(*, deprecated, message: "An application command. Declare it as an IRCCustomCommand in your app and send it with IRCCommand.custom(_:_:).")
     case readPublishedBlob = "READPUBLISHEDBLOB"
     case quit = "QUIT"
     case isOn = "ISON"
@@ -58,10 +62,15 @@ public enum Constants: String, Sendable {
     case cap = "CAP"
     case whoIs = "WHOIS"
     case who = "WHO"
+    @available(*, deprecated, message: "An application command. Declare it as an IRCCustomCommand in your app and send it with IRCCommand.custom(_:_:).")
     case badgeUpdate = "BADGEUPDATE"
+    @available(*, deprecated, message: "An application command. Declare it as an IRCCustomCommand in your app and send it with IRCCommand.custom(_:_:).")
     case multipartMediaDownload = "MULTIPARTMEDIADOWNLOAD"
+    @available(*, deprecated, message: "An application command. Declare it as an IRCCustomCommand in your app and send it with IRCCommand.custom(_:_:).")
     case multipartMediaUpload = "MULTIPARTMEDIAUPLOAD"
+    @available(*, deprecated, message: "An application command. Declare it as an IRCCustomCommand in your app and send it with IRCCommand.custom(_:_:).")
     case requestMediaDeletion = "REQUESTMEDIADELETION"
+    @available(*, deprecated, message: "An application command. Declare it as an IRCCustomCommand in your app and send it with IRCCommand.custom(_:_:).")
     case destoryUser = "DESTROYUSER"
     case sQuit = "SQUIT"
     case server = "SERVER"

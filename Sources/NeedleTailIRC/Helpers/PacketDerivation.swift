@@ -821,17 +821,27 @@ public actor IRCMessageGenerator: Sendable {
     private let packetBuilder: PacketBuilder
     private let binaryEncoder: any BinaryEncoding
     
+    /// Custom commands whose arguments are chunked 5 MB at a time instead of 512 bytes.
+    public nonisolated let largePayloadCommands: Set<IRCCustomCommand>
+    
+    /// The NeedleTail media commands, which ``largePayloadCommands`` holds unless you pass your own.
+    public static let defaultLargePayloadCommands: Set<IRCCustomCommand> = ["MULTIPARTMEDIAUPLOAD", "MULTIPARTMEDIADOWNLOAD"]
+    
     /// Initializes a new IRC message generator with the specified executor.
     /// - Parameters:
     ///   - executor: The executor to use for task management.
     ///   - binaryEncoder: Encoder used for `packet-metadata` / auth tags (injectable for tests).
+    ///   - largePayloadCommands: Custom commands chunked 5 MB at a time. Every other command
+    ///     is chunked 512 bytes at a time.
     public init(
         executor: any AnyExecutor,
-        binaryEncoder: any BinaryEncoding = BinaryEncoder()
+        binaryEncoder: any BinaryEncoding = BinaryEncoder(),
+        largePayloadCommands: Set<IRCCustomCommand> = IRCMessageGenerator.defaultLargePayloadCommands
     ) {
         self.executor = executor
         self.packetBuilder = PacketBuilder(executor: executor)
         self.binaryEncoder = binaryEncoder
+        self.largePayloadCommands = largePayloadCommands
     }
     
     /// Returns the unowned executor for this actor.
@@ -1072,7 +1082,7 @@ public actor IRCMessageGenerator: Sendable {
             let message = messageArray.joined(separator: Constants.comma.rawValue)
             await handleMessage(for: .otherCommand(otherCommand, [message]),
                                 message: message,
-                                chunkCount: (otherCommand == Constants.multipartMediaUpload.rawValue || otherCommand == Constants.multipartMediaDownload.rawValue) ? chunkSize : 512)
+                                chunkCount: IRCCustomCommand(rawValue: otherCommand).map(largePayloadCommands.contains) == true ? chunkSize : 512)
         case .otherNumeric(let otherNumeric, let messageArray):
             let message = messageArray.joined(separator: Constants.comma.rawValue)
             await handleMessage(for: .otherNumeric(otherNumeric, [message]), message: message)

@@ -364,7 +364,10 @@ public struct NeedleTailIRCCommandParser: Sendable {
         let maskOrServername = arguments[2]
         
         if let mode = UInt32(modeOrHostname) {
-            let userMode = IRCUserModeFlags(rawValue: mode)
+            // RFC 2812 §3.1.3: bit 2 asks for `w`, bit 3 for `i`; other bits carry nothing.
+            var userMode = IRCUserModeFlags()
+            if mode & 4 != 0 { userMode.insert(.wallOps) }
+            if mode & 8 != 0 { userMode.insert(.invisible) }
             return .user(IRCUserDetails(username: username, userModeFlags: userMode, realname: realname))
         } else {
             return .user(IRCUserDetails(username: username, hostname: modeOrHostname, servername: maskOrServername, realname: realname))
@@ -504,8 +507,9 @@ public struct NeedleTailIRCCommandParser: Sendable {
             throw CommandParserErrors.unexpectedArguments("Expected at max 2 arguments Found: \(arguments.count)")
         }
         
-        if arguments.first == Constants.star.rawValue {
-            return .list(channels: [], target: arguments.joined(separator: Constants.space.rawValue))
+        // `LIST` and `LIST *` ask for every channel; `*` can only be followed by a target.
+        if arguments.isEmpty || arguments.first == Constants.star.rawValue {
+            return .list(channels: nil, target: arguments.count > 1 ? arguments[1] : nil)
         } else {
             let (channels, serverList, _) = try getChannels(arguments)
             return .list(channels: channels, target: serverList?.first)
@@ -632,7 +636,9 @@ public struct NeedleTailIRCCommandParser: Sendable {
             throw CommandParserErrors.unexpectedArguments("Expected at least 1 arguments Found: \(arguments.count)")
         }
         
-        let nicks = try arguments.compactMap { arg in
+        // Clients also send the list as one trailing parameter (`ISON :alice bob`).
+        let names = arguments.flatMap { $0.split(separator: Character(Constants.space.rawValue)).map(String.init) }
+        let nicks = try names.compactMap { arg in
             guard let nick = arg.constructedNick else {
                 throw CommandParserErrors.invalidNick(arg)
             }

@@ -516,7 +516,7 @@ final class NeedleTailIRCTests {
         let base64 = try! BinaryEncoder().encode(Base64Struct(string:TestableConstants.longMessage.rawValue)).base64EncodedString()
         let messages = await generator.createMessages(
             origin: TestableConstants.origin.rawValue,
-            command: IRCCommand.otherCommand(Constants.readPublishedBlob.rawValue,
+            command: IRCCommand.otherCommand("READPUBLISHEDBLOB",
                                              [base64]),
             logger: NeedleTailLogger())
         
@@ -936,7 +936,7 @@ final class NeedleTailIRCTests {
         // Send an otherCommand with empty args (the scenario that was broken)
         let messages = await generator.createMessages(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.offlineMessages.rawValue, []),
+            command: .otherCommand("OFFLINEMESSAGES", []),
             logger: logger
         )
 
@@ -955,7 +955,7 @@ final class NeedleTailIRCTests {
             #expect(Bool(false), "Expected otherCommand after reassembly")
             return
         }
-        #expect(cmd == Constants.offlineMessages.rawValue, "Command name should be preserved")
+        #expect(cmd == "OFFLINEMESSAGES", "Command name should be preserved")
         #expect(args.isEmpty, "Empty args should remain empty after round-trip, got \(args)")
     }
 
@@ -1395,43 +1395,43 @@ func createIRCMessages() async -> [IRCMessage] {
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.offlineMessages.rawValue, [TestableConstants.longMessage.rawValue]),
+            command: .otherCommand("OFFLINEMESSAGES", [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.deleteOfflineMessage.rawValue, [TestableConstants.longMessage.rawValue]),
+            command: .otherCommand("DELETEOFFLINEMESSAGE", [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.publishBlob.rawValue, [TestableConstants.longMessage.rawValue]),
+            command: .otherCommand("PUBLISHBLOB", [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.readPublishedBlob.rawValue, [TestableConstants.longMessage.rawValue]),
+            command: .otherCommand("READPUBLISHEDBLOB", [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.badgeUpdate.rawValue, ["1"]),
+            command: .otherCommand("BADGEUPDATE", ["1"]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.multipartMediaDownload.rawValue, [TestableConstants.longMessage.rawValue]),
+            command: .otherCommand("MULTIPARTMEDIADOWNLOAD", [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.multipartMediaUpload.rawValue, [
+            command: .otherCommand("MULTIPARTMEDIAUPLOAD", [
                 "id",
                 "1",
                 "20",
@@ -1442,13 +1442,13 @@ func createIRCMessages() async -> [IRCMessage] {
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.requestMediaDeletion.rawValue, ["contactId", "mediaId"]),
+            command: .otherCommand("REQUESTMEDIADELETION", ["contactId", "mediaId"]),
             tags: [])
     )
     messages.append(
         IRCMessage(
             origin: TestableConstants.origin.rawValue,
-            command: .otherCommand(Constants.destoryUser.rawValue, [TestableConstants.longMessage.rawValue]),
+            command: .otherCommand("DESTROYUSER", [TestableConstants.longMessage.rawValue]),
             tags: [])
     )
     messages.append(

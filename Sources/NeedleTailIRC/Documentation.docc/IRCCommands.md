@@ -31,6 +31,11 @@ let userDetails = IRCUserDetails(
     realname: "Alice Smith"
 )
 let userCommand = IRCCommand.user(userDetails)
+// USER alice localhost localhost :Alice Smith
+
+// Ask for modes at registration (RFC 2812 bitmask: 4 = w, 8 = i)
+let invisible = IRCCommand.user(IRCUserDetails(username: "alice", userModeFlags: [.invisible], realname: "Alice Smith"))
+// USER alice 8 * :Alice Smith
 
 // Create message
 let message = IRCMessage(command: userCommand)
@@ -116,6 +121,7 @@ let message = IRCMessage(command: partCommand)
 ```swift
 // List all channels
 let listCommand = IRCCommand.list(channels: nil, target: nil)
+// LIST
 
 // List specific channels
 let listCommand = IRCCommand.list(
@@ -128,6 +134,7 @@ let listCommand = IRCCommand.list(
 
 // List channels on specific server
 let listCommand = IRCCommand.list(channels: nil, target: "server.example.com")
+// LIST * server.example.com
 
 // Create message
 let message = IRCMessage(command: listCommand)
@@ -273,6 +280,8 @@ let isOnCommand = IRCCommand.isOn([
 let message = IRCMessage(command: isOnCommand)
 ```
 
+A line carries at most 15 parameters, so past the 14th nick the rest of the list is written as one trailing parameter: `ISON n1 … n14 :n15 n16 …`. The parser reads either form.
+
 ### User Management Commands
 
 Commands for managing user modes and permissions:
@@ -289,6 +298,7 @@ let modeCommand = IRCCommand.mode(
     add: [.invisible, .away],
     remove: nil
 )
+// MODE alice_<uuid> +ia  (one mode string; with removals too: +ia-w)
 
 // Remove user modes
 let modeCommand = IRCCommand.mode(
@@ -444,6 +454,36 @@ let noSuchChannelCommand = IRCCommand.numeric(
 
 // Create messages
 let message = IRCMessage(command: welcomeCommand)
+```
+
+### Custom Commands
+
+Declare your application's commands as `IRCCustomCommand` values instead of string constants. A name is ASCII letters only and is stored uppercased.
+
+```swift
+extension IRCCustomCommand {
+    static let badgeUpdate: IRCCustomCommand = "BADGEUPDATE"
+    static let requestMediaDeletion: IRCCustomCommand = "REQUESTMEDIADELETION"
+}
+
+// Send
+let badge = IRCCommand.custom(.badgeUpdate, ["3"])                 // BADGEUPDATE :3
+let deletion = IRCCommand.custom(.requestMediaDeletion, ["contact", "shared-1", "photo.jpg"])
+                                                                     // REQUESTMEDIADELETION contact shared-1 photo.jpg
+
+// Receive: the parser hands back `.otherCommand`, and the name matches case-insensitively
+switch message.command {
+case .otherCommand(IRCCustomCommand.badgeUpdate, let arguments):
+    await updateBadge(arguments)
+default:
+    break
+}
+```
+
+Commands that carry media should be chunked 5 MB at a time instead of 512 bytes. Name them when you create the generator. The default, `IRCMessageGenerator.defaultLargePayloadCommands`, is `MULTIPARTMEDIAUPLOAD` and `MULTIPARTMEDIADOWNLOAD`.
+
+```swift
+let generator = IRCMessageGenerator(executor: executor, largePayloadCommands: ["MEDIAUPLOAD", "MEDIADOWNLOAD"])
 ```
 
 ## Command Building Patterns

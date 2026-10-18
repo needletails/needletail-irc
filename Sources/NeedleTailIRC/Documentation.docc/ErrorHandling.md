@@ -10,7 +10,7 @@ NeedleTailIRC provides specific error types for different failure scenarios. Und
 
 - **`IRCMessage.LineError.lineTooLong`** (aliased as `IRCFrameDecoder.DecoderError`): Raised when pending IRC bytes exceed the configured line limit, with or without a newline.
 - **`MessageParsingErrors`**: Raised when parsing a single IRC line fails (invalid tags/arguments/etc).
-- **`IRCMessageGeneratorError`**: Raised for empty outbound commands and authentication or packet-metadata encoding failures.
+- **`IRCMessageGeneratorError`**: Raised for outbound lines that break RFC 2812 or IRCv3 tags, for empty outbound commands, and for authentication or packet-metadata encoding failures.
 
 ## Outbound (encoding) limits
 
@@ -19,8 +19,14 @@ NeedleTailIRC provides specific error types for different failure scenarios. Und
 // IRCWireEncodable.encode(into:) on each payload type.
 // This SDK does not enforce a hard IRC line length limit at the encoder boundary by default,
 // because some deployments support/require larger-than-512 lines.
-// IRCMessage: empty required channels/recipients throw emptyCommandRejected; embedded
-//             CR/LF are stripped at the scalar level so a line can never contain its own terminator.
+// IRCMessage: validateWireLine() runs first, in wireLine() and in sendAndFlushMessage, so an
+//             invalid line throws before it reaches the pipeline. It rejects empty required
+//             channels/recipients (emptyCommandRejected), a command that isn't letters or three
+//             digits (invalidCommand), an origin with a space (invalidOrigin), a tag key that isn't
+//             [+][vendor/]name (invalidTagKey), a non-final parameter that is empty, has a space or
+//             starts with ':' (invalidParameter), and more than 15 parameters (tooManyParameters).
+//             Embedded NUL/CR/LF are stripped at the scalar level so a line can never contain
+//             its own terminator.
 // IRCBinaryMessage: empty recipients throw emptyCommandRejected; payload > UInt32.max is malformed.
 ```
 
@@ -123,6 +129,10 @@ do {
     // Multipart metadata was not sent; no contentless frame was yielded.
 } catch IRCMessageGeneratorError.emptyCommandRejected {
     // JOIN/PART/PRIVMSG/NOTICE was missing a required target.
+} catch let error as IRCMessageGeneratorError {
+    // invalidCommand, invalidOrigin, invalidTagKey, invalidParameter or tooManyParameters:
+    // the message can't be written as an RFC 2812 line. Nothing was sent.
+    print("Rejected outbound line: \(error)")
 } catch {
     print("Other encoding error: \(error)")
 }

@@ -22,7 +22,8 @@ NeedleTailIRC is a type-safe IRC protocol layer for the NeedleTail stack. It cov
 - **Binary payloads**: `IRCBinaryMessage` carries opaque bytes on the server connection without base64 or line limits
 - **DCC frames**: Encode/decode bounded, self-delimiting `DCCMessage` frames (not a full file-transfer client)
 - **NIO integration**: `IRCFrameEncoder`, `IRCFrameDecoder`, and `NeedleTailWriterDelegate`
-- **NeedleTail extensions**: Custom commands in `Constants` for blob sync, media, and device workflows
+- **Custom commands**: Declare application commands as `IRCCustomCommand`, send them with `IRCCommand.custom(_:_:)`, and match them in a `switch`
+- **Outbound validation**: `IRCMessage.validateWireLine()` rejects a line that would break RFC 2812 or IRCv3 tags before anything is written
 
 ## Quick Start
 
@@ -225,6 +226,9 @@ NeedleTailIRC pulls in:
 - `createMessages` still chunks large text into base64 `packet-metadata` tags. Application payloads that should avoid that overhead belong in `IRCBinaryMessage`.
 - Lines split by RFC 2812: single-word middle parameters, then one trailing parameter kept verbatim. A command without a typed `IRCCommand` case arrives as `.otherCommand(name, parameters)`, and any command can be sent the same way.
 - A numeric with `target` set is written in RFC form (`:srv 433 alice bob :Nickname is already in use`). Without a target it keeps the NeedleTail form (`465 :DEVICE_REVOKED, <uuid>`), which the parser still splits on commas. `transportMessage` and `createMessages` take an optional `target`.
+- Outbound lines are checked by `IRCMessage.validateWireLine()`. The command must be letters or three digits, the origin has no space, tag keys are `[+][vendor/]name`, every parameter before the last is one word that doesn't start with `:`, and there are at most 15 parameters. `sendAndFlushMessage` runs the check before writing, so a bad line throws an `IRCMessageGeneratorError` to the caller and the connection stays usable. `wireLine()` also strips NUL, CR and LF.
+- Application commands are `IRCCustomCommand` values the app declares: `.custom(.badgeUpdate, ["3"])` to send, `case .otherCommand(IRCCustomCommand.badgeUpdate, let arguments)` to match. The NeedleTail commands in `Constants` (`badgeUpdate`, `offlineMessages`, the media commands and so on) still work but are deprecated. `IRCMessageGenerator(executor:largePayloadCommands:)` names the commands chunked 5 MB at a time; the default is the two media commands.
+- `ISON` with more than 15 nicks writes the rest as one trailing parameter. User `MODE` is one mode string (`+iw-o`). A bare `LIST` asks for every channel. `USER` with mode flags writes the RFC 2812 bitmask (`USER alice 8 * :Real`).
 - `IRCEventProtocol` supplies no-op defaults for every callback. Override every event your integration needs.
 
 ## Installation

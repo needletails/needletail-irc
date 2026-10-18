@@ -117,6 +117,8 @@ let whois = IRCCommand.whois(server: nil, usermasks: ["alice", "bob"])
 let privMsg = IRCCommand.privMsg([.channel(NeedleTailChannel("#general")!)], "Hello, this is a long message with spaces!")
 ```
 
+RFC 2812 §2.3.1 allows at most 15 parameters. Every parameter before the last must be one non-empty word that doesn't start with `:`. Only the last one, the trailing parameter, may hold spaces, and it is written exactly as given, trailing spaces included. Before a message is written, `IRCMessage.validateWireLine()` checks these rules, along with the command name, the origin and the IRCv3 tag keys. `wireLine()` and `sendAndFlushMessage` throw an `IRCMessageGeneratorError` rather than send a line that would mean something else.
+
 ## Message Types
 
 ### Client Messages

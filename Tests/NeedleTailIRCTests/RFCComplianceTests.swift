@@ -99,6 +99,26 @@ import Testing
         guard case .user(let d) = m.command else { Issue.record("\(m.command)"); return }
         #expect(d.realname == "Real Name: x")
     }
+    @Test func c15_isonAsTrailingList() throws {               // ISON <nickname> *( SPACE <nickname> )
+        let m = try p("ISON :alice bob")
+        guard case .isOn(let nicks) = m.command else { Issue.record("\(m.command)"); return }
+        #expect(nicks.map(\.stringValue) == ["alice", "bob"])
+    }
+    @Test func c16_bareList() throws {                        // LIST [ <channel> *( "," <channel> ) [ <target> ] ]
+        let m = try p("LIST")
+        guard case .list(let channels, let target) = m.command else { Issue.record("\(m.command)"); return }
+        #expect(channels == nil && target == nil)
+    }
+    @Test func c17_userModeIsRFCBitmask() throws {            // RFC 2812 §3.1.3: bit 2 = w, bit 3 = i
+        func flags(_ mode: String) throws -> IRCUserModeFlags? {
+            guard case .user(let d) = try p("USER guest \(mode) * :Real").command else { return nil }
+            return d.userModeFlags
+        }
+        #expect(try flags("0") == [])
+        #expect(try flags("8") == [.invisible])
+        #expect(try flags("4") == [.wallOps])
+        #expect(try flags("12") == [.invisible, .wallOps])
+    }
 
     // MARK: Outbound
     @Test func o01_pongSingleSpace() throws {                 // SPACE = %x20 (one)
@@ -131,5 +151,39 @@ import Testing
         for try await message in stream { lines.append(try message.wireLine()) }
         #expect(lines.count == 1)
         #expect(lines.first?.hasSuffix(":srv 433 alice bob :Nickname is already in use") == true)
+    }
+    @Test func o06_isonPastFourteenNicksFoldsIntoTrailing() throws {   // at most 15 params
+        let nicks = (0..<20).map { NeedleTailNick(name: "n\($0)x", deviceId: nil)! }
+        let w = try wire(.isOn(nicks))
+        #expect(try NeedleTailIRCParser.tokenize(w).parameters.count == 15)
+        guard case .isOn(let back) = try p(w).command else { Issue.record("\(w)"); return }
+        #expect(back.map(\.stringValue) == nicks.map(\.stringValue))
+        #expect(try wire(.isOn(Array(nicks.prefix(15)))) == "ISON " + nicks.prefix(15).map(\.stringValue).joined(separator: " "))
+    }
+    @Test func o07_listWithoutChannelsHasNoParameters() throws {
+        #expect(try wire(.list(channels: nil, target: nil)) == "LIST")
+        #expect(try wire(.list(channels: [], target: nil)) == "LIST")
+    }
+    @Test func o08_userModeChangeIsOneModeString() throws {   // MODE <nick> *( ( "+" / "-" ) *<modes> )
+        let nick = NeedleTailNick(name: "alice", deviceId: nil)!
+        #expect(try wire(.mode(nick, add: [.invisible, .wallOps], remove: [.operatorMode])) == "MODE alice +iw-o")
+        #expect(try wire(.mode(nick, add: [.invisible], remove: nil)) == "MODE alice +i")
+        #expect(try wire(.mode(nick, add: nil, remove: [.wallOps])) == "MODE alice -w")
+        guard case .mode(_, let add, let remove) = try p("MODE alice +iw-o").command else { Issue.record("mode"); return }
+        #expect(add == [.invisible, .wallOps] && remove == [.operatorMode])
+    }
+    @Test func o09_trailingKeepsItsSpaces() throws {          // trailing is taken verbatim
+        let bob = NeedleTailNick(name: "bob", deviceId: nil)!
+        #expect(try wire(.privMsg([.nick(bob)], "hello ")) == "PRIVMSG bob :hello ")
+        #expect(try wire(.quit("Bye  ")) == "QUIT :Bye  ")
+        #expect(try wire(.topic(NeedleTailChannel("#travel")!, " ")) == "TOPIC #travel : ")
+    }
+    @Test func o10_userWithModesWritesRFCBitmask() throws {   // USER <user> <mode> <unused> :<realname>
+        let w = try wire(.user(IRCUserDetails(username: "guest", userModeFlags: [.invisible], realname: "Real Name")))
+        #expect(w == "USER guest 8 * :Real Name")
+        guard case .user(let d) = try p(w).command else { Issue.record("\(w)"); return }
+        #expect(d.userModeFlags == [.invisible])
+        // The hostname form NeedleTail sends is unchanged.
+        #expect(try wire(.user(IRCUserDetails(username: "alice", hostname: "10.0.0.2", servername: "srv", realname: "Real"))) == "USER alice 10.0.0.2 srv :Real")
     }
 }

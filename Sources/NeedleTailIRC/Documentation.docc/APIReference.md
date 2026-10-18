@@ -21,6 +21,10 @@ struct IRCMessage {
     var tags: [IRCTag]?
     
     init(origin: String? = nil, target: String? = nil, command: IRCCommand, tags: [IRCTag]? = nil)
+
+    static let maxParameters: Int // 15
+    func validateWireLine() throws
+    func wireLine() throws -> String
 }
 ```
 
@@ -31,6 +35,15 @@ struct IRCMessage {
 - `tags`: IRCv3 message tags (optional)
 
 `Equatable` is intentionally identity-based: two messages are equal when their generated `id` values match.
+
+**Wire validation:** `validateWireLine()` throws an `IRCMessageGeneratorError` unless the message can be written as one RFC 2812 line with IRCv3 tags:
+- The command is letters or three digits.
+- The origin has no space.
+- Every tag key is `[+][vendor/]name`.
+- Every parameter before the last is one non-empty word that doesn't start with `:`.
+- There are at most 15 parameters.
+
+`wireLine()` and `sendAndFlushMessage` both call it. `wireLine()` also strips NUL, CR and LF.
 
 **Example:**
 ```swift
@@ -89,6 +102,38 @@ enum IRCCommand {
     
     // Other commands
     case otherCommand(String, [String])
+
+    // An application command, sent as `otherCommand`
+    static func custom(_ command: IRCCustomCommand, _ arguments: [String] = []) -> IRCCommand
+}
+```
+
+### IRCCustomCommand
+
+The name of a command your application defines on top of IRC. Declare each one in your app, send it with `IRCCommand.custom(_:_:)`, and match it in a `switch` over `otherCommand`.
+
+```swift
+struct IRCCustomCommand: RawRepresentable, Hashable, Sendable, ExpressibleByStringLiteral {
+    let rawValue: String       // uppercased
+    init?(rawValue: String)    // nil unless ASCII letters only
+}
+
+func ~= (pattern: IRCCustomCommand, value: String) -> Bool  // case-insensitive
+```
+
+**Example:**
+```swift
+extension IRCCustomCommand {
+    static let badgeUpdate: IRCCustomCommand = "BADGEUPDATE"
+}
+
+try await writer.transportMessage(command: .custom(.badgeUpdate, ["3"]))
+
+switch message.command {
+case .otherCommand(IRCCustomCommand.badgeUpdate, let arguments):
+    handleBadge(arguments)
+default:
+    break
 }
 ```
 
@@ -405,7 +450,7 @@ protocol NeedleTailWriterDelegate: AnyObject, Sendable {
 
 **Methods:**
 - `transportMessage(...)`: Generate multipart messages and write each through `sendAndFlushMessage`
-- `sendAndFlushMessage(...)`: Write a single outbound payload to the NIO writer
+- `sendAndFlushMessage(...)`: Write a single outbound payload to the NIO writer. A text line is checked with `validateWireLine()` first, so an invalid one throws to the caller and never reaches the pipeline. A throw inside `IRCFrameEncoder` would fail every later write on that channel.
 
 See <doc:TransportLayer> for integration guidance. This package does not provide socket or TLS connectivity.
 
@@ -444,6 +489,24 @@ enum MessageParsingErrors: Error, Sendable {
 }
 ```
 
+### IRCMessageGeneratorError
+
+Outbound errors. Nothing has been written when one of these is thrown.
+
+```swift
+enum IRCMessageGeneratorError: Error, Sendable, Equatable {
+    case zeroFramesGenerated        // transportMessage wrote no frames
+    case packetMetadataEncodeFailed
+    case emptyCommandRejected       // JOIN/PART without channels, PRIVMSG/NOTICE without recipients
+    case authPacketEncodeFailed
+    case invalidCommand             // not letters or three digits
+    case invalidOrigin              // origin contains a space
+    case invalidTagKey              // not [+][vendor/]name
+    case invalidParameter           // a parameter before the last is empty, has a space or starts with ':'
+    case tooManyParameters          // more than 15
+}
+```
+
 ## Packet Types
 
 ### MultipartPacket
@@ -469,10 +532,16 @@ Actor that creates outbound IRC messages and reassembles multipart inbound chunk
 
 ```swift
 actor IRCMessageGenerator {
+    init(executor: any AnyExecutor, binaryEncoder: any BinaryEncoding = BinaryEncoder(), largePayloadCommands: Set<IRCCustomCommand> = IRCMessageGenerator.defaultLargePayloadCommands)
+    nonisolated let largePayloadCommands: Set<IRCCustomCommand>
+    static let defaultLargePayloadCommands: Set<IRCCustomCommand> // MULTIPARTMEDIAUPLOAD, MULTIPARTMEDIADOWNLOAD
+
     func createMessages(origin: String, target: String?, command: IRCCommand, tags: [IRCTag]?, authPacket: AuthPacket?, logger: NeedleTailLogger) async -> AsyncThrowingStream<IRCMessage, Error>
     func messageReassembler(ircMessage: IRCMessage) async throws -> IRCMessage?
 }
 ```
+
+Custom commands in `largePayloadCommands` are chunked 5 MB at a time; every other command 512 bytes at a time.
 
 ### PacketBuilder
 
@@ -562,6 +631,8 @@ enum Constants: String {
     // ...
 }
 ```
+
+The application commands are deprecated in favour of an `IRCCustomCommand` the app declares: `offlineMessages`, `deleteOfflineMessage`, `publishBlob`, `readPublishedBlob`, `badgeUpdate`, `multipartMediaDownload`, `multipartMediaUpload`, `requestMediaDeletion` and `destoryUser`. They still work, and the wire names are unchanged.
 
 ## Usage Examples
 
