@@ -161,28 +161,12 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     ///   - sender: The Sender
     func doDCCResume(with packet: DCCMetadata, sender: String) async throws
     
-    // MARK: - Additional Methods
+    // MARK: - Other IRC Methods
     
     /// Sets a password for the user.
     /// - Parameter password: An array containing the password.
     ///- Parameter associatedTags: IRCTags associated with the password command
     func doPassword(password: [String], associatedTags: [IRCTag]) async throws
-    
-    /// Publishes a blob of data.
-    ///- Parameter packet: A packet as an Array
-    func doPublishBlob(packet: [String]) async throws
-    
-    /// Reads a blob of data.
-    ///- Parameter packet: A packet as an Array
-    func doReadBlob(packet: [String]) async throws
-    
-    /// Retrieves offline messages for a specified user.
-    /// - Parameter nick: The nickname of the user to retrieve messages for.
-    func doOfflineMessages(for nick: NeedleTailNick) async throws
-    
-    /// Deletes offline messages from a specified contact.
-    /// - Parameter contact: The contact from whom to delete messages.
-    func doDeleteOfflineMessages(from contact: String) async throws
     
     /// Kicks users from specified channels.
     /// - Parameters:
@@ -196,18 +180,6 @@ public protocol IRCEventProtocol: AnyObject, Sendable {
     ///   - nick: The nickname of the user to kill.
     ///   - comment: A comment explaining the reason for the kill.
     func doKill(nick: NeedleTailNick, comment: String) async throws
-    
-    /// Downloads a multipart message.
-    /// - Parameter packet: An array containing the multipart message data.
-    func doMultipartMessageDownload(packet: [String]) async
-    
-    /// Uploads a multipart message.
-    /// - Parameter packet: An array containing the multipart message data.
-    func doMultipartMessageUpload(packet: [String]) async
-    
-    /// Updates the badge count for notifications.
-    /// - Parameter count: The new badge count.
-    func badgeCountUpdate(count: Int) async throws
 }
 
 public extension IRCEventProtocol {
@@ -235,13 +207,6 @@ public extension IRCEventProtocol {
     func doDCCChat(with packet: DCCMetadata, sender: String) async throws {}
     func doDCCResume(with packet: DCCMetadata, sender: String) async throws {}
     func doPassword(password: [String], associatedTags: [IRCTag]) async throws {}
-    func doPublishBlob(packet: [String]) async throws {}
-    func doReadBlob(packet: [String]) async throws {}
-    func doOfflineMessages(for nick: NeedleTailNick) async throws {}
-    func doDeleteOfflineMessages(from contact: String) async throws {}
     func doKick(channels: [NeedleTailChannel], users: [String], comments: [String]?) async throws {}
     func doKill(nick: NeedleTailNick, comment: String) async throws {}
-    func doMultipartMessageDownload(packet: [String]) async {}
-    func doMultipartMessageUpload(packet: [String]) async {}
-    func badgeCountUpdate(count: Int) async throws {}
 }

@@ -154,21 +154,6 @@ public final class NeedleTailChannel: Codable, Hashable, CustomStringConvertible
         self.original = original
         self.canonical = original.ircLowercased
     }
-
-    @available(*, deprecated, message: "Use the synchronous Decodable initializer.")
-    public init(from decoder: Decoder) async throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let original = try container.decode(String.self, forKey: .original)
-        guard Self.validate(string: original) else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .original,
-                in: container,
-                debugDescription: "Invalid IRC channel name."
-            )
-        }
-        self.original = original
-        self.canonical = original.ircLowercased
-    }
     
     /// Encodes the IRCChannelIdentifier to the given encoder.
     public func encode(to encoder: Encoder) throws {

@@ -141,11 +141,10 @@ let textOnly = IRCFrameDecoder.lineBasedIRC()
 
 ## Line length and interoperability
 
-The encoder does not hard-cap output at 512 bytes. NeedleTail transports may allow larger lines (for example base64 `packet-metadata` tags). When integrating with standard IRC servers:
+`IRCMessageGenerator` keeps every frame's line short by carrying text in 512-byte `packet-metadata` pieces; the encoder doesn't length-check a line you build yourself. When integrating with standard IRC servers:
 
-- Use `IRCMessageGenerator` to chunk large application payloads
-- Enforce line limits in your transport before writing to the socket
-- Document deployment-specific limits for your operators
+- Put text in the trailing parameter and split long text across several lines yourself; standard servers don't relay `packet-metadata`, so `createMessages` chunking only works between NeedleTail peers
+- Send large application payloads to NeedleTail servers as `IRCBinaryMessage`
 
 ## What this package does not provide
 

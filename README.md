@@ -23,7 +23,7 @@ NeedleTailIRC is a type-safe IRC protocol layer for the NeedleTail stack. It cov
 - **DCC frames**: Encode/decode bounded, self-delimiting `DCCMessage` frames (not a full file-transfer client)
 - **NIO integration**: `IRCFrameEncoder`, `IRCFrameDecoder`, and `NeedleTailWriterDelegate`
 - **Custom commands**: Declare application commands as `IRCCustomCommand`, send them with `IRCCommand.custom(_:_:)`, and match them in a `switch`
-- **Outbound validation**: `IRCMessage.validateWireLine()` rejects a line that would break RFC 2812 or IRCv3 tags before anything is written
+- **Outbound validation**: `IRCMessage.wireLine()` rejects a line that would break RFC 2812 or IRCv3 tags before anything is written
 
 ## Quick Start
 
@@ -80,7 +80,7 @@ if let rebuilt = try await generator.messageReassembler(ircMessage: incomingMess
 }
 ```
 
-> **Note:** Line length isn't checked by default, because NeedleTail sends lines larger than 512 bytes. On a connection to a standard IRC network, return `IRCLineLimits.standardClient` (or `.standardServer`) from your writer delegate's `outboundLineLimits`. A line that would break RFC 2812's 512 bytes, or IRCv3's tag limit, then throws before it is written.
+> **Note:** `IRCMessageGenerator` keeps lines short: it cuts text into 512-byte pieces and carries each in a `packet-metadata` tag. A line you build and send yourself isn't length-checked, so keep its text short or send it through the generator.
 
 ## Architecture
 
@@ -226,11 +226,11 @@ NeedleTailIRC pulls in:
 - `createMessages` still chunks large text into base64 `packet-metadata` tags. Application payloads that should avoid that overhead belong in `IRCBinaryMessage`.
 - Lines split by RFC 2812: single-word middle parameters, then one trailing parameter kept verbatim. A command without a typed `IRCCommand` case arrives as `.otherCommand(name, parameters)`, and any command can be sent the same way.
 - A numeric with `target` set is written in RFC form (`:srv 433 alice bob :Nickname is already in use`). Without a target it keeps the NeedleTail form (`465 :DEVICE_REVOKED, <uuid>`), which the parser still splits on commas. `transportMessage` and `createMessages` take an optional `target`.
-- Outbound lines are checked by `IRCMessage.validateWireLine()`. The command must be letters or three digits, the origin has no space, tag keys are `[+][vendor/]name`, every parameter before the last is one word that doesn't start with `:`, and there are at most 15 parameters. `sendAndFlushMessage` runs the check before writing, so a bad line throws an `IRCMessageGeneratorError` to the caller and the connection stays usable. `wireLine()` also strips NUL, CR and LF.
-- Application commands are `IRCCustomCommand` values the app declares: `.custom(.badgeUpdate, ["3"])` to send, `case .otherCommand(IRCCustomCommand.badgeUpdate, let arguments)` to match. The NeedleTail commands in `Constants` (`badgeUpdate`, `offlineMessages`, the media commands and so on) still work but are deprecated. `IRCMessageGenerator(executor:largePayloadCommands:)` names the commands chunked 5 MB at a time; the default is the two media commands.
+- Outbound lines are checked by `IRCMessage.wireLine()`. The command must be letters or three digits, the origin has no space, tag keys are `[+][vendor/]name`, every parameter before the last is one word that doesn't start with `:`, and there are at most 15 parameters. `sendAndFlushMessage` runs the check before writing, so a bad line throws an `IRCMessageGeneratorError` to the caller and the connection stays usable. `wireLine()` also strips NUL, CR and LF.
+- Application commands are `IRCCustomCommand` values the app declares: `.custom(.badgeUpdate, ["3"])` to send, `case .otherCommand(IRCCustomCommand.badgeUpdate, let arguments)` to match. The NeedleTail application commands (`badgeUpdate`, `offlineMessages`, the media commands and so on) are no longer in `Constants`; declare them in your app.
+- `createMessages` cuts text into pieces of at most 512 UTF-8 bytes, between Unicode scalars, and carries each piece in a `packet-metadata` tag. A frame's tags stay under IRCv3's 4096-byte client limit whatever the text is made of. Payloads too large for that belong in `IRCBinaryMessage`.
 - Nicks read off the wire keep their case and compare without case (RFC 2812 §2.2), so `:Bob PRIVMSG Alice` re-encodes unchanged. A NeedleTail `name_UUID` nick stays lowercased. `PART` with a message parses as `.partMessage(channels:message:)`. A server CAP reply that `.cap` can't hold (`LS *`, `NEW`, `DEL`) keeps its target. A last parameter may hold spaces: `OPER boss :correct horse`.
 - `IRCMessageRecipient.mask` carries the other RFC 2812 message targets as sent: `$*.example.net`, `nick!user@host`, `user%host@server`, `user%host` and `user@server`. Lines addressed to them parse instead of being dropped.
-- `IRCLineLimits` sets opt-in size limits: `maxLineBytes` for the line without its tags, CRLF included, and `maxTagBytes` for the tag section. Pass them to `validateWireLine(limits:)`, or return them from `NeedleTailWriterDelegate.outboundLineLimits`, which defaults to `nil` (no limits).
 - `ISON` with more than 15 nicks writes the rest as one trailing parameter. User `MODE` is one mode string (`+iw-o`). A bare `LIST` asks for every channel. `USER` with mode flags writes the RFC 2812 bitmask (`USER alice 8 * :Real`).
 - `IRCEventProtocol` supplies no-op defaults for every callback. Override every event your integration needs.
 

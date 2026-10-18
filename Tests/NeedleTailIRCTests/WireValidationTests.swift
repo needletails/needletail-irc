@@ -147,45 +147,6 @@ import Testing
         #expect(rebuilt?.tags?.first(where: { $0.key == "pass-tag" })?.value == b64)
     }
 
-    // RFC 2812 §2.3: 512 bytes including CRLF. IRCv3: tags are counted apart, up to 4096 bytes from a
-    // client and 8191 from a server, including the '@' and the space after them.
-    @Test func lineLimitsAreOptIn() throws {
-        let bob = NeedleTailNick(name: "bob", deviceId: nil)!
-        func privMsg(_ text: String, tags: [IRCTag]? = nil) -> IRCMessage { IRCMessage(command: .privMsg([.nick(bob)], text), tags: tags) }
-        let head = "PRIVMSG bob :".utf8.count
-        // 510 bytes plus CRLF fits; 511 doesn't. UTF-8 bytes are counted, not characters.
-        #expect(throws: Never.self) { try privMsg(String(repeating: "x", count: 510 - head)).validateWireLine(limits: .standardClient) }
-        #expect(throws: IRCMessageGeneratorError.lineTooLong) { try privMsg(String(repeating: "x", count: 511 - head)).validateWireLine(limits: .standardClient) }
-        #expect(throws: IRCMessageGeneratorError.lineTooLong) { try privMsg(String(repeating: "é", count: 250)).validateWireLine(limits: .standardClient) }
-        // No limits by default, so NeedleTail's large lines still go out.
-        #expect(throws: Never.self) { try privMsg(String(repeating: "x", count: 100_000)).validateWireLine() }
-        #expect(throws: Never.self) { try privMsg(String(repeating: "x", count: 100_000)).wireLine() }
-
-        // `@k=` + value + ` `: a 4092-byte value fills 4096 bytes exactly.
-        func tagged(_ count: Int) -> IRCMessage { privMsg("hi", tags: [IRCTag(key: "k", value: String(repeating: "v", count: count))]) }
-        #expect(throws: Never.self) { try tagged(4092).validateWireLine(limits: .standardClient) }
-        #expect(throws: IRCMessageGeneratorError.tagsTooLong) { try tagged(4093).validateWireLine(limits: .standardClient) }
-        #expect(throws: Never.self) { try tagged(8187).validateWireLine(limits: .standardServer) }
-        #expect(throws: IRCMessageGeneratorError.tagsTooLong) { try tagged(8188).validateWireLine(limits: .standardServer) }
-        #expect(IRCLineLimits.standardClient == IRCLineLimits(maxLineBytes: 512, maxTagBytes: 4096))
-        #expect(IRCLineLimits.standardServer == IRCLineLimits(maxLineBytes: 512, maxTagBytes: 8191))
-    }
-
-    @Test func writerDelegateAppliesItsLimits() async throws {
-        let long = IRCMessage(command: .privMsg([.nick(NeedleTailNick(name: "bob", deviceId: nil)!)], String(repeating: "x", count: 600)))
-        let limited = LimitedWriterDelegate()
-        let (writer, sink) = NIOAsyncChannelOutboundWriter<IRCFrame>.makeTestingWriter()
-        await #expect(throws: IRCMessageGeneratorError.lineTooLong) {
-            try await limited.sendAndFlushMessage(writer: writer, message: IRCFrame.text(long))
-        }
-        // The default delegate has no limits.
-        try await ValidationWriterDelegate().sendAndFlushMessage(writer: writer, message: IRCFrame.text(long))
-        writer.finish()
-        var written = 0
-        for await _ in sink { written += 1 }
-        #expect(written == 1)
-    }
-
     // A rejected message never reaches the NIO pipeline, so the connection stays usable.
     @Test func sendAndFlushRejectsBeforeWriting() async throws {
         let delegate = ValidationWriterDelegate()
@@ -204,7 +165,3 @@ import Testing
 }
 
 private final class ValidationWriterDelegate: NeedleTailWriterDelegate, @unchecked Sendable {}
-
-private final class LimitedWriterDelegate: NeedleTailWriterDelegate, @unchecked Sendable {
-    var outboundLineLimits: IRCLineLimits? { .standardClient }
-}

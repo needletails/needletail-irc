@@ -18,7 +18,6 @@ import Testing
 
 private extension IRCCustomCommand {
     static let badgeUpdate: IRCCustomCommand = "BADGEUPDATE"
-    static let bigUpload: IRCCustomCommand = "BIGUPLOAD"
 }
 
 /// Application commands are declared by the app, not the library.
@@ -52,22 +51,5 @@ private extension IRCCustomCommand {
             }
         }
         #expect(!(IRCCustomCommand.badgeUpdate ~= "OFFLINEMESSAGES"))
-    }
-
-    @Test func largePayloadCommandsAreConfigurable() async throws {
-        let executor = TestableExecutor(queue: .init(label: "custom-commands"))
-        let payload = String(repeating: "x", count: 2_000)
-        func frames(_ generator: IRCMessageGenerator, _ command: IRCCommand) async throws -> Int {
-            var count = 0
-            for try await _ in await generator.createMessages(origin: "alice", command: command, logger: NeedleTailLogger()) { count += 1 }
-            return count
-        }
-        let standard = IRCMessageGenerator(executor: executor)
-        let configured = IRCMessageGenerator(executor: executor, largePayloadCommands: [.bigUpload])
-        #expect(try await frames(standard, .custom(.bigUpload, [payload])) > 1)
-        #expect(try await frames(configured, .custom(.bigUpload, [payload])) == 1)
-        // The default set keeps the media commands on 5 MB chunks.
-        #expect(try await frames(standard, .otherCommand("MULTIPARTMEDIAUPLOAD", [payload])) == 1)
-        #expect(IRCMessageGenerator.defaultLargePayloadCommands.map(\.rawValue).sorted() == ["MULTIPARTMEDIADOWNLOAD", "MULTIPARTMEDIAUPLOAD"])
     }
 }

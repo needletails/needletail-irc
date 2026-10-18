@@ -23,7 +23,6 @@ struct IRCMessage {
     init(origin: String? = nil, target: String? = nil, command: IRCCommand, tags: [IRCTag]? = nil)
 
     static let maxParameters: Int // 15
-    func validateWireLine(limits: IRCLineLimits? = nil) throws
     func wireLine() throws -> String
 }
 ```
@@ -36,30 +35,15 @@ struct IRCMessage {
 
 `Equatable` is intentionally identity-based: two messages are equal when their generated `id` values match.
 
-**Wire validation:** `validateWireLine()` throws an `IRCMessageGeneratorError` unless the message can be written as one RFC 2812 line with IRCv3 tags:
+**Wire validation:** `wireLine()` throws an `IRCMessageGeneratorError` unless the message can be written as one RFC 2812 line with IRCv3 tags:
 - The command is letters or three digits.
 - The origin has no space.
 - Every tag key is `[+][vendor/]name`.
 - Every parameter before the last is one non-empty word that doesn't start with `:`.
 - There are at most 15 parameters.
 - Every `.mask` message target is an RFC 2812 mask or user address.
-- With `limits`, the line and its tags fit them. Without limits, length isn't checked.
 
-`wireLine()` and `sendAndFlushMessage` both call it. `sendAndFlushMessage` passes the delegate's `outboundLineLimits`. `wireLine()` also strips NUL, CR and LF.
-
-### IRCLineLimits
-
-Opt-in outbound size limits for a standard IRC connection. Sizes are UTF-8 bytes.
-
-```swift
-struct IRCLineLimits: Sendable, Equatable {
-    var maxLineBytes: Int   // the line without its tags, CRLF included (RFC 2812: 512)
-    var maxTagBytes: Int    // the tag section, '@' and the space after it included
-
-    static let standardClient: IRCLineLimits  // 512 and 4096 (IRCv3: 4094 bytes of client tag data)
-    static let standardServer: IRCLineLimits  // 512 and 8191
-}
-```
+`sendAndFlushMessage` runs the same checks before writing. `wireLine()` also strips NUL, CR and LF. Line length is kept by `IRCMessageGenerator`'s chunking, not checked here.
 
 **Example:**
 ```swift
@@ -449,8 +433,6 @@ Protocol for message transport delegation.
 
 ```swift
 protocol NeedleTailWriterDelegate: AnyObject, Sendable {
-    var outboundLineLimits: IRCLineLimits? { get }  // default nil: no length check
-
     func transportMessage(
         _ messageGenerator: IRCMessageGenerator,
         executor: any AnyExecutor,
@@ -474,7 +456,7 @@ protocol NeedleTailWriterDelegate: AnyObject, Sendable {
 
 **Methods:**
 - `transportMessage(...)`: Generate multipart messages and write each through `sendAndFlushMessage`
-- `sendAndFlushMessage(...)`: Write a single outbound payload to the NIO writer. A text line is checked with `validateWireLine(limits: outboundLineLimits)` first, so an invalid one throws to the caller and never reaches the pipeline. A throw inside `IRCFrameEncoder` would fail every later write on that channel.
+- `sendAndFlushMessage(...)`: Write a single outbound payload to the NIO writer. A text line goes through the `wireLine()` checks first, so an invalid one throws to the caller and never reaches the pipeline. A throw inside `IRCFrameEncoder` would fail every later write on that channel.
 
 See <doc:TransportLayer> for integration guidance. This package does not provide socket or TLS connectivity.
 
@@ -488,16 +470,16 @@ Every requirement has a no-op default. Override each callback that is meaningful
 
 ### NeedleTailError
 
-Main error enumeration.
+Validation errors for NeedleTailIRC models.
 
 ```swift
 enum NeedleTailError: String, Error, Sendable {
     case invalidIRCChannelName
     case nilNickName
-    case transportNotIntitialized
-    case payloadTooLarge
-    case parsingError
-    // ... additional cases for NeedleTail client integration
+    case invalidUserId
+    case deviceIdNil
+    case usernameNil
+    case nilData
 }
 ```
 
@@ -528,8 +510,6 @@ enum IRCMessageGeneratorError: Error, Sendable, Equatable {
     case invalidTagKey              // not [+][vendor/]name
     case invalidParameter           // a parameter before the last is empty, has a space or starts with ':'
     case tooManyParameters          // more than 15
-    case lineTooLong                // over IRCLineLimits.maxLineBytes
-    case tagsTooLong                // over IRCLineLimits.maxTagBytes
 }
 ```
 
@@ -558,16 +538,14 @@ Actor that creates outbound IRC messages and reassembles multipart inbound chunk
 
 ```swift
 actor IRCMessageGenerator {
-    init(executor: any AnyExecutor, binaryEncoder: any BinaryEncoding = BinaryEncoder(), largePayloadCommands: Set<IRCCustomCommand> = IRCMessageGenerator.defaultLargePayloadCommands)
-    nonisolated let largePayloadCommands: Set<IRCCustomCommand>
-    static let defaultLargePayloadCommands: Set<IRCCustomCommand> // MULTIPARTMEDIAUPLOAD, MULTIPARTMEDIADOWNLOAD
+    init(executor: any AnyExecutor, binaryEncoder: any BinaryEncoding = BinaryEncoder())
 
     func createMessages(origin: String, target: String?, command: IRCCommand, tags: [IRCTag]?, authPacket: AuthPacket?, logger: NeedleTailLogger) async -> AsyncThrowingStream<IRCMessage, Error>
     func messageReassembler(ircMessage: IRCMessage) async throws -> IRCMessage?
 }
 ```
 
-Custom commands in `largePayloadCommands` are chunked 5 MB at a time; every other command 512 bytes at a time.
+Text is cut into pieces of at most 512 UTF-8 bytes, between Unicode scalars, and each piece travels in a base64 `packet-metadata` tag of about 800 bytes. This is NeedleTail's framing: standard IRC servers don't relay that tag. Send large payloads as `IRCBinaryMessage`.
 
 ### PacketBuilder
 
@@ -658,7 +636,7 @@ enum Constants: String {
 }
 ```
 
-The application commands are deprecated in favour of an `IRCCustomCommand` the app declares: `offlineMessages`, `deleteOfflineMessage`, `publishBlob`, `readPublishedBlob`, `badgeUpdate`, `multipartMediaDownload`, `multipartMediaUpload`, `requestMediaDeletion` and `destoryUser`. They still work, and the wire names are unchanged.
+NeedleTail's application commands are not in `Constants`. Declare each as an `IRCCustomCommand` in your app; the wire names stay the same, for example `static let badgeUpdate: IRCCustomCommand = "BADGEUPDATE"`.
 
 ## Usage Examples
 

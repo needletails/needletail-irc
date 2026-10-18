@@ -315,15 +315,19 @@ public struct PacketDerivation: Sendable {
     /// )
     /// ```
     ///
-    /// ## IRC Requirements
+    /// ## Chunk size
     ///
-    /// The default chunk count of 512 bytes is designed to meet IRC protocol requirements
-    /// while allowing space for message overhead including tags, prefixes, and command structure.
+    /// Text is cut every `chunkCount` UTF-8 bytes, between Unicode scalars, so each piece is valid
+    /// UTF-8 and the pieces join back to the original. The generator carries each piece in a
+    /// base64 `packet-metadata` tag, not in the line, so RFC 2812's 512-byte line limit doesn't
+    /// apply to it. The IRCv3 tag limit does: a 512-byte piece encodes to about 800 bytes of tag,
+    /// which leaves room for authentication and other tags under the 4096 bytes a client may send.
     ///
     /// - Parameters:
     ///   - text: The text content to split into packets (optional).
     ///   - data: The binary data to split into packets (optional).
-    ///   - chunkCount: The maximum size of each packet in bytes (default: 512).
+    ///   - chunkCount: The maximum size of each packet in UTF-8 bytes for text, or bytes for data
+    ///     (default: 512). A single Unicode scalar wider than this stays whole.
     ///   - bufferingPolicy: The buffering policy for the async stream (default: .unbounded).
     /// - Returns: An async stream that yields `MultipartPacket` instances.
     public func calculateAndDispense(
@@ -340,7 +344,7 @@ public struct PacketDerivation: Sendable {
         let packetDate = Date()
         
         if let text {
-            let chunks = text.chunks(ofCount: chunkCount)
+            let chunks = Self.utf8Chunks(of: text, maxBytes: chunkCount)
             let totalParts = chunks.count
             var packets = [MultipartPacket]()
             packets.reserveCapacity(totalParts)
@@ -391,6 +395,30 @@ public struct PacketDerivation: Sendable {
             }
         }
         return stream
+    }
+
+    /// Splits `text` into pieces of at most `maxBytes` UTF-8 bytes. A piece ends on a Unicode scalar
+    /// boundary, so it is valid UTF-8; a scalar wider than `maxBytes` becomes a piece of its own.
+    static func utf8Chunks(of text: String, maxBytes: Int) -> [String] {
+        let utf8 = text.utf8
+        func isContinuation(_ index: String.UTF8View.Index) -> Bool {
+            index < utf8.endIndex && utf8[index] & 0xC0 == 0x80
+        }
+        var chunks: [String] = []
+        var start = utf8.startIndex
+        while start < utf8.endIndex {
+            var end = utf8.index(start, offsetBy: max(maxBytes, 1), limitedBy: utf8.endIndex) ?? utf8.endIndex
+            // Step back off UTF-8 continuation bytes (10xxxxxx) so no scalar is cut.
+            while end > start, isContinuation(end) { utf8.formIndex(before: &end) }
+            if end == start {
+                // One scalar is wider than `maxBytes`: keep it whole.
+                end = utf8.index(after: start)
+                while isContinuation(end) { utf8.formIndex(after: &end) }
+            }
+            chunks.append(String(decoding: utf8[start..<end], as: UTF8.self))
+            start = end
+        }
+        return chunks
     }
 }
 
@@ -589,12 +617,8 @@ public actor PacketBuilder {
     /// - Parameter packet: The multipart packet to process.
     /// - Returns: A `ProcessedResult` indicating the processing outcome.
     public func processPacket(_ packet: MultipartPacket) -> ProcessedResult {
-        var packet = packet
-        if var message = packet.message, message.first == ":" {
-            message = String(message.dropFirst())
-            packet.message = message
-        }
-
+        // A chunk travels binary-encoded in `packet-metadata`, never as a trailing parameter, so a
+        // leading `:` is part of the text and is kept.
         cleanupExpiredGroups(now: Date())
 
         // Basic sanity checks to prevent abuse.
@@ -821,27 +845,17 @@ public actor IRCMessageGenerator: Sendable {
     private let packetBuilder: PacketBuilder
     private let binaryEncoder: any BinaryEncoding
     
-    /// Custom commands whose arguments are chunked 5 MB at a time instead of 512 bytes.
-    public nonisolated let largePayloadCommands: Set<IRCCustomCommand>
-    
-    /// The NeedleTail media commands, which ``largePayloadCommands`` holds unless you pass your own.
-    public static let defaultLargePayloadCommands: Set<IRCCustomCommand> = ["MULTIPARTMEDIAUPLOAD", "MULTIPARTMEDIADOWNLOAD"]
-    
     /// Initializes a new IRC message generator with the specified executor.
     /// - Parameters:
     ///   - executor: The executor to use for task management.
     ///   - binaryEncoder: Encoder used for `packet-metadata` / auth tags (injectable for tests).
-    ///   - largePayloadCommands: Custom commands chunked 5 MB at a time. Every other command
-    ///     is chunked 512 bytes at a time.
     public init(
         executor: any AnyExecutor,
-        binaryEncoder: any BinaryEncoding = BinaryEncoder(),
-        largePayloadCommands: Set<IRCCustomCommand> = IRCMessageGenerator.defaultLargePayloadCommands
+        binaryEncoder: any BinaryEncoding = BinaryEncoder()
     ) {
         self.executor = executor
         self.packetBuilder = PacketBuilder(executor: executor)
         self.binaryEncoder = binaryEncoder
-        self.largePayloadCommands = largePayloadCommands
     }
     
     /// Returns the unowned executor for this actor.
@@ -1077,12 +1091,9 @@ public actor IRCMessageGenerator: Sendable {
             }
             
         case .otherCommand(let otherCommand, let messageArray):
-            //5mb chunk size
-            let chunkSize = 5 * 1024 * 1024
+            // Large payloads belong in `IRCBinaryMessage`, which has no line or base64 overhead.
             let message = messageArray.joined(separator: Constants.comma.rawValue)
-            await handleMessage(for: .otherCommand(otherCommand, [message]),
-                                message: message,
-                                chunkCount: IRCCustomCommand(rawValue: otherCommand).map(largePayloadCommands.contains) == true ? chunkSize : 512)
+            await handleMessage(for: .otherCommand(otherCommand, [message]), message: message)
         case .otherNumeric(let otherNumeric, let messageArray):
             let message = messageArray.joined(separator: Constants.comma.rawValue)
             await handleMessage(for: .otherNumeric(otherNumeric, [message]), message: message)

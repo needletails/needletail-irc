@@ -25,10 +25,23 @@ extension IRCMessage: IRCWireEncodable {
 
     /// The validated, single-line wire form of this message, **without** the terminator.
     ///
-    /// Rules enforced here, so every caller (NIO codec, tests, diagnostics) gets the same bytes:
-    /// - The message must pass ``validateWireLine(limits:)``.
-    /// - An encoder result that is empty is rejected with
-    ///   ``IRCMessageGeneratorError/emptyCommandRejected``.
+    /// This is the one place a text line is checked and encoded, so every caller (NIO codec,
+    /// `sendAndFlushMessage`, tests, diagnostics) gets the same bytes. It throws an
+    /// ``IRCMessageGeneratorError`` unless the message can be written as one RFC 2812 line with
+    /// IRCv3 tags:
+    /// - `JOIN`/`PART` need channels and `PRIVMSG`/`NOTICE` need recipients:
+    ///   ``IRCMessageGeneratorError/emptyCommandRejected``. The server would reject them.
+    /// - The command is letters or three digits: ``IRCMessageGeneratorError/invalidCommand``.
+    /// - The origin has no space: ``IRCMessageGeneratorError/invalidOrigin``.
+    /// - Tag keys are `[+][vendor/]name`: ``IRCMessageGeneratorError/invalidTagKey``.
+    /// - Every parameter before the last is one non-empty word that doesn't start with `:`, and
+    ///   message targets are channels, nicks or RFC 2812 masks:
+    ///   ``IRCMessageGeneratorError/invalidParameter``.
+    /// - At most ``maxParameters`` parameters: ``IRCMessageGeneratorError/tooManyParameters``.
+    /// - An encoder result that is empty: ``IRCMessageGeneratorError/emptyCommandRejected``.
+    ///
+    /// Line length is kept by the chunker, not checked here: `IRCMessageGenerator` cuts text into
+    /// 512-byte pieces carried in `packet-metadata`, so each frame's line stays short.
     /// - Embedded NUL, `\r` and `\n` are removed. A line may not contain them; stripping is
     ///   preferred over throwing so a stray newline in user text degrades the message rather
     ///   than dropping it. Callers that need to know this happened can compare `wireLine()`
@@ -53,22 +66,9 @@ extension IRCMessage: IRCWireEncodable {
         return line
     }
 
-    /// Throws unless this message can be written as one RFC 2812 line with IRCv3 tags.
-    ///
-    /// ``wireLine()`` and `NeedleTailWriterDelegate.sendAndFlushMessage` call this, so an invalid
-    /// message throws to the caller before it reaches the NIO pipeline. Checked here:
-    /// - `JOIN`/`PART` with no channels and `PRIVMSG`/`NOTICE` with no recipients:
-    ///   ``IRCMessageGeneratorError/emptyCommandRejected``. The server would reject them.
-    /// - The command is letters or three digits: ``IRCMessageGeneratorError/invalidCommand``.
-    /// - The origin has no space: ``IRCMessageGeneratorError/invalidOrigin``.
-    /// - Tag keys are `[+][vendor/]name`: ``IRCMessageGeneratorError/invalidTagKey``.
-    /// - Every parameter before the last is one non-empty word that doesn't start with `:`:
-    ///   ``IRCMessageGeneratorError/invalidParameter``.
-    /// - At most ``maxParameters`` parameters: ``IRCMessageGeneratorError/tooManyParameters``.
-    /// - Message targets are channels, nicks or RFC 2812 masks: ``IRCMessageGeneratorError/invalidParameter``.
-    /// - With `limits`, the line and its tags fit: ``IRCMessageGeneratorError/lineTooLong`` and
-    ///   ``IRCMessageGeneratorError/tagsTooLong``. Without them, length isn't checked.
-    public func validateWireLine(limits: IRCLineLimits? = nil) throws {
+    /// The checks ``wireLine()`` documents, without encoding the tags. `sendAndFlushMessage` runs
+    /// them before writing, so an invalid line throws before it reaches the NIO pipeline.
+    func validateWireLine() throws {
         switch command {
         case .join(let channels, _) where channels.isEmpty,
              .part(let channels) where channels.isEmpty,
@@ -117,18 +117,6 @@ extension IRCMessage: IRCWireEncodable {
         }
         guard line.parameters.count <= Self.maxParameters else {
             throw IRCMessageGeneratorError.tooManyParameters
-        }
-        if let limits {
-            let full = Self.removingForbiddenScalars(NeedleTailIRCEncoder.encode(value: self))
-            let untagged = Self.removingForbiddenScalars(
-                NeedleTailIRCEncoder.encode(value: IRCMessage(origin: origin, target: target, command: command))
-            )
-            guard untagged.utf8.count + Self.lineTerminator.utf8.count <= limits.maxLineBytes else {
-                throw IRCMessageGeneratorError.lineTooLong
-            }
-            guard full.utf8.count - untagged.utf8.count <= limits.maxTagBytes else {
-                throw IRCMessageGeneratorError.tagsTooLong
-            }
         }
     }
 

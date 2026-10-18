@@ -35,12 +35,6 @@ public struct IRCTag: Hashable, Codable, Sendable {
         self.value = value
     }
     
-    /// Returns the key of the tag as a string representation.
-    @available(*, deprecated, message: "Use key directly.")
-    public var stringValue: String {
-        return key
-    }
-    
     /// Computes a hash value for the tag based on its key.
     /// - Parameter hasher: The hasher to use for combining the key's hash.
     public func hash(into hasher: inout Hasher) {
@@ -158,9 +152,4 @@ public struct IRCTag: Hashable, Codable, Sendable {
             return false
         }
     }
-}
-
-
-enum TagKey: String {
-    case privateMessage, dccChat, passTag, reachableServers, externalNickOnline, externalNickOffline, membersOnline, cacheSession
 }

@@ -17,10 +17,9 @@ NeedleTailIRC provides specific error types for different failure scenarios. Und
 ```swift
 // IRCFrameEncoder is the mandatory outbound encoding boundary; it delegates to
 // IRCWireEncodable.encode(into:) on each payload type.
-// Line length is opt-in, because NeedleTail sends lines larger than 512 bytes. Pass IRCLineLimits to
-// validateWireLine(limits:) or return them from NeedleTailWriterDelegate.outboundLineLimits; a line
-// over them throws lineTooLong, a tag section over them tagsTooLong.
-// IRCMessage: validateWireLine() runs first, in wireLine() and in sendAndFlushMessage, so an
+// Line length is kept by IRCMessageGenerator, which cuts text into 512-byte pieces carried in
+// packet-metadata. The encoder doesn't length-check a line you build yourself.
+// IRCMessage: wireLine() runs these checks, and sendAndFlushMessage runs them first, so an
 //             invalid line throws before it reaches the pipeline. It rejects empty required
 //             channels/recipients (emptyCommandRejected), a command that isn't letters or three
 //             digits (invalidCommand), an origin with a space (invalidOrigin), a tag key that isn't
@@ -62,15 +61,13 @@ func parseMessageSafely(_ rawMessage: String) -> IRCMessage? {
     }
 }
 
-// Handle connection errors
+// Connection errors come from your NIO transport; this package doesn't open sockets.
 func connectToServer(host: String, port: Int) async {
     do {
-        try await connectionManager.connect(host: host, port: port, useSSL: false)
+        try await yourTransport.connect(host: host, port: port)
         print("Successfully connected to \(host):\(port)")
-    } catch NeedleTailError.couldNotConnectToServer {
-        print("Failed to connect to server")
-    } catch NeedleTailError.transportNotIntitialized {
-        print("Transport layer not initialized")
+    } catch let error as ChannelError {
+        print("Failed to connect to server: \(error)")
     } catch {
         print("Unexpected error: \(error)")
     }
@@ -132,8 +129,8 @@ do {
 } catch IRCMessageGeneratorError.emptyCommandRejected {
     // JOIN/PART/PRIVMSG/NOTICE was missing a required target.
 } catch let error as IRCMessageGeneratorError {
-    // invalidCommand, invalidOrigin, invalidTagKey, invalidParameter, tooManyParameters,
-    // lineTooLong or tagsTooLong: the message can't be written as an RFC 2812 line. Nothing was sent.
+    // invalidCommand, invalidOrigin, invalidTagKey, invalidParameter or tooManyParameters:
+    // the message can't be written as an RFC 2812 line. Nothing was sent.
     print("Rejected outbound line: \(error)")
 } catch {
     print("Other encoding error: \(error)")

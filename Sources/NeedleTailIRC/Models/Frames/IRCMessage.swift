@@ -135,15 +135,6 @@ public struct IRCMessage: Codable, Sendable {
         tags = try container.decodeIfPresent([IRCTag].self, forKey: .tags)
     }
 
-    @available(*, deprecated, message: "Use the synchronous Decodable initializer.")
-    public init(from decoder: Decoder) async throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        origin = try container.decodeIfPresent(String.self, forKey: .origin)
-        target = try container.decodeIfPresent(String.self, forKey: .target)
-        command = try container.decode(IRCCommand.self, forKey: .command)
-        tags = try container.decodeIfPresent([IRCTag].self, forKey: .tags)
-    }
-
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(origin, forKey: .origin)

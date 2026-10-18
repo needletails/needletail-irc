@@ -1039,9 +1039,9 @@ func createIRCMessages() async -> [IRCMessage] {
     let reachableServers: [ReachableServers] = []
     let serverPassword = "321"
     let value = try! BinaryEncoder().encode(ClientType.server).base64EncodedString()
-    let passTag = IRCTag(key: TagKey.passTag.rawValue, value: value)
+    let passTag = IRCTag(key: "passTag", value: value)
     let servers = try! BinaryEncoder().encode(reachableServers).base64EncodedString()
-    let tag = IRCTag(key: TagKey.reachableServers.rawValue, value: servers)
+    let tag = IRCTag(key: "reachableServers", value: servers)
     
     messages.append(
         IRCMessage(

@@ -483,11 +483,7 @@ default:
 }
 ```
 
-Commands that carry media should be chunked 5 MB at a time instead of 512 bytes. Name them when you create the generator. The default, `IRCMessageGenerator.defaultLargePayloadCommands`, is `MULTIPARTMEDIAUPLOAD` and `MULTIPARTMEDIADOWNLOAD`.
-
-```swift
-let generator = IRCMessageGenerator(executor: executor, largePayloadCommands: ["MEDIAUPLOAD", "MEDIADOWNLOAD"])
-```
+A custom command's arguments are chunked like text, 512 UTF-8 bytes at a time. Send media and other large payloads as an `IRCBinaryMessage` instead; its `contentType` can carry the command name.
 
 ## Command Building Patterns
 
@@ -631,7 +627,7 @@ func sendCommandWithRetry(_ command: IRCCommand, maxRetries: Int = 3) async thro
         }
     }
     
-    throw lastError ?? NeedleTailError.transportNotIntitialized
+    throw lastError ?? CancellationError()
 }
 
 // Usage
