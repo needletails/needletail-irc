@@ -5,7 +5,7 @@
 A Swift package for parsing, encoding, and framing IRC (Internet Relay Chat) messages with modern concurrency support.
 
 [![Swift](https://img.shields.io/badge/Swift-6.4+-orange.svg)](https://swift.org)
-[![Platform](https://img.shields.io/badge/Platform-iOS%2018%2B%20%7C%20macOS%2015%2B-blue.svg)](https://developer.apple.com)
+[![Platform](https://img.shields.io/static/v1?label=Platform&message=iOS%2017%2B%20%7C%20macOS%2014%2B%20%7C%20Linux%20%7C%20Android&color=blue&logo=android&logoColor=white)](https://developer.apple.com)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## Overview
