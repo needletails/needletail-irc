@@ -222,9 +222,9 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
 
 /// A utility for breaking down large messages and data into smaller packets for IRC transmission.
 ///
-/// `PacketDerivation` handles the process of splitting large content into smaller chunks
-/// that can be transmitted over IRC protocol limitations (typically 512 bytes per message).
-/// It supports both text-based messages and binary data.
+/// `PacketDerivation` splits text or data into numbered pieces that share a group id, so a
+/// receiver can put them back together. ``IRCMessageGenerator`` uses it to send one piece per
+/// IRC line.
 ///
 /// ## Features
 ///
@@ -257,10 +257,10 @@ public struct MultipartPacket: Sendable, Codable, Hashable {
 /// }
 /// ```
 ///
-/// ## IRC Protocol Compliance
+/// ## Chunk size
 ///
-/// The default chunk size of 512 bytes ensures compliance with IRC protocol limitations
-/// while allowing for message overhead (tags, prefixes, etc.).
+/// Text is measured in UTF-8 bytes. ``IRCMessageGenerator`` picks the size for PRIVMSG and NOTICE
+/// so each line, as a server relays it, fits RFC 2812's 512 bytes.
 ///
 /// ## Thread Safety
 ///
@@ -315,15 +315,19 @@ public struct PacketDerivation: Sendable {
     /// )
     /// ```
     ///
-    /// ## IRC Requirements
+    /// ## Chunk size
     ///
-    /// The default chunk count of 512 bytes is designed to meet IRC protocol requirements
-    /// while allowing space for message overhead including tags, prefixes, and command structure.
+    /// Text is cut every `chunkCount` UTF-8 bytes, on a Character boundary when one fits and a
+    /// Unicode scalar boundary otherwise, so each piece is valid UTF-8 and the pieces join back
+    /// to the original. ``IRCMessageGenerator`` sends PRIVMSG and NOTICE pieces in the line's
+    /// trailing parameter, sized so the relayed line fits RFC 2812's 512 bytes, and also in a
+    /// base64 `packet-metadata` tag of about 800 bytes, under the 4096 bytes of tags a client may send.
     ///
     /// - Parameters:
     ///   - text: The text content to split into packets (optional).
     ///   - data: The binary data to split into packets (optional).
-    ///   - chunkCount: The maximum size of each packet in bytes (default: 512).
+    ///   - chunkCount: The maximum size of each packet in UTF-8 bytes for text, or bytes for data
+    ///     (default: 512). A single Unicode scalar wider than this stays whole.
     ///   - bufferingPolicy: The buffering policy for the async stream (default: .unbounded).
     /// - Returns: An async stream that yields `MultipartPacket` instances.
     public func calculateAndDispense(
@@ -340,7 +344,7 @@ public struct PacketDerivation: Sendable {
         let packetDate = Date()
         
         if let text {
-            let chunks = text.chunks(ofCount: chunkCount)
+            let chunks = Self.utf8Chunks(of: text, maxBytes: chunkCount)
             let totalParts = chunks.count
             var packets = [MultipartPacket]()
             packets.reserveCapacity(totalParts)
@@ -391,6 +395,37 @@ public struct PacketDerivation: Sendable {
             }
         }
         return stream
+    }
+
+    /// Splits `text` into pieces of at most `maxBytes` UTF-8 bytes. A piece ends on a Character
+    /// boundary when one fits, otherwise on a Unicode scalar boundary, so it is always valid UTF-8;
+    /// a scalar wider than `maxBytes` becomes a piece of its own.
+    static func utf8Chunks(of text: String, maxBytes: Int) -> [String] {
+        let utf8 = text.utf8
+        func isContinuation(_ index: String.UTF8View.Index) -> Bool {
+            index < utf8.endIndex && utf8[index] & 0xC0 == 0x80
+        }
+        var chunks: [String] = []
+        var start = utf8.startIndex
+        while start < utf8.endIndex {
+            var end = utf8.index(start, offsetBy: max(maxBytes, 1), limitedBy: utf8.endIndex) ?? utf8.endIndex
+            // Step back off UTF-8 continuation bytes (10xxxxxx) so no scalar is cut.
+            while end > start, isContinuation(end) { utf8.formIndex(before: &end) }
+            // Prefer a Character boundary, so a line shown on its own doesn't split a grapheme.
+            var characterEnd = end
+            while characterEnd > start, characterEnd < utf8.endIndex, String.Index(characterEnd, within: text) == nil {
+                utf8.formIndex(before: &characterEnd)
+            }
+            if characterEnd > start { end = characterEnd }
+            if end == start {
+                // One scalar is wider than `maxBytes`: keep it whole.
+                end = utf8.index(after: start)
+                while isContinuation(end) { utf8.formIndex(after: &end) }
+            }
+            chunks.append(String(decoding: utf8[start..<end], as: UTF8.self))
+            start = end
+        }
+        return chunks
     }
 }
 
@@ -589,12 +624,8 @@ public actor PacketBuilder {
     /// - Parameter packet: The multipart packet to process.
     /// - Returns: A `ProcessedResult` indicating the processing outcome.
     public func processPacket(_ packet: MultipartPacket) -> ProcessedResult {
-        var packet = packet
-        if var message = packet.message, message.first == ":" {
-            message = String(message.dropFirst())
-            packet.message = message
-        }
-
+        // The piece is decoded from `packet-metadata` (or taken from the parsed body), never from
+        // raw line text, so a leading `:` is part of the text and is kept.
         cleanupExpiredGroups(now: Date())
 
         // Basic sanity checks to prevent abuse.
@@ -820,18 +851,58 @@ public actor IRCMessageGenerator: Sendable {
     
     private let packetBuilder: PacketBuilder
     private let binaryEncoder: any BinaryEncoding
+
+    /// The protocol level this connection speaks.
+    ///
+    /// With ``IRCVersion/v3`` every frame carries its tags: `packet-metadata`, `irc-protected` and
+    /// the caller's. IRCv3 lets a client send tags only after the server acknowledges the
+    /// `message-tags` capability, so on a connection without it use ``IRCVersion/v1``: frames
+    /// carry no tags, each PRIVMSG and NOTICE piece travels in the line's body only, and the
+    /// server relays the pieces as consecutive lines.
+    public private(set) var version: IRCVersion
+
+    /// Changes ``version``, for example once CAP negotiation shows whether `message-tags` was
+    /// acknowledged.
+    public func setVersion(_ version: IRCVersion) {
+        self.version = version
+    }
+
+    /// Set internally from ``version``: only IRCv3 lines carry tags.
+    var sendsTags: Bool { version == .v3 }
     
+    /// The longest relayed prefix a server puts in front of a PRIVMSG: `nick!user@host`, with
+    /// RFC 2812's 63-byte host and the 30-byte nicks and 11-byte users modern servers allow.
+    static let relayedPrefixBytes = 106
+
+    /// UTF-8 bytes of text one PRIVMSG or NOTICE frame carries in its body, so the line as a
+    /// server relays it, `:<prefix> PRIVMSG <targets> :<piece>\r\n`, fits RFC 2812's 512 bytes.
+    static func bodyChunkBytes(origin: String, command: IRCCommand) -> Int {
+        let empty: IRCCommand
+        switch command {
+        case .privMsg(let recipients, _): empty = .privMsg(recipients, "")
+        case .notice(let recipients, _): empty = .notice(recipients, "")
+        default: return 512
+        }
+        let prefix = 1 + max(origin.utf8.count, relayedPrefixBytes) + 1
+        let head = NeedleTailIRCEncoder.encode(value: IRCMessage(command: empty)).utf8.count
+        return max(512 - IRCMessage.lineTerminator.utf8.count - prefix - head, 64)
+    }
+
     /// Initializes a new IRC message generator with the specified executor.
     /// - Parameters:
     ///   - executor: The executor to use for task management.
     ///   - binaryEncoder: Encoder used for `packet-metadata` / auth tags (injectable for tests).
+    ///   - version: The protocol level the connection speaks. ``IRCVersion/v3``, the default,
+    ///     sends tags; ``IRCVersion/v1`` sends none.
     public init(
         executor: any AnyExecutor,
-        binaryEncoder: any BinaryEncoding = BinaryEncoder()
+        binaryEncoder: any BinaryEncoding = BinaryEncoder(),
+        version: IRCVersion = .v3
     ) {
         self.executor = executor
         self.packetBuilder = PacketBuilder(executor: executor)
         self.binaryEncoder = binaryEncoder
+        self.version = version
     }
     
     /// Returns the unowned executor for this actor.
@@ -865,6 +936,7 @@ public actor IRCMessageGenerator: Sendable {
     func createIRCMessage(
         for command: IRCCommand,
         origin: String,
+        target: String? = nil,
         tags: [IRCTag]? = nil,
         authPacket: AuthPacket? = nil,
         logger: NeedleTailLogger,
@@ -892,9 +964,11 @@ public actor IRCMessageGenerator: Sendable {
         let packetMessage = currentPacket.message ?? ""
         switch command {
         case .privMsg(let recipients, _):
-            modifiedCommand = .privMsg(recipients, "")
+            // The piece goes in the body as well as in `packet-metadata`: a standard server
+            // answers an empty PRIVMSG with 412 and doesn't relay the tag.
+            modifiedCommand = .privMsg(recipients, packetMessage)
         case .notice(let recipients, _):
-            modifiedCommand = .notice(recipients, "")
+            modifiedCommand = .notice(recipients, packetMessage)
         case .quit(_):
             modifiedCommand = .quit(packetMessage)
         case .otherCommand(let otherCommand, _):
@@ -921,8 +995,9 @@ public actor IRCMessageGenerator: Sendable {
         
         let message = IRCMessage(
             origin: origin,
+            target: target,
             command: modifiedCommand,
-            tags: mutableTags)
+            tags: sendsTags ? mutableTags : nil)
         
         continuation.yield(message)
         if modifiedPacket.partNumber == modifiedPacket.totalParts {
@@ -934,8 +1009,9 @@ public actor IRCMessageGenerator: Sendable {
     /// Creates a stream of IRC messages from a command, handling multipart content as needed.
     ///
     /// This method is the main entry point for message generation. It takes an IRC command
-    /// and creates an async stream of properly formatted IRC messages. For large content,
-    /// it automatically breaks the content into multipart packets.
+    /// and creates an async stream of properly formatted IRC messages. Text is cut into pieces,
+    /// one line each, with ordering in a `packet-metadata` tag. PRIVMSG and NOTICE lines also
+    /// carry their piece in the body, sized so the relayed line fits RFC 2812's 512 bytes.
     ///
     /// ## Message Generation Process
     ///
@@ -985,6 +1061,8 @@ public actor IRCMessageGenerator: Sendable {
     ///
     /// - Parameters:
     ///   - origin: The origin of the messages.
+    ///   - target: The recipient's nick, written as the first parameter of numeric and CAP
+    ///     replies (RFC 2812 §2.4). `nil` keeps the target-less NeedleTail form.
     ///   - command: The IRC command to create messages for.
     ///   - tags: Optional IRCv3 tags to include in messages.
     ///   - authPacket: Optional authentication packet for JWT-based auth.
@@ -992,6 +1070,7 @@ public actor IRCMessageGenerator: Sendable {
     /// - Returns: A throwing async stream that yields `IRCMessage` instances.
     public func createMessages(
         origin: String,
+        target: String? = nil,
         command: IRCCommand,
         tags: [IRCTag]? = nil,
         authPacket: AuthPacket? = nil,
@@ -1010,6 +1089,7 @@ public actor IRCMessageGenerator: Sendable {
             _ = await createIRCMessage(
                 for: command,
                 origin: origin,
+                target: target,
                 tags: tags,
                 authPacket: authPacket,
                 logger: logger,
@@ -1027,6 +1107,7 @@ public actor IRCMessageGenerator: Sendable {
                 let succeeded = await createIRCMessage(
                     for: command,
                     origin: origin,
+                    target: target,
                     tags: tags,
                     authPacket: authPacket,
                     logger: logger,
@@ -1050,7 +1131,7 @@ public actor IRCMessageGenerator: Sendable {
         
         switch command {
         case .privMsg(_, let message), .notice(_, let message):
-            await handleMessage(for: command, message: message)
+            await handleMessage(for: command, message: message, chunkCount: Self.bodyChunkBytes(origin: origin, command: command))
             
         case .quit(let message):
             if let message = message {
@@ -1060,12 +1141,9 @@ public actor IRCMessageGenerator: Sendable {
             }
             
         case .otherCommand(let otherCommand, let messageArray):
-            //5mb chunk size
-            let chunkSize = 5 * 1024 * 1024
+            // Large payloads belong in `IRCBinaryMessage`, which has no line or base64 overhead.
             let message = messageArray.joined(separator: Constants.comma.rawValue)
-            await handleMessage(for: .otherCommand(otherCommand, [message]),
-                                message: message,
-                                chunkCount: (otherCommand == Constants.multipartMediaUpload.rawValue || otherCommand == Constants.multipartMediaDownload.rawValue) ? chunkSize : 512)
+            await handleMessage(for: .otherCommand(otherCommand, [message]), message: message)
         case .otherNumeric(let otherNumeric, let messageArray):
             let message = messageArray.joined(separator: Constants.comma.rawValue)
             await handleMessage(for: .otherNumeric(otherNumeric, [message]), message: message)
@@ -1126,11 +1204,20 @@ public actor IRCMessageGenerator: Sendable {
     public func messageReassembler(ircMessage: IRCMessage) async throws -> IRCMessage? {
         var ircMessage = ircMessage
         
-        // Be tolerant of legacy encoding where some tags could be parsed with a leading '@'
-        // (e.g., "@packet-metadata") due to old tag serialization.
-        guard let packetTag = ircMessage.tags?.first(where: { $0.key == "packet-metadata" || $0.key == "@packet-metadata" }) else { return nil }
+        // Accept the legacy "@packet-metadata" spelling from old tag serialization, and the IRCv3
+        // client-only "+packet-metadata", the form a standard server relays between clients.
+        guard let packetTag = ircMessage.tags?.first(where: { ["packet-metadata", "@packet-metadata", "+packet-metadata"].contains($0.key) }) else { return nil }
         guard let data = Data(base64Encoded: packetTag.value) else { return nil }
-        let packet = try BinaryDecoder().decode(MultipartPacket.self, from: data)
+        var packet = try BinaryDecoder().decode(MultipartPacket.self, from: data)
+        // The piece is in the body too; use it when the tag carries no text.
+        if packet.message?.isEmpty ?? true {
+            switch ircMessage.command {
+            case .privMsg(_, let body), .notice(_, let body):
+                if !body.isEmpty { packet.message = body }
+            default:
+                break
+            }
+        }
         
         switch ircMessage.command {
         case .privMsg(let recipients, _):

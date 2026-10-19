@@ -73,6 +73,8 @@ public enum IRCCommand: Codable, Sendable {
     case join0
     /// The PART command indicates a user's intention to leave a channel.
     case part(channels: [NeedleTailChannel])
+    /// PART with a part message: `PART <channel> *( "," <channel> ) :<message>` (RFC 2812 §3.2.2).
+    case partMessage(channels: [NeedleTailChannel], message: String)
     /// The LIST command helps users discover channels of interest.
     case list(channels: [NeedleTailChannel]?, target: String?)
     /// PRIVMSG is used for chat messages and conversations.
@@ -83,8 +85,17 @@ public enum IRCCommand: Codable, Sendable {
     case mode(NeedleTailNick, add: IRCUserModeFlags?, remove: IRCUserModeFlags?)
     /// The MODEGET command retrieves the modes for a given nickname.
     case modeGet(NeedleTailNick)
-    /// CHANNELMODE sets specific modes for a channel.
+    /// `MODE <channel> +<modes> <parameters> -<modes> <parameters>` with each sign's modes as a set.
+    ///
+    /// The parameters pair with the modes that take one in ``IRCChannelPermissions/stringValue``
+    /// order (`o` before `v`, `l` before `k`), and extra parameters go to the last such mode, so
+    /// `addMode: [.voice, .channelOperator], addParameters: ["bob", "alice"]` ops bob and voices
+    /// alice. The parser stores parameters in that order. A line the set can't express, such as
+    /// `+oov alice bob carol`, parses as ``channelModeChanges(_:_:)`` instead.
     case channelMode(NeedleTailChannel, addMode: IRCChannelPermissions?, addParameters: [String]?, removeMode: IRCChannelPermissions?, removeParameters: [String]?)
+    /// `MODE <channel> <modestring> <parameters>` with every change kept in order
+    /// (RFC 2812 §3.2.3), each pairing one mode with its parameter.
+    case channelModeChanges(NeedleTailChannel, [IRCChannelModeChange])
     /// CHANNELMODE_GET retrieves the modes for a given channel.
     case channelModeGet(NeedleTailChannel)
     /// CHANNELMODE_GET_BANMASK retrieves banned users for a given channel.
@@ -131,8 +142,7 @@ public enum IRCCommand: Codable, Sendable {
     case sdccSend(NeedleTailNick, String, Int, String, Int)
     case sdccResume(NeedleTailNick, String, Int, String, Int, Int)
     
-    // MARK: - Additional IRC Commands for 100% Conformance (RFC 2812, RFC 1459, IRCv3)
-    // These are added for protocol completeness. Implementation may be stubbed/TODO.
+    // MARK: - Other RFC 2812 commands and common server extensions
     /// Sets or removes the away status for a user.
     case away(String?) // AWAY command
     /// Authenticates a user as an IRC operator.
@@ -147,42 +157,8 @@ public enum IRCCommand: Codable, Sendable {
     case topic(NeedleTailChannel, String?) // TOPIC command (channel, optional topic)
     /// Lists users in a channel or all channels.
     case names(NeedleTailChannel?) // NAMES command (optional channel)
-    /// Bans a user from a channel.
-    case ban(NeedleTailChannel, String) // BAN command (channel, mask)
-    /// Unbans a user from a channel.
-    case unban(NeedleTailChannel, String) // UNBAN command (channel, mask)
-    /// Kicks and bans a user from a channel.
-    case kickban(NeedleTailChannel, NeedleTailNick, String) // KICKBAN command (channel, nick, reason)
     /// Clears all modes from a channel.
     case clearmode(NeedleTailChannel, String) // CLEARMODE command (channel, mode)
-    /// Adds an exception mask to a channel.
-    case except(NeedleTailChannel, String) // EXCEPT command (channel, mask)
-    /// Removes an exception mask from a channel.
-    case unexcept(NeedleTailChannel, String) // UNEXCEPT command (channel, mask)
-    /// Adds an invite-exception mask to a channel.
-    case inviteExcept(NeedleTailChannel, String) // INVITEEXCEPT command (channel, mask)
-    /// Removes an invite-exception mask from a channel.
-    case uninviteExcept(NeedleTailChannel, String) // UNINVITEEXCEPT command (channel, mask)
-    /// Quiets a user in a channel.
-    case quiet(NeedleTailChannel, String) // QUIET command (channel, mask)
-    /// Unquiets a user in a channel.
-    case unquiet(NeedleTailChannel, String) // UNQUIET command (channel, mask)
-    /// Gives voice to a user in a channel.
-    case voice(NeedleTailChannel, NeedleTailNick) // VOICE command
-    /// Removes voice from a user in a channel.
-    case devoice(NeedleTailChannel, NeedleTailNick) // DEVOICE command
-    /// Gives half-operator status to a user in a channel.
-    case halfop(NeedleTailChannel, NeedleTailNick) // HALFOP command
-    /// Removes half-operator status from a user in a channel.
-    case dehalfop(NeedleTailChannel, NeedleTailNick) // DEHALFOP command
-    /// Gives protect status to a user in a channel.
-    case protect(NeedleTailChannel, NeedleTailNick) // PROTECT command
-    /// Removes protect status from a user in a channel.
-    case deprotect(NeedleTailChannel, NeedleTailNick) // DEPROTECT command
-    /// Gives owner status to a user in a channel.
-    case owner(NeedleTailChannel, NeedleTailNick) // OWNER command
-    /// Removes owner status from a user in a channel.
-    case deowner(NeedleTailChannel, NeedleTailNick) // DEOWNER command
     // MARK: - Administrative/Server Commands
     /// Reloads server configuration files.
     case rehash // REHASH command
@@ -220,15 +196,27 @@ public enum IRCCommand: Codable, Sendable {
     case globops(String) // GLOBOPS command
     /// Sends a local operator message.
     case locops(String) // LOCOPS command
-    /// Admin distribution list command (stub).
-    case adl // ADL command (stub)
-    /// Operator distribution list command (stub).
-    case odlist // ODLIST command (stub)
-    // MARK: - CTCP (Client-to-Client Protocol)
-    /// Sends a CTCP command to a user.
-    case ctcp(NeedleTailNick, String, String?) // CTCP command (target, command, optional argument)
-    /// Sends a CTCP reply to a user.
-    case ctcpreply(NeedleTailNick, String, String) // CTCP reply (target, command, argument)
+    /// `PASS <password>`: the connection password, sent before NICK and USER (RFC 2812 §3.1.1).
+    case pass(String)
+    /// `SERVICE <nickname> <reserved> <distribution> <type> <reserved> <info>`: registers a
+    /// service (RFC 2812 §3.1.6). The reserved parameters are written as `*` and `0`.
+    case service(nickname: String, distribution: String, type: String, info: String)
+    /// `SERVLIST [ <mask> [ <type> ] ]`: lists the services on the network (RFC 2812 §3.5.1).
+    case servlist(mask: String?, type: String?)
+    /// `SQUERY <servicename> <text>`: a message to a service (RFC 2812 §3.5.2).
+    case squery(serviceName: String, text: String)
+    /// `WHOWAS <nickname> *( "," <nickname> ) [ <count> [ <target> ] ]`: nicknames that no
+    /// longer exist (RFC 2812 §3.6.3). A target needs a count.
+    case whowas([NeedleTailNick], count: Int?, target: String?)
+    /// `ERROR <error message>`: a server reports a serious error, usually before it closes the
+    /// link (RFC 2812 §3.7.4).
+    case error(String)
+    /// `SUMMON <user> [ <target> [ <channel> ] ]`: asks a user on a server host to join IRC
+    /// (RFC 2812 §4.5). A channel needs a target.
+    case summon(user: String, target: String?, channel: NeedleTailChannel?)
+    /// `USERHOST <nickname> *( SPACE <nickname> )`: up to five nicknames' user@host
+    /// (RFC 2812 §4.8).
+    case userhost([NeedleTailNick])
     
     // MARK: - Computed Properties
     
@@ -243,7 +231,7 @@ public enum IRCCommand: Codable, Sendable {
         case .pong: return Constants.pong.rawValue
         case .join: return Constants.join.rawValue
         case .join0: return Constants.join.rawValue
-        case .part: return Constants.part.rawValue
+        case .part, .partMessage: return Constants.part.rawValue
         case .list: return Constants.list.rawValue
         case .privMsg: return Constants.privMsg.rawValue
         case .notice: return Constants.notice.rawValue
@@ -251,7 +239,7 @@ public enum IRCCommand: Codable, Sendable {
         case .mode, .modeGet: return Constants.mode.rawValue
         case .whois: return Constants.whoIs.rawValue
         case .who: return Constants.who.rawValue
-        case .channelMode: return Constants.mode.rawValue
+        case .channelMode, .channelModeChanges: return Constants.mode.rawValue
         case .channelModeGet, .channelModeGetBanMask: return Constants.mode.rawValue
         case .kick: return Constants.kick.rawValue
         case .kill: return Constants.kill.rawValue
@@ -323,24 +311,7 @@ public enum IRCCommand: Codable, Sendable {
         case .invite: return Constants.invite.rawValue
         case .topic: return Constants.topic.rawValue
         case .names: return Constants.names.rawValue
-        case .ban: return Constants.ban.rawValue
-        case .unban: return Constants.unban.rawValue
-        case .kickban: return Constants.kickban.rawValue
         case .clearmode: return Constants.clearmode.rawValue
-        case .except: return Constants.except.rawValue
-        case .unexcept: return Constants.unexcept.rawValue
-        case .inviteExcept: return Constants.inviteExcept.rawValue
-        case .uninviteExcept: return Constants.uninviteExcept.rawValue
-        case .quiet: return Constants.quiet.rawValue
-        case .unquiet: return Constants.unquiet.rawValue
-        case .voice: return Constants.voice.rawValue
-        case .devoice: return Constants.devoice.rawValue
-        case .halfop: return Constants.halfop.rawValue
-        case .dehalfop: return Constants.dehalfop.rawValue
-        case .protect: return Constants.protect.rawValue
-        case .deprotect: return Constants.deprotect.rawValue
-        case .owner: return Constants.owner.rawValue
-        case .deowner: return Constants.deowner.rawValue
         case .rehash: return Constants.rehash.rawValue
         case .restart: return Constants.restart.rawValue
         case .die: return Constants.die.rawValue
@@ -359,10 +330,14 @@ public enum IRCCommand: Codable, Sendable {
         case .wallops: return Constants.wallops.rawValue
         case .globops: return Constants.globops.rawValue
         case .locops: return Constants.locops.rawValue
-        case .adl: return Constants.adl.rawValue
-        case .odlist: return Constants.odlist.rawValue
-        case .ctcp: return Constants.ctcp.rawValue
-        case .ctcpreply: return Constants.ctcpreply.rawValue
+        case .pass: return Constants.pass.rawValue
+        case .service: return Constants.service.rawValue
+        case .servlist: return Constants.servlist.rawValue
+        case .squery: return Constants.squery.rawValue
+        case .whowas: return Constants.whowas.rawValue
+        case .error: return Constants.error.rawValue
+        case .summon: return Constants.summon.rawValue
+        case .userhost: return Constants.userhost.rawValue
         }
     }
     
@@ -398,6 +373,8 @@ public enum IRCCommand: Codable, Sendable {
             return ["0"]
         case .part(let channels):
             return [channels.map { $0.stringValue }.joined(separator: Constants.comma.rawValue)]
+        case .partMessage(let channels, let message):
+            return [channels.map { $0.stringValue }.joined(separator: Constants.comma.rawValue), message]
         case .list(let channels, let target):
             let joinedChannels = channels?.map { $0.stringValue }.joined(separator: Constants.comma.rawValue) ?? ""
             return target != nil ? [joinedChannels, target!] : [joinedChannels]
@@ -412,6 +389,8 @@ public enum IRCCommand: Codable, Sendable {
             let removeString = remove.map { "\(Constants.minus.rawValue)\($0.stringValue) " } ?? ""
             let paramsString = (addParameters ?? []).joined(separator: Constants.comma.rawValue) + " " + (removeParameters ?? []).joined(separator: Constants.comma.rawValue)
             return [name.stringValue, "\(addString)\(removeString)\(paramsString)".trimmingCharacters(in: .whitespaces)]
+        case .channelModeChanges(let channel, let changes):
+            return [channel.stringValue, NeedleTailIRCEncoder.modeString(changes)] + changes.compactMap(\.parameter)
         case .modeGet(let name):
             return [name.stringValue]
         case .channelModeGet(let name), .channelModeGetBanMask(let name):
@@ -459,24 +438,7 @@ public enum IRCCommand: Codable, Sendable {
         case .invite(let nickname, let channel): return [nickname.stringValue, channel.stringValue]
         case .topic(let channel, let topic): return [channel.stringValue, topic ?? ""]
         case .names(let channel): return channel != nil ? [channel!.stringValue] : []
-        case .ban(let channel, let mask): return [channel.stringValue, mask]
-        case .unban(let channel, let mask): return [channel.stringValue, mask]
-        case .kickban(let channel, let nick, let reason): return [channel.stringValue, nick.stringValue, reason]
         case .clearmode(let channel, let mode): return [channel.stringValue, mode]
-        case .except(let channel, let mask): return [channel.stringValue, mask]
-        case .unexcept(let channel, let mask): return [channel.stringValue, mask]
-        case .inviteExcept(let channel, let mask): return [channel.stringValue, mask]
-        case .uninviteExcept(let channel, let mask): return [channel.stringValue, mask]
-        case .quiet(let channel, let mask): return [channel.stringValue, mask]
-        case .unquiet(let channel, let mask): return [channel.stringValue, mask]
-        case .voice(let channel, let nick): return [channel.stringValue, nick.stringValue]
-        case .devoice(let channel, let nick): return [channel.stringValue, nick.stringValue]
-        case .halfop(let channel, let nick): return [channel.stringValue, nick.stringValue]
-        case .dehalfop(let channel, let nick): return [channel.stringValue, nick.stringValue]
-        case .protect(let channel, let nick): return [channel.stringValue, nick.stringValue]
-        case .deprotect(let channel, let nick): return [channel.stringValue, nick.stringValue]
-        case .owner(let channel, let nick): return [channel.stringValue, nick.stringValue]
-        case .deowner(let channel, let nick): return [channel.stringValue, nick.stringValue]
         case .rehash: return []
         case .restart: return []
         case .die: return []
@@ -495,10 +457,15 @@ public enum IRCCommand: Codable, Sendable {
         case .wallops(let message): return [message]
         case .globops(let message): return [message]
         case .locops(let message): return [message]
-        case .adl: return []
-        case .odlist: return []
-        case .ctcp(let target, let command, let argument): return [target.stringValue, command, argument ?? ""]
-        case .ctcpreply(let target, let command, let argument): return [target.stringValue, command, argument]
+        case .pass(let password): return [password]
+        case .service(let nickname, let distribution, let type, let info): return [nickname, "*", distribution, type, "0", info]
+        case .servlist(let mask, let type): return [mask, type].compactMap { $0 }
+        case .squery(let serviceName, let text): return [serviceName, text]
+        case .whowas(let nicks, let count, let target):
+            return [nicks.map { $0.stringValue }.joined(separator: Constants.comma.rawValue)] + [count.map(String.init), target].compactMap { $0 }
+        case .error(let message): return [message]
+        case .summon(let user, let target, let channel): return [user, target, channel?.stringValue].compactMap { $0 }
+        case .userhost(let nicks): return nicks.map { $0.stringValue }
         }
     }
 

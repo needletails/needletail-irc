@@ -20,21 +20,59 @@ extension IRCMessage: IRCWireEncodable {
     /// RFC 1459 line terminator.
     public static let lineTerminator = "\r\n"
 
+    /// The most parameters a line may carry (RFC 2812 §2.3.1).
+    public static let maxParameters = 15
+
     /// The validated, single-line wire form of this message, **without** the terminator.
     ///
-    /// Rules enforced here, so every caller (NIO codec, tests, diagnostics) gets the same bytes:
-    /// - `JOIN`/`PART` with no channels and `PRIVMSG`/`NOTICE` with no recipients are rejected
-    ///   with ``IRCMessageGeneratorError/emptyCommandRejected``; the server would reject them and
-    ///   the local generator would otherwise have silently produced a dead frame.
-    /// - An encoder result that is empty is rejected for the same reason.
-    /// - Embedded `\r` / `\n` are removed. A line may not contain its own terminator; stripping is
+    /// This is the one place a text line is checked and encoded, so every caller (NIO codec,
+    /// `sendAndFlushMessage`, tests, diagnostics) gets the same bytes. It throws an
+    /// ``IRCMessageGeneratorError`` unless the message can be written as one RFC 2812 line with
+    /// IRCv3 tags:
+    /// - `JOIN`/`PART` need channels and `PRIVMSG`/`NOTICE` need recipients:
+    ///   ``IRCMessageGeneratorError/emptyCommandRejected``. The server would reject them.
+    /// - The command is letters or three digits: ``IRCMessageGeneratorError/invalidCommand``.
+    /// - The origin has no space: ``IRCMessageGeneratorError/invalidOrigin``.
+    /// - Tag keys are `[+][vendor/]name`: ``IRCMessageGeneratorError/invalidTagKey``.
+    /// - Every parameter before the last is one non-empty word that doesn't start with `:`, and
+    ///   message targets are channels, nicks or RFC 2812 masks:
+    ///   ``IRCMessageGeneratorError/invalidParameter``.
+    /// - At most ``maxParameters`` parameters: ``IRCMessageGeneratorError/tooManyParameters``.
+    /// - An encoder result that is empty: ``IRCMessageGeneratorError/emptyCommandRejected``.
+    ///
+    /// Line length is kept by the chunker, not checked here: `IRCMessageGenerator` sizes each
+    /// PRIVMSG and NOTICE piece so the relayed line fits RFC 2812's 512 bytes.
+    /// - Embedded NUL, `\r` and `\n` are removed. A line may not contain them; stripping is
     ///   preferred over throwing so a stray newline in user text degrades the message rather
     ///   than dropping it. Callers that need to know this happened can compare `wireLine()`
     ///   against `NeedleTailIRCEncoder.encode(value:)`.
     public func wireLine() throws -> String {
+        try validateWireLine()
+
+        let line = Self.removingForbiddenScalars(NeedleTailIRCEncoder.encode(value: self))
+        guard !line.isEmpty else {
+            throw IRCMessageGeneratorError.emptyCommandRejected
+        }
+        return line
+    }
+
+    /// Removes NUL, CR and LF, which a line may not contain.
+    static func removingForbiddenScalars(_ line: String) -> String {
+        // Operate on scalars, not Characters: "\r\n" is a single grapheme cluster and would
+        // slip past a Character-level comparison, leaving a terminator inside the line
+        // (i.e. an IRC command injection vector).
+        var line = line
+        line.unicodeScalars.removeAll { $0 == "\0" || $0 == "\r" || $0 == "\n" }
+        return line
+    }
+
+    /// The checks ``wireLine()`` documents, without encoding the tags. `sendAndFlushMessage` runs
+    /// them before writing, so an invalid line throws before it reaches the NIO pipeline.
+    func validateWireLine() throws {
         switch command {
         case .join(let channels, _) where channels.isEmpty,
-             .part(let channels) where channels.isEmpty:
+             .part(let channels) where channels.isEmpty,
+             .partMessage(let channels, _) where channels.isEmpty:
             throw IRCMessageGeneratorError.emptyCommandRejected
         case .privMsg(let recipients, _) where recipients.isEmpty,
              .notice(let recipients, _) where recipients.isEmpty:
@@ -43,15 +81,124 @@ extension IRCMessage: IRCWireEncodable {
             break
         }
 
-        var line = NeedleTailIRCEncoder.encode(value: self)
-        guard !line.isEmpty else {
-            throw IRCMessageGeneratorError.emptyCommandRejected
+        // command = 1*letter / 3digit
+        let name = command.commandAsString.unicodeScalars
+        let isWord = !name.isEmpty && name.allSatisfy { ("A"..."Z").contains($0) || ("a"..."z").contains($0) }
+        let isNumeric = name.count == 3 && name.allSatisfy { ("0"..."9").contains($0) }
+        guard isWord || isNumeric else {
+            throw IRCMessageGeneratorError.invalidCommand
         }
-        // Operate on scalars, not Characters: "\r\n" is a single grapheme cluster and would
-        // slip past a Character-level comparison, leaving a terminator inside the line
-        // (i.e. an IRC command injection vector).
-        line.unicodeScalars.removeAll { $0 == "\r" || $0 == "\n" }
-        return line
+        if let origin, origin.contains(Constants.space.rawValue) {
+            throw IRCMessageGeneratorError.invalidOrigin
+        }
+        for tag in tags ?? [] where !IRCTag.isValidIRCv3Key(tag.key) {
+            throw IRCMessageGeneratorError.invalidTagKey
+        }
+        switch command {
+        case .privMsg(let recipients, _), .notice(let recipients, _):
+            for case .mask(let mask) in recipients where !IRCMessageRecipient.isMask(mask) {
+                throw IRCMessageGeneratorError.invalidParameter
+            }
+        case .whowas(let nicks, let count, let target):
+            // WHOWAS needs a nickname, and a target only follows a count.
+            if nicks.isEmpty || (target != nil && count == nil) { throw IRCMessageGeneratorError.invalidParameter }
+        case .summon(_, let target, let channel):
+            if channel != nil && target == nil { throw IRCMessageGeneratorError.invalidParameter }
+        case .channelModeChanges(_, let changes):
+            // Each change is exactly one mode, so its parameter pairs with one letter.
+            if changes.isEmpty || changes.contains(where: { $0.mode.rawValue.nonzeroBitCount != 1 }) {
+                throw IRCMessageGeneratorError.invalidParameter
+            }
+        case .userhost(let nicks):
+            // RFC 2812 §4.8: one to five nicknames.
+            if !(1...5).contains(nicks.count) { throw IRCMessageGeneratorError.invalidParameter }
+        default:
+            break
+        }
+        for middle in Self.middleParameters(of: self) {
+            guard !middle.isEmpty,
+                  !middle.contains(Constants.space.rawValue),
+                  !middle.hasPrefix(Constants.colon.rawValue) else {
+                throw IRCMessageGeneratorError.invalidParameter
+            }
+        }
+        // Count what a receiver will see. Tags and origin don't change it, so leave them out.
+        guard let line = try? NeedleTailIRCParser.tokenize(
+            NeedleTailIRCEncoder.encode(value: IRCMessage(target: target, command: command))
+        ) else {
+            throw IRCMessageGeneratorError.invalidParameter
+        }
+        guard line.parameters.count <= Self.maxParameters else {
+            throw IRCMessageGeneratorError.tooManyParameters
+        }
+    }
+
+    /// Caller strings the encoder writes as middle parameters, where a space, an empty value or
+    /// a leading `:` would change the line's meaning. Trailing parameters aren't listed.
+    static func middleParameters(of message: IRCMessage) -> [String] {
+        var middles: [String] = []
+        if let target = message.target, NeedleTailIRCEncoder.carriesTarget(message.command) {
+            middles.append(target)
+        }
+        switch message.command {
+        case .user(let details):
+            middles.append(details.username)
+            if details.userModeFlags == nil {
+                middles += [details.hostname ?? "", details.servername ?? "*"]
+            }
+        case .ping(let server, let server2), .pong(let server, let server2):
+            if server2 != nil { middles.append(server) }
+        case .join(_, let keys):
+            if let keys, !keys.isEmpty { middles.append(keys.joined(separator: Constants.comma.rawValue)) }
+        case .list(_, let target), .who(let target, _), .links(let target), .trace(let target),
+             .admin(let target), .info(let target), .version(let target), .time(let target),
+             .motd(let target), .rules(let target), .users(let target):
+            if let target { middles.append(target) }
+        case .channelMode(_, let add, let addParameters, let remove, let removeParameters):
+            if add?.stringValue.isEmpty == false { middles += addParameters ?? [] }
+            if remove?.stringValue.isEmpty == false { middles += removeParameters ?? [] }
+        case .channelModeChanges(_, let changes):
+            middles += changes.compactMap(\.parameter)
+        case .whois(let server, let usermasks):
+            if let server { middles.append(server) }
+            if !usermasks.isEmpty { middles.append(usermasks.joined(separator: Constants.comma.rawValue)) }
+        case .dccChat(_, let address, _), .sdccChat(_, let address, _):
+            middles.append(address)
+        case .dccSend(_, let filename, _, let address, _), .sdccSend(_, let filename, _, let address, _),
+             .dccResume(_, let filename, _, let address, _, _), .sdccResume(_, let filename, _, let address, _, _):
+            middles += [filename, address]
+        case .sQuit(let serverName, _):
+            middles.append(serverName)
+        case .server(let serverName, let version, _, _):
+            middles += [serverName, version]
+        case .oper(let username, _):
+            middles.append(username)
+        case .silence(let mask), .clearmode(_, let mask):
+            middles.append(mask)
+        case .connect(let targetServer, _, let remoteServer):
+            middles.append(targetServer)
+            if let remoteServer { middles.append(remoteServer) }
+        case .stats(let first, let second), .lusers(let first, let second):
+            middles += [first, second].compactMap { $0 }
+        case .service(let nickname, let distribution, let type, _):
+            middles += [nickname, distribution, type]
+        case .servlist(let mask, let type):
+            if type != nil, let mask { middles.append(mask) }
+        case .squery(let serviceName, _):
+            middles.append(serviceName)
+        case .summon(let user, let target, let channel):
+            if target != nil { middles.append(user) }
+            if channel != nil, let target { middles.append(target) }
+        case .numeric(_, let arguments), .otherNumeric(_, let arguments):
+            // Without a target the arguments are one trailing parameter (NeedleTail form).
+            if message.target != nil { middles += arguments.dropLast() }
+        case .otherCommand(_, let arguments):
+            // One argument is written as trailing; several as RFC parameters.
+            if arguments.count > 1 { middles += arguments.dropLast() }
+        default:
+            break
+        }
+        return middles
     }
 
     /// Writes `wireLine()` followed by CRLF.

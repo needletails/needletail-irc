@@ -4,7 +4,9 @@ Handle large messages that exceed IRC protocol limits by automatically chunking 
 
 ## Overview
 
-IRC protocol has a maximum message length of 512 bytes, which can be limiting when sending large text messages or binary data. The `MultipartPacket` system provides automatic chunking and reassembly of large messages, making it transparent to your application.
+`IRCMessageGenerator` cuts PRIVMSG and NOTICE text into pieces, on Character boundaries where possible, and sends each piece on its own line: in the trailing parameter, sized so the line as a server relays it fits RFC 2812's 512 bytes, and in a base64 `packet-metadata` tag that records its place in the group. The receiving `IRCMessageGenerator` reassembles them from the tag, or from the bodies when the tag carries no text.
+
+A standard IRC server relays each piece as an ordinary PRIVMSG, so other clients see the text as consecutive lines. Servers that support IRCv3 message-tags relay client tags only in their `+` form, which `messageReassembler` also accepts as `+packet-metadata`. On a server that didn't acknowledge `message-tags`, use `IRCVersion.v1` (`setVersion(.v1)`): frames then carry no tags, which such a server would reject with 421.
 
 ## Key Features
 
@@ -23,8 +25,8 @@ import NeedleTailIRC
 
 let largeMessage = String(repeating: "Hello, World! ", count: 1000)
 
-// Use IRCMessageGenerator to chunk/reassemble large messages while staying within
-// the configured IRC max line bytes (defaults to 512 including CRLF).
+// IRCMessageGenerator cuts the text into 512-byte pieces, one frame each, and the
+// receiving generator reassembles them.
 let generator = IRCMessageGenerator(executor: executor)
 let messages = await generator.createMessages(
     origin: "alice!user@host",
@@ -192,7 +194,7 @@ The multipart system integrates seamlessly with IRC:
 
 ```swift
 // Send large message over IRC
-let largeMessage = "Very long message..." // > 512 characters
+let largeMessage = "Very long message..." // more than 512 UTF-8 bytes
 let stream = await packetDerivation.calculateAndDispense(
     text: largeMessage, 
     bufferingPolicy: .unbounded

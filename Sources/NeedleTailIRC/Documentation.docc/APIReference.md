@@ -21,16 +21,29 @@ struct IRCMessage {
     var tags: [IRCTag]?
     
     init(origin: String? = nil, target: String? = nil, command: IRCCommand, tags: [IRCTag]? = nil)
+
+    static let maxParameters: Int // 15
+    func wireLine() throws -> String
 }
 ```
 
 **Properties:**
 - `origin`: The message origin/source (optional)
-- `target`: Numeric response target (optional)
+- `target`: The recipient's nick for numeric and CAP replies (optional; RFC 2812 §2.4)
 - `command`: The IRC command or numeric response
 - `tags`: IRCv3 message tags (optional)
 
 `Equatable` is intentionally identity-based: two messages are equal when their generated `id` values match.
+
+**Wire validation:** `wireLine()` throws an `IRCMessageGeneratorError` unless the message can be written as one RFC 2812 line with IRCv3 tags:
+- The command is letters or three digits.
+- The origin has no space.
+- Every tag key is `[+][vendor/]name`.
+- Every parameter before the last is one non-empty word that doesn't start with `:`.
+- There are at most 15 parameters.
+- Every `.mask` message target is an RFC 2812 mask or user address.
+
+`sendAndFlushMessage` runs the same checks before writing. `wireLine()` also strips NUL, CR and LF. Line length is kept by `IRCMessageGenerator`'s chunking, not checked here.
 
 **Example:**
 ```swift
@@ -57,9 +70,11 @@ enum IRCCommand {
     // Channel commands
     case join(channels: [NeedleTailChannel], keys: [String]?)
     case part(channels: [NeedleTailChannel])
+    case partMessage(channels: [NeedleTailChannel], message: String)
     case list(channels: [NeedleTailChannel]?, target: String?)
     case channelModeGet(NeedleTailChannel)
     case channelMode(NeedleTailChannel, addMode: IRCChannelPermissions?, addParameters: [String]?, removeMode: IRCChannelPermissions?, removeParameters: [String]?)
+    case channelModeChanges(NeedleTailChannel, [IRCChannelModeChange])  // every change in order
     
     // Messaging commands
     case privMsg([IRCMessageRecipient], String)
@@ -87,10 +102,68 @@ enum IRCCommand {
     // Numeric responses
     case numeric(IRCCommandCode, [String])
     
+    // More RFC 2812 commands (the listing above is abridged; all 45 have cases)
+    case pass(String)
+    case service(nickname: String, distribution: String, type: String, info: String)
+    case servlist(mask: String?, type: String?)
+    case squery(serviceName: String, text: String)
+    case whowas([NeedleTailNick], count: Int?, target: String?)
+    case error(String)
+    case summon(user: String, target: String?, channel: NeedleTailChannel?)
+    case userhost([NeedleTailNick])
+
     // Other commands
     case otherCommand(String, [String])
+
+    // An application command, sent as `otherCommand`
+    static func custom(_ command: IRCCustomCommand, _ arguments: [String] = []) -> IRCCommand
 }
 ```
+
+### IRCCustomCommand
+
+The name of a command your application defines on top of IRC. Declare each one in your app, send it with `IRCCommand.custom(_:_:)`, and match it in a `switch` over `otherCommand`.
+
+```swift
+struct IRCCustomCommand: RawRepresentable, Hashable, Sendable, ExpressibleByStringLiteral {
+    let rawValue: String       // uppercased
+    init?(rawValue: String)    // nil unless ASCII letters only
+}
+
+func ~= (pattern: IRCCustomCommand, value: String) -> Bool  // case-insensitive
+```
+
+**Example:**
+```swift
+extension IRCCustomCommand {
+    static let badgeUpdate: IRCCustomCommand = "BADGEUPDATE"
+}
+
+try await writer.transportMessage(command: .custom(.badgeUpdate, ["3"]))
+
+switch message.command {
+case .otherCommand(IRCCustomCommand.badgeUpdate, let arguments):
+    handleBadge(arguments)
+default:
+    break
+}
+```
+
+### Channel MODE pairing
+
+RFC 2812 §3.2.3 pairs each parameter with the next mode letter that takes one. In `.channelMode`, each sign's modes are a set, so parameters pair with the modes that take one in `IRCChannelPermissions.stringValue` order (`o` before `v`, `l` before `k`), and extra parameters go to the last such mode. The parser stores them that way: `MODE #room +vo alice bob` parses as `addMode: [.channelOperator, .voice], addParameters: ["bob", "alice"]` and is written back as `MODE #room +ov bob alice`, which means the same thing.
+
+A line the set can't express, such as `+oov alice bob carol`, parses as `.channelModeChanges`, which keeps each change in order:
+
+```swift
+struct IRCChannelModeChange: Codable, Hashable, Sendable {
+    var adding: Bool                  // + or -
+    var mode: IRCChannelPermissions   // exactly one mode
+    var parameter: String?
+}
+```
+
+Both are written as one mode string followed by the parameters (`MODE #room +v-o alice bob`).
 
 ### IRCMessageRecipient
 
@@ -101,8 +174,11 @@ enum IRCMessageRecipient {
     case channel(NeedleTailChannel)
     case nick(NeedleTailNick)
     case all
+    case mask(String)  // $*.example.net, nick!user@host, user%host@server, user%host, user@server
 }
 ```
+
+`mask` holds the RFC 2812 §3.3.1 targets that are neither a channel nor a nick, written as sent. They are valid PRIVMSG and NOTICE targets, but not MODE targets.
 
 ### NeedleTailChannel
 
@@ -124,7 +200,7 @@ final class NeedleTailChannel {
 **Example:**
 ```swift
 guard let channel = NeedleTailChannel("#general") else {
-    print("Invalid channel name")
+    print("Invalid channel name: \(name)")
     return
 }
 ```
@@ -148,6 +224,8 @@ struct NeedleTailNick {
 - `deviceId`: Optional NeedleTail device identifier
 
 `stringValue` emits `name_UUID` when `deviceId` is present and a standard `name` otherwise.
+
+`init?(name:deviceId:)` lowercases the name. `init?(wireValue:)`, which the parser uses, keeps a standard nick's case, as IRC servers do, and lowercases the name of a NeedleTail `name_UUID` nick, which is an account identity. Nicks compare without case using RFC 2812 §2.2 mapping, so `Bob == bob` and `Robo[t] == robo{t}`.
 
 **Example:**
 ```swift
@@ -213,59 +291,59 @@ enum IRCCommandCode {
     case replyMyInfo = 4
     
     // Error responses
-    case errNoSuchNick = 401
-    case errNoSuchServer = 402
-    case errNoSuchChannel = 403
-    case errCannotSendToChan = 404
-    case errTooManyChannels = 405
-    case errWasNoSuchNick = 406
-    case errTooManyTargets = 407
-    case errNoSuchService = 408
-    case errNoOrigin = 409
-    case errNoRecipient = 411
-    case errNoTextToSend = 412
-    case errNoTopLevel = 413
-    case errWildTopLevel = 414
-    case errBadMask = 415
-    case errUnknownCommand = 421
-    case errNoMotd = 422
-    case errNoAdminInfo = 423
-    case errFileError = 424
-    case errNoNicknameGiven = 431
-    case errErroneousNickname = 432
-    case errNicknameInUse = 433
-    case errNickCollision = 436
-    case errUnavailResource = 437
-    case errUserNotInChannel = 441
-    case errNotOnChannel = 442
-    case errUserOnChannel = 443
-    case errNoLogin = 444
-    case errSummonDisabled = 445
-    case errUsersDisabled = 446
-    case errNotRegistered = 451
-    case errNeedMoreParams = 461
-    case errAlreadyRegistered = 462
-    case errNoPermForHost = 463
-    case errPasswdMismatch = 464
-    case errYoureBannedCreep = 465
-    case errYouWillBeBanned = 466
-    case errKeySet = 467
-    case errChannelIsFull = 471
-    case errUnknownMode = 472
-    case errInviteOnlyChan = 473
-    case errBannedFromChan = 474
-    case errBadChannelKey = 475
-    case errBadChanMask = 476
-    case errNoChanModes = 477
-    case errBanListFull = 478
-    case errNoPrivileges = 481
-    case errChanOpPrivsNeeded = 482
-    case errCantKillServer = 483
-    case errRestricted = 484
-    case errUniqOpPrivsNeeded = 485
-    case errNoOperHost = 491
-    case errUModeUnknownFlag = 501
-    case errUsersDontMatch = 502
+    case errorNoSuchNick = 401
+    case errorNoSuchServer = 402
+    case errorNoSuchChannel = 403
+    case errorCannotSendToChain = 404
+    case errorTooManyChannels = 405
+    case errorWasNoSuchNick = 406
+    case errorTooManyTargets = 407
+    case errorNoSuchService = 408
+    case errorNoOrigin = 409
+    case errorNoRecipient = 411
+    case errorNoTextToSend = 412
+    case errorNoTopLevel = 413
+    case errorWildTopLevel = 414
+    case errorBadMask = 415
+    case errorUnknownCommand = 421
+    case errorNoMotD = 422
+    case errorNoAdminInfo = 423
+    case errorFileError = 424
+    case errorNoNickNameGiven = 431
+    case errorErroneousNickname = 432
+    case errorNicknameInUse = 433
+    case errorNickCollision = 436
+    case errorUnavailableResource = 437
+    case errorUserNotInChannel = 441
+    case errorNotOnChannel = 442
+    case errorUserOnChannel = 443
+    case errorNoLogin = 444
+    case errorSummonDisabled = 445
+    case errorUsersDisabled = 446
+    case errorNotRegistered = 451
+    case errorNeedMoreParams = 461
+    case errorAlreadyRegistered = 462
+    case errorNoPermForHost = 463
+    case errorPasswordMismatch = 464
+    case errorYouReBannedCreep = 465
+    case errorYouWillBeBanned = 466
+    case errorKeySet = 467
+    case errorChannelIsFull = 471
+    case errorUnknownMode = 472
+    case errorInviteOnlyChan = 473
+    case errorBannedFromChan = 474
+    case errorBadChannelKey = 475
+    case errorBadChannelMask = 476
+    case errorNoChannelModels = 477
+    case errorBanListFull = 478
+    case errorNoPrivileges = 481
+    case errorChanOPrivsNeeded = 482
+    case errorCantKillServer = 483
+    case errorRestricted = 484
+    case errorUniqOpPrivIsNeeded = 485
+    case errorNoOperHost = 491
+    case errorUModeUnknownFlag = 501
+    case errorUsersDontMatch = 502
 }
 ```
 
@@ -388,6 +466,7 @@ protocol NeedleTailWriterDelegate: AnyObject, Sendable {
         logger: NeedleTailLogger,
         writer: NIOAsyncChannelOutboundWriter<IRCFrame>,
         origin: String,
+        target: String?,
         command: IRCCommand,
         tags: [IRCTag]?,
         authPacket: AuthPacket?
@@ -404,7 +483,7 @@ protocol NeedleTailWriterDelegate: AnyObject, Sendable {
 
 **Methods:**
 - `transportMessage(...)`: Generate multipart messages and write each through `sendAndFlushMessage`
-- `sendAndFlushMessage(...)`: Write a single outbound payload to the NIO writer
+- `sendAndFlushMessage(...)`: Write a single outbound payload to the NIO writer. A text line goes through the `wireLine()` checks first, so an invalid one throws to the caller and never reaches the pipeline. A throw inside `IRCFrameEncoder` would fail every later write on that channel.
 
 See <doc:TransportLayer> for integration guidance. This package does not provide socket or TLS connectivity.
 
@@ -418,16 +497,15 @@ Every requirement has a no-op default. Override each callback that is meaningful
 
 ### NeedleTailError
 
-Main error enumeration.
+Validation errors for NeedleTailIRC models.
 
 ```swift
 enum NeedleTailError: String, Error, Sendable {
-    case invalidIRCChannelName
     case nilNickName
-    case transportNotIntitialized
-    case payloadTooLarge
-    case parsingError
-    // ... additional cases for NeedleTail client integration
+    case invalidUserId
+    case deviceIdNil
+    case usernameNil
+    case nilData
 }
 ```
 
@@ -440,6 +518,24 @@ enum MessageParsingErrors: Error, Sendable {
     case invalidArguments(String)
     case invalidCAPCommand(String)
     case invalidTag
+}
+```
+
+### IRCMessageGeneratorError
+
+Outbound errors. Nothing has been written when one of these is thrown.
+
+```swift
+enum IRCMessageGeneratorError: Error, Sendable, Equatable {
+    case zeroFramesGenerated        // transportMessage wrote no frames
+    case packetMetadataEncodeFailed
+    case emptyCommandRejected       // JOIN/PART without channels, PRIVMSG/NOTICE without recipients
+    case authPacketEncodeFailed
+    case invalidCommand             // not letters or three digits
+    case invalidOrigin              // origin contains a space
+    case invalidTagKey              // not [+][vendor/]name
+    case invalidParameter           // a parameter before the last is empty, has a space or starts with ':'
+    case tooManyParameters          // more than 15
 }
 ```
 
@@ -468,10 +564,29 @@ Actor that creates outbound IRC messages and reassembles multipart inbound chunk
 
 ```swift
 actor IRCMessageGenerator {
-    func createMessages(origin: String, command: IRCCommand, tags: [IRCTag]?, authPacket: AuthPacket?, logger: NeedleTailLogger) async -> AsyncThrowingStream<IRCMessage, Error>
+    init(executor: any AnyExecutor, binaryEncoder: any BinaryEncoding = BinaryEncoder(), version: IRCVersion = .v3)
+    private(set) var version: IRCVersion
+    func setVersion(_ version: IRCVersion)
+
+    func createMessages(origin: String, target: String?, command: IRCCommand, tags: [IRCTag]?, authPacket: AuthPacket?, logger: NeedleTailLogger) async -> AsyncThrowingStream<IRCMessage, Error>
     func messageReassembler(ircMessage: IRCMessage) async throws -> IRCMessage?
 }
 ```
+
+PRIVMSG and NOTICE text is cut into pieces sized so each relayed line fits RFC 2812's 512 bytes. Each piece travels in the line's body and in a base64 `packet-metadata` tag of about 800 bytes that also records its place in the group. Other commands are cut at 512 UTF-8 bytes and carried in the tag only. Send large payloads as `IRCBinaryMessage`.
+
+### IRCVersion
+
+The protocol level a connection speaks. It decides whether outgoing lines carry tags.
+
+```swift
+enum IRCVersion: Sendable, Equatable {
+    case v1  // RFC 1459 / RFC 2812: no tags
+    case v3  // IRCv3 with message-tags acknowledged: tags (the default)
+}
+```
+
+IRCv3 lets a client send tags only after the server acknowledges `message-tags`; a server without it reads `@...` as the command and answers 421. After CAP negotiation, call `generator.setVersion(acked.contains("message-tags") ? .v3 : .v1)`. With `.v1`, frames carry no tags and each PRIVMSG and NOTICE piece travels in the body only.
 
 ### PacketBuilder
 
@@ -557,10 +672,12 @@ enum Constants: String {
     case privMsg = "PRIVMSG"
     case nick = "NICK"
     case join = "JOIN"
-    case publishBlob = "PUBLISHBLOB"
+    case pass = "PASS"
     // ...
 }
 ```
+
+NeedleTail's application commands are not in `Constants`. Declare each as an `IRCCustomCommand` in your app; the wire names stay the same, for example `static let badgeUpdate: IRCCustomCommand = "BADGEUPDATE"`.
 
 ## Usage Examples
 
@@ -678,8 +795,8 @@ let modeMessage = IRCMessage(
 do {
     let message = try NeedleTailIRCParser.parseMessage(rawMessage)
     // Process message
-} catch NeedleTailError.invalidIRCChannelName {
-    print("Invalid channel name")
+} catch NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(let name) {
+    print("Invalid channel name: \(name)")
 } catch NeedleTailError.nilNickName {
     print("Invalid nickname")
 } catch MessageParsingErrors.invalidArguments(let details) {
@@ -696,7 +813,7 @@ do {
 ```swift
 // Validate channel names
 guard let channel = NeedleTailChannel(channelName) else {
-    throw NeedleTailError.invalidIRCChannelName
+    throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
 }
 
 // Validate nicknames

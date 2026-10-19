@@ -141,11 +141,11 @@ let textOnly = IRCFrameDecoder.lineBasedIRC()
 
 ## Line length and interoperability
 
-The encoder does not hard-cap output at 512 bytes. NeedleTail transports may allow larger lines (for example base64 `packet-metadata` tags). When integrating with standard IRC servers:
+`IRCMessageGenerator` sizes each PRIVMSG and NOTICE piece so the relayed line fits RFC 2812's 512 bytes; the encoder doesn't length-check a line you build yourself. When integrating with standard IRC servers:
 
-- Use `IRCMessageGenerator` to chunk large application payloads
-- Enforce line limits in your transport before writing to the socket
-- Document deployment-specific limits for your operators
+- Send long PRIVMSG and NOTICE text through `createMessages`, which splits it into lines a standard server accepts
+- After CAP negotiation, call `setVersion(.v3)` if the server acknowledged `message-tags` and `setVersion(.v1)` if not; a server without tags answers a tagged line with 421
+- Send large application payloads to NeedleTail servers as `IRCBinaryMessage`
 
 ## What this package does not provide
 

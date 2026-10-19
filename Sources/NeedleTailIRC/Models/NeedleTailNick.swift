@@ -39,8 +39,9 @@ public struct NeedleTailNick: Codable, Hashable, Equatable, CustomStringConverti
         hasher.combine(deviceId)
     }
     
+    /// Nicks compare without case, using RFC 2812 §2.2 mapping (`[]\~` are the uppercase of `{}|^`).
     public static func ==(lhs: NeedleTailNick, rhs: NeedleTailNick) -> Bool {
-        return lhs.deviceId == rhs.deviceId && lhs.name == rhs.name
+        return lhs.deviceId == rhs.deviceId && lhs.name.ircLowercased == rhs.name.ircLowercased
     }
     
     public enum ValidatedNameStatus {
@@ -51,12 +52,23 @@ public struct NeedleTailNick: Codable, Hashable, Equatable, CustomStringConverti
         public var allowsStartingDigit: Bool = true
         public var disallowsUnderScore: Bool = true
         public var lengthLimit: Int = 1024
+        /// Shortest accepted name. RFC 2812 allows one character; NeedleTail names need two.
+        public var minimumLength: Int = 2
         
         public init() {}
+        
+        /// Rules for nicknames read off the wire: RFC 2812 nick characters, including `_`,
+        /// and one-character nicks. NeedleTail's `name_UUID` form still splits at the last `_`.
+        public static var wire: NameRules {
+            var rules = NameRules()
+            rules.disallowsUnderScore = false
+            rules.minimumLength = 1
+            return rules
+        }
     }
     
     public static func validateName(_ name: String, nameRules: NameRules) -> ValidatedNameStatus {
-        guard name.count > 1, name.count <= nameRules.lengthLimit else {
+        guard name.count >= nameRules.minimumLength, name.count <= nameRules.lengthLimit else {
             return .failedValidation
         }
         
@@ -117,17 +129,20 @@ public struct NeedleTailNick: Codable, Hashable, Equatable, CustomStringConverti
     }
 
     /// Creates a nickname from either a standard IRC nick or NeedleTail's `name_UUID` form.
+    ///
+    /// A standard nick keeps the case it was sent with, as IRC servers do. A `name_UUID` nick is a
+    /// NeedleTail account identity, so its name is lowercased.
     public init?(wireValue: String) {
         if let separator = wireValue.lastIndex(of: "_") {
             let name = String(wireValue[..<separator])
             let suffixStart = wireValue.index(after: separator)
             let suffix = String(wireValue[suffixStart...])
             if let deviceId = UUID(uuidString: suffix) {
-                self.init(name: name, deviceId: deviceId)
+                self.init(name: name.lowercased(), deviceId: deviceId, nameRules: .wire)
                 return
             }
         }
-        self.init(name: wireValue, deviceId: nil)
+        self.init(name: wireValue, deviceId: nil, nameRules: .wire)
     }
 }
 

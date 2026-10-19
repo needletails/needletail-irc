@@ -31,6 +31,11 @@ let userDetails = IRCUserDetails(
     realname: "Alice Smith"
 )
 let userCommand = IRCCommand.user(userDetails)
+// USER alice localhost localhost :Alice Smith
+
+// Ask for modes at registration (RFC 2812 bitmask: 4 = w, 8 = i)
+let invisible = IRCCommand.user(IRCUserDetails(username: "alice", userModeFlags: [.invisible], realname: "Alice Smith"))
+// USER alice 8 * :Alice Smith
 
 // Create message
 let message = IRCMessage(command: userCommand)
@@ -107,6 +112,9 @@ let partCommand = IRCCommand.part(channels: [
     NeedleTailChannel("#help")!
 ])
 
+// Part with a message: PART #general :see you later
+let partWithMessage = IRCCommand.partMessage(channels: [NeedleTailChannel("#general")!], message: "see you later")
+
 // Create message
 let message = IRCMessage(command: partCommand)
 ```
@@ -116,6 +124,7 @@ let message = IRCMessage(command: partCommand)
 ```swift
 // List all channels
 let listCommand = IRCCommand.list(channels: nil, target: nil)
+// LIST
 
 // List specific channels
 let listCommand = IRCCommand.list(
@@ -128,6 +137,7 @@ let listCommand = IRCCommand.list(
 
 // List channels on specific server
 let listCommand = IRCCommand.list(channels: nil, target: "server.example.com")
+// LIST * server.example.com
 
 // Create message
 let message = IRCMessage(command: listCommand)
@@ -151,7 +161,7 @@ let modeCommand = IRCCommand.channelMode(
 // Set channel limit
 let limitCommand = IRCCommand.channelMode(
     NeedleTailChannel("#general")!,
-    addMode: IRCChannelPermissions.limit,
+    addMode: IRCChannelPermissions.userLimit,
     addParameters: ["50"],
     removeMode: nil,
     removeParameters: nil
@@ -159,6 +169,17 @@ let limitCommand = IRCCommand.channelMode(
 
 // Create messages
 let message = IRCMessage(command: modeCommand)
+```
+
+Parameters pair with the modes that take one in `IRCChannelPermissions.stringValue` order, so pass them in that order. To control the order, or to give the same mode several parameters next to another mode, list each change:
+
+```swift
+// MODE #general +oov alice bob carol: op alice and bob, voice carol
+let changes = IRCCommand.channelModeChanges(NeedleTailChannel("#general")!, [
+    IRCChannelModeChange(adding: true, mode: .channelOperator, parameter: "alice"),
+    IRCChannelModeChange(adding: true, mode: .channelOperator, parameter: "bob"),
+    IRCChannelModeChange(adding: true, mode: .voice, parameter: "carol"),
+])
 ```
 
 ### Messaging Commands
@@ -273,6 +294,8 @@ let isOnCommand = IRCCommand.isOn([
 let message = IRCMessage(command: isOnCommand)
 ```
 
+A line carries at most 15 parameters, so past the 14th nick the rest of the list is written as one trailing parameter: `ISON n1 … n14 :n15 n16 …`. The parser reads either form.
+
 ### User Management Commands
 
 Commands for managing user modes and permissions:
@@ -289,6 +312,7 @@ let modeCommand = IRCCommand.mode(
     add: [.invisible, .away],
     remove: nil
 )
+// MODE alice_<uuid> +ia  (one mode string; with removals too: +ia-w)
 
 // Remove user modes
 let modeCommand = IRCCommand.mode(
@@ -328,11 +352,7 @@ let message = IRCMessage(command: kickCommand)
 #### SQUIT - Disconnect Server
 
 ```swift
-// Preferred spelling
 let quitServers = IRCCommand.sQuit("hub.example.com", "Maintenance")
-
-// Historical alias; still accepted inbound
-let legacy = IRCCommand.squit("hub.example.com", "Maintenance")
 ```
 
 #### KILL - Disconnect User
@@ -433,18 +453,63 @@ let welcomeCommand = IRCCommand.numeric(
 
 // Error responses
 let nickInUseCommand = IRCCommand.numeric(
-    .errNicknameInUse,
+    .errorNicknameInUse,
     ["nickname", "Nickname is already in use"]
 )
 
 let noSuchChannelCommand = IRCCommand.numeric(
-    .errNoSuchChannel,
+    .errorNoSuchChannel,
     ["#nonexistent", "No such channel"]
 )
 
 // Create messages
 let message = IRCMessage(command: welcomeCommand)
 ```
+
+### More RFC 2812 Commands
+
+Every RFC 2812 command has a typed case. The ones not shown above:
+
+```swift
+let pass = IRCCommand.pass("connectionvalue")                         // PASS connectionvalue
+let service = IRCCommand.service(nickname: "dict", distribution: "*.fr",
+                                 type: "0", info: "French Dictionary")  // SERVICE dict * *.fr 0 0 :French Dictionary
+let servlist = IRCCommand.servlist(mask: "*.fr", type: "0")             // SERVLIST *.fr 0
+let squery = IRCCommand.squery(serviceName: "irchelp", text: "HELP privmsg") // SQUERY irchelp :HELP privmsg
+let whowas = IRCCommand.whowas([NeedleTailNick(wireValue: "Trillian")!],
+                               count: 1, target: "*.edu")               // WHOWAS Trillian 1 *.edu
+let error = IRCCommand.error("Server *.fi already exists")              // ERROR :Server *.fi already exists
+let summon = IRCCommand.summon(user: "jto", target: "tolsun.oulu.fi", channel: nil) // SUMMON jto tolsun.oulu.fi
+let userhost = IRCCommand.userhost([NeedleTailNick(wireValue: "Wiz")!]) // USERHOST Wiz (up to five nicknames)
+```
+
+A WHOWAS target needs a count, and a SUMMON channel needs a target; `wireLine()` throws `invalidParameter` otherwise. Many servers don't implement SERVICE, SERVLIST, SQUERY or SUMMON and answer `421`.
+
+### Custom Commands
+
+Declare your application's commands as `IRCCustomCommand` values instead of string constants. A name is ASCII letters only and is stored uppercased.
+
+```swift
+extension IRCCustomCommand {
+    static let badgeUpdate: IRCCustomCommand = "BADGEUPDATE"
+    static let requestMediaDeletion: IRCCustomCommand = "REQUESTMEDIADELETION"
+}
+
+// Send
+let badge = IRCCommand.custom(.badgeUpdate, ["3"])                 // BADGEUPDATE :3
+let deletion = IRCCommand.custom(.requestMediaDeletion, ["contact", "shared-1", "photo.jpg"])
+                                                                     // REQUESTMEDIADELETION contact shared-1 photo.jpg
+
+// Receive: the parser hands back `.otherCommand`, and the name matches case-insensitively
+switch message.command {
+case .otherCommand(IRCCustomCommand.badgeUpdate, let arguments):
+    await updateBadge(arguments)
+default:
+    break
+}
+```
+
+A custom command's arguments are chunked like text, 512 UTF-8 bytes at a time. Send media and other large payloads as an `IRCBinaryMessage` instead; its `contentType` can carry the command name.
 
 ## Command Building Patterns
 
@@ -588,7 +653,7 @@ func sendCommandWithRetry(_ command: IRCCommand, maxRetries: Int = 3) async thro
         }
     }
     
-    throw lastError ?? NeedleTailError.transportNotIntitialized
+    throw lastError ?? CancellationError()
 }
 
 // Usage
@@ -606,7 +671,7 @@ do {
 ```swift
 // Good: Validate before creating commands
 guard let channel = NeedleTailChannel(channelName) else {
-    throw NeedleTailError.invalidIRCChannelName
+    throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
 }
 let command = IRCCommand.join(channels: [channel], keys: nil)
 
@@ -632,9 +697,9 @@ func handleNumericResponse(code: IRCCommandCode, parameters: [String]) async {
     switch code {
     case .replyWelcome:
         await onRegistrationComplete()
-    case .errNicknameInUse:
+    case .errorNicknameInUse:
         await tryAlternativeNickname()
-    case .errNoSuchChannel:
+    case .errorNoSuchChannel:
         await handleChannelNotFound()
     default:
         print("Unhandled response: \(code)")

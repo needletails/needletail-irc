@@ -99,7 +99,7 @@ let nick = IRCCommand.nick(NeedleTailNick(name: "newNick", deviceId: UUID())!)
 
 // Numeric responses
 let welcome = IRCCommand.numeric(.replyWelcome, ["Welcome to the server!"])
-let error = IRCCommand.numeric(.errNicknameInUse, ["nickname", "Nickname is already in use"])
+let error = IRCCommand.numeric(.errorNicknameInUse, ["nickname", "Nickname is already in use"])
 ```
 
 ### Parameters
@@ -116,6 +116,8 @@ let whois = IRCCommand.whois(server: nil, usermasks: ["alice", "bob"])
 // Parameters with trailing
 let privMsg = IRCCommand.privMsg([.channel(NeedleTailChannel("#general")!)], "Hello, this is a long message with spaces!")
 ```
+
+RFC 2812 §2.3.1 allows at most 15 parameters. Every parameter before the last must be one non-empty word that doesn't start with `:`. Only the last one, the trailing parameter, may hold spaces, and it is written exactly as given, trailing spaces included. Before a message is written, `IRCMessage.wireLine()` checks these rules, along with the command name, the origin and the IRCv3 tag keys. `wireLine()` and `sendAndFlushMessage` throw an `IRCMessageGeneratorError` rather than send a line that would mean something else.
 
 ## Message Types
 
@@ -151,7 +153,8 @@ let welcome = IRCMessage(
 // Error messages
 let nickInUse = IRCMessage(
     origin: "server.example.com",
-    command: .numeric(.errNicknameInUse, ["alice", "Nickname is already in use"])
+    target: "*",
+    command: .numeric(.errorNicknameInUse, ["alice", "Nickname is already in use"])
 )
 
 // Information messages
@@ -308,7 +311,7 @@ let welcome = IRCMessage(
 // Error responses
 let nickInUse = IRCMessage(
     origin: "server.example.com",
-    command: .numeric(.errNicknameInUse, ["nickname", "Nickname is already in use"])
+    command: .numeric(.errorNicknameInUse, ["nickname", "Nickname is already in use"])
 )
 ```
 
@@ -347,7 +350,7 @@ let dccSend = IRCMessage(
 ```swift
 // Good: Validate channel names
 guard let channel = NeedleTailChannel(channelName) else {
-    throw NeedleTailError.invalidIRCChannelName
+    throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName(channelName)
 }
 
 // Good: Validate nicknames

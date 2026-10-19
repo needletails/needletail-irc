@@ -31,6 +31,7 @@ public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes. Defaults to a logger with a specific label.
     ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCMessage>` used to write the messages.
     ///   - origin: A `String` representing the origin of the messages. Defaults to an empty string.
+    ///   - target: The recipient's nick for numeric and CAP replies (RFC 2812 §2.4). Defaults to `nil`.
     ///   - command: An instance of `IRCCommand` representing the command associated with the messages.
     ///   - tags: An optional array of `IRCTag` representing any tags associated with the messages.
     ///   - authPacket: An optional `AuthPacket` for authentication information.
@@ -41,6 +42,7 @@ public protocol NeedleTailWriterDelegate: AnyObject, Sendable {
         logger: NeedleTailLogger,
         writer: NIOAsyncChannelOutboundWriter<IRCFrame>,
         origin: String,
+        target: String?,
         command: IRCCommand,
         tags: [IRCTag]?,
         authPacket: NeedleTailIRC.AuthPacket?
@@ -72,6 +74,7 @@ extension NeedleTailWriterDelegate {
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes. Defaults to a logger with a specific label.
     ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCFrame>` used to write the messages.
     ///   - origin: A `String` representing the origin of the messages. Defaults to an empty string.
+    ///   - target: The recipient's nick for numeric and CAP replies (RFC 2812 §2.4). Defaults to `nil`.
     ///   - command: An instance of `IRCCommand` representing the command associated with the messages.
     ///   - tags: An optional array of `IRCTag` representing any tags associated with the messages.
     ///   - authPacket: An optional `AuthPacket` for authentication information.
@@ -79,15 +82,17 @@ extension NeedleTailWriterDelegate {
     public func transportMessage(
         _ messageGenerator: IRCMessageGenerator,
         executor: any AnyExecutor,
-        logger: NeedleTailLogger = NeedleTailLogger("[ com.needletails.writer.delegate ]"),
+        logger: NeedleTailLogger = NeedleTailLogger("[ com.needletails.irc.writer.delegate ]"),
         writer: NIOAsyncChannelOutboundWriter<IRCFrame>,
         origin: String = "",
+        target: String? = nil,
         command: IRCCommand,
         tags: [IRCTag]? = nil,
         authPacket: NeedleTailIRC.AuthPacket? = nil
     ) async throws {
         let messageStream = await messageGenerator.createMessages(
             origin: origin,
+            target: target,
             command: command,
             tags: tags,
             authPacket: authPacket,
@@ -109,7 +114,7 @@ extension NeedleTailWriterDelegate {
     public func transportMessage(
         messages: AsyncThrowingStream<IRCMessage, Error>,
         executor: any AnyExecutor,
-        logger: NeedleTailLogger = NeedleTailLogger("[ com.needletails.writer.delegate ]"),
+        logger: NeedleTailLogger = NeedleTailLogger("[ com.needletails.irc.writer.delegate ]"),
         writer: NIOAsyncChannelOutboundWriter<IRCFrame>
     ) async throws {
         var writtenFrames = 0
@@ -135,13 +140,26 @@ extension NeedleTailWriterDelegate {
     ///   - logger: An instance of `NeedleTailLogger` for logging purposes. Defaults to a logger with a specific label.
     ///   - writer: An instance of `NIOAsyncChannelOutboundWriter<IRCMessage>` used to write the message.
     ///   - message: An instance of `IRCMessage` representing the message to be sent.
-    /// - Throws: An error if sending or flushing the message fails.
+    /// - Throws: An error if sending or flushing the message fails, or the
+    ///   ``IRCMessageGeneratorError`` from the ``IRCMessage/wireLine()`` checks before anything is
+    ///   written when a text line is invalid.
     public func sendAndFlushMessage<OutboundOut>(
         executor: (any AnyExecutor)? = nil,
-        logger: NeedleTailLogger = NeedleTailLogger("[ com.needletails.writer.delegate ]"),
+        logger: NeedleTailLogger = NeedleTailLogger("[ com.needletails.irc.writer.delegate ]"),
         writer: NIOAsyncChannelOutboundWriter<OutboundOut>,
         message: OutboundOut
     ) async throws {
+        // Reject an invalid line here: a throw inside the NIO encoder fails every later write.
+        switch message {
+        case let frame as IRCFrame:
+            if case .text(let line) = frame {
+                try line.validateWireLine()
+            }
+        case let line as IRCMessage:
+            try line.validateWireLine()
+        default:
+            break
+        }
         try await withThrowingDiscardingTaskGroup { group in
             if let executor {
                 group.addTask(executorPreference: executor) {

@@ -121,9 +121,9 @@ func handleNumericResponse(code: IRCCommandCode, parameters: [String]) async {
         await handleCreated(parameters: parameters)
     case .replyMyInfo:
         await handleMyInfo(parameters: parameters)
-    case .errNicknameInUse:
+    case .errorNicknameInUse:
         await handleNicknameInUse(parameters: parameters)
-    case .errNoSuchChannel:
+    case .errorNoSuchChannel:
         await handleNoSuchChannel(parameters: parameters)
     default:
         print("Unhandled numeric response: \(code) - \(parameters)")
@@ -264,7 +264,7 @@ let welcome = IRCMessage(
 // Create error message
 let error = IRCMessage(
     origin: "server.example.com",
-    command: .numeric(.errNicknameInUse, ["alice", "Nickname is already in use"])
+    command: .numeric(.errorNicknameInUse, ["alice", "Nickname is already in use"])
 )
 ```
 
@@ -275,7 +275,7 @@ let error = IRCMessage(
 ```swift
 // Validate channel before use
 guard let channel = NeedleTailChannel("#general") else {
-    throw NeedleTailError.invalidIRCChannelName
+    throw NeedleTailIRCCommandParser.CommandParserErrors.invalidChannelName("#general")
 }
 
 // Use validated channel

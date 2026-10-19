@@ -36,9 +36,6 @@ public final class IRCFrameDecoder: ByteToMessageDecoder, @unchecked Sendable {
     /// Default maximum declared size for one binary frame field.
     public static let defaultMaxBinaryFrameLength: Int = 32_000_000
 
-    /// Line-framing errors. Defined on ``IRCMessage``; aliased here for source compatibility.
-    public typealias DecoderError = IRCMessage.LineError
-
     /// Which non-line frame families this decoder will recognise from the leading byte.
     ///
     /// Anything not enabled here is framed as IRC text, so a socket that must never see a

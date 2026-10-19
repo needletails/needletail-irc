@@ -15,24 +15,7 @@ struct CommandParserTypedRoundTripTests {
             .invite(nick, channel),
             .topic(channel, "Topic"),
             .names(channel),
-            .ban(channel, "mask!*@*"),
-            .unban(channel, "mask!*@*"),
-            .kickban(channel, nick, "reason"),
             .clearmode(channel, "nt"),
-            .except(channel, "mask!*@*"),
-            .unexcept(channel, "mask!*@*"),
-            .inviteExcept(channel, "mask!*@*"),
-            .uninviteExcept(channel, "mask!*@*"),
-            .quiet(channel, "mask!*@*"),
-            .unquiet(channel, "mask!*@*"),
-            .voice(channel, nick),
-            .devoice(channel, nick),
-            .halfop(channel, nick),
-            .dehalfop(channel, nick),
-            .protect(channel, nick),
-            .deprotect(channel, nick),
-            .owner(channel, nick),
-            .deowner(channel, nick),
             .rehash,
             .restart,
             .die,
@@ -51,8 +34,6 @@ struct CommandParserTypedRoundTripTests {
             .wallops("message"),
             .globops("message"),
             .locops("message"),
-            .adl,
-            .odlist,
         ]
 
         for original in commands {
@@ -104,7 +85,6 @@ struct CommandParserTypedRoundTripTests {
             ("DCCSEND", ["alice", "file", "not-a-size", "address", "6697"]),
             ("DCCRESUME", ["alice", "file", "1", "address", "6697", "offset"]),
             ("SERVER", ["server", "1.0", "hop", "info"]),
-            ("CONNECT", ["server", "port"]),
         ]
     )
     func malformedNumericArgumentsThrow(command: String, arguments: [String]) {
@@ -113,6 +93,24 @@ struct CommandParserTypedRoundTripTests {
                 command: command,
                 arguments: arguments
             )
+        }
+    }
+
+    @Test("Commands that don't fit their typed case arrive as otherCommand")
+    func untypedFormsFallBackToOtherCommand() throws {
+        let lines: [(String, [String])] = [
+            ("CONNECT", ["server", "port"]),
+            ("NAMES", ["#a,#b"]),
+            ("WHOWAS", ["bob", "five"]),
+        ]
+        for (command, arguments) in lines {
+            let parsed = try NeedleTailIRCCommandParser.parse(command: command, arguments: arguments)
+            guard case .otherCommand(let name, let parsedArguments) = parsed else {
+                Issue.record("Expected otherCommand for \(command), got \(parsed)")
+                continue
+            }
+            #expect(name == command)
+            #expect(parsedArguments == arguments)
         }
     }
 
@@ -138,24 +136,7 @@ private func supplementalKind(_ command: IRCCommand) -> String {
     case .invite: "invite"
     case .topic: "topic"
     case .names: "names"
-    case .ban: "ban"
-    case .unban: "unban"
-    case .kickban: "kickban"
     case .clearmode: "clearmode"
-    case .except: "except"
-    case .unexcept: "unexcept"
-    case .inviteExcept: "inviteExcept"
-    case .uninviteExcept: "uninviteExcept"
-    case .quiet: "quiet"
-    case .unquiet: "unquiet"
-    case .voice: "voice"
-    case .devoice: "devoice"
-    case .halfop: "halfop"
-    case .dehalfop: "dehalfop"
-    case .protect: "protect"
-    case .deprotect: "deprotect"
-    case .owner: "owner"
-    case .deowner: "deowner"
     case .rehash: "rehash"
     case .restart: "restart"
     case .die: "die"
@@ -174,8 +155,6 @@ private func supplementalKind(_ command: IRCCommand) -> String {
     case .wallops: "wallops"
     case .globops: "globops"
     case .locops: "locops"
-    case .adl: "adl"
-    case .odlist: "odlist"
     default: "unexpected"
     }
 }
